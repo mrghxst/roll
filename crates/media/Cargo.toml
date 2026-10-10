@@ -10,14 +10,12 @@ anyhow.workspace = true
 blake3.workspace = true
 fast_image_resize.workspace = true
 image.workspace = true
-image_hasher.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 thumbhash.workspace = true
 tracing.workspace = true
 webp.workspace = true
-zune-jpeg.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

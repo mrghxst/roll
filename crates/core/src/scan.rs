@@ -148,7 +148,7 @@ pub fn derive(r: &ReadResult, tz: &dyn TzGuess, now: i64) -> Derived {
     if m.gps.is_none() {
         problems |= problem::NO_LOCATION;
     }
-    if r.error.is_some() || (m.width.is_none() && m.kind == MediaKind::Photo) {
+    if r.error.is_some() || m.truncated || (m.width.is_none() && m.kind == MediaKind::Photo) {
         problems |= problem::BROKEN;
     }
     let signature = format!(

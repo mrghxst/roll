@@ -39,7 +39,12 @@ impl MetaReader {
         };
         let mut m = FileMeta { kind, format: format.to_string(), mime: mime_of(format).to_string(), ..Default::default() };
         match kind {
-            MediaKind::Photo => self.read_photo(path, &head, &mut m),
+            MediaKind::Photo => {
+                if format == "jpeg" {
+                    m.truncated = jpeg_truncated(&mut file, head.len())?;
+                }
+                self.read_photo(path, &head, &mut m)
+            }
             MediaKind::Video => self.read_video(path, file, &mut m),
         }
         Ok(m)
@@ -121,6 +126,20 @@ impl MetaReader {
             Err(e) => m.warnings.push(format!("track: {e}")),
         }
     }
+}
+
+/// A JPEG without an end marker near its end was cut off. Some JPEGs carry
+/// a video or other data after the image (motion photos), so `ftyp` or a
+/// later end marker also count as complete.
+fn jpeg_truncated(file: &mut File, head_len: usize) -> std::io::Result<bool> {
+    use std::io::{Seek, SeekFrom};
+    let len = file.metadata()?.len();
+    let tail_len = len.min(64 * 1024);
+    file.seek(SeekFrom::Start(len - tail_len))?;
+    let mut tail = Vec::with_capacity(tail_len as usize);
+    file.take(tail_len).read_to_end(&mut tail)?;
+    let found = tail.windows(2).any(|w| w == [0xFF, 0xD9]) || tail.windows(4).any(|w| w == b"ftyp" || w == b"mdat");
+    Ok(!found && len as usize > head_len.min(1024))
 }
 
 /// XMP fills gaps left by EXIF. Tags only exist in XMP.

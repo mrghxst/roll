@@ -115,6 +115,7 @@ CREATE TABLE assets (
   UNIQUE(root_id, rel_path)
 );
 CREATE INDEX assets_taken ON assets(taken_utc);
+CREATE INDEX assets_local ON assets(taken_local);
 CREATE INDEX assets_dir ON assets(root_id, dir);
 CREATE INDEX assets_quick ON assets(size, quick_hash);
 CREATE INDEX assets_blake3 ON assets(blake3);

@@ -142,6 +142,8 @@ pub struct FileMeta {
     pub icc_profile: Option<String>,
     /// Short fingerprint of the JPEG quantization tables (encoder signature).
     pub qtable: Option<String>,
+    /// The file ends early (a JPEG without its end marker).
+    pub truncated: bool,
     /// Errors that did not stop reading.
     pub warnings: Vec<String>,
 }

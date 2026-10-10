@@ -31,13 +31,18 @@ fn configure(c: &Connection) -> DbResult<()> {
 }
 
 impl Db {
+    /// Open the library database.
     pub fn open(path: &Path) -> DbResult<Self> {
+        Self::open_with(path, MIGRATIONS)
+    }
+
+    pub fn open_with(path: &Path, migrations: &[&str]) -> DbResult<Self> {
         if let Some(dir) = path.parent() {
             let _ = std::fs::create_dir_all(dir);
         }
         let writer = Connection::open(path)?;
         configure(&writer)?;
-        migrate(&writer)?;
+        migrate(&writer, migrations)?;
         let n = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4).clamp(2, 6);
         let mut readers = Vec::with_capacity(n);
         for _ in 0..n {
@@ -51,9 +56,13 @@ impl Db {
 
     /// An in-memory database for tests (readers share the writer).
     pub fn memory() -> DbResult<Self> {
+        Self::memory_with(MIGRATIONS)
+    }
+
+    pub fn memory_with(migrations: &[&str]) -> DbResult<Self> {
         let writer = Connection::open_in_memory()?;
         writer.execute_batch("PRAGMA foreign_keys = ON;")?;
-        migrate(&writer)?;
+        migrate(&writer, migrations)?;
         Ok(Self { path: PathBuf::new(), writer: Mutex::new(writer), readers: Vec::new(), next: AtomicUsize::new(0) })
     }
 
@@ -89,9 +98,9 @@ impl Db {
     }
 }
 
-fn migrate(c: &Connection) -> DbResult<()> {
+fn migrate(c: &Connection, migrations: &[&str]) -> DbResult<()> {
     let version: i64 = c.query_row("PRAGMA user_version", [], |r| r.get(0))?;
-    for (i, sql) in MIGRATIONS.iter().enumerate() {
+    for (i, sql) in migrations.iter().enumerate() {
         let v = i as i64 + 1;
         if v > version {
             c.execute_batch(&format!("BEGIN; {sql}; PRAGMA user_version = {v}; COMMIT;"))?;
