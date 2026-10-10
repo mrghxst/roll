@@ -78,7 +78,11 @@ pub fn from_folder_name(name: &str) -> Option<NameDate> {
     if let Some(c) = YEAR_MONTH.captures(name) {
         let y: i32 = c[1].parse().ok()?;
         let date = NaiveDate::from_ymd_opt(y, c[2].parse().ok()?, 15)?;
-        return plausible_year(y).then(|| NameDate { local: date.and_hms_opt(12, 0, 0).unwrap(), precision: Precision::Month, is_utc: false });
+        return plausible_year(y).then(|| NameDate {
+            local: date.and_hms_opt(12, 0, 0).unwrap(),
+            precision: Precision::Month,
+            is_utc: false,
+        });
     }
     let c = YEAR.captures(name)?;
     let y: i32 = c[1].parse().ok()?;

@@ -2,7 +2,7 @@
 //! formats Roll imports.
 
 use chrono::{DateTime, Duration, FixedOffset, NaiveDate, TimeZone, Utc};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use crate::pixels::Rng;
 
@@ -107,7 +107,9 @@ impl Track {
     }
 
     pub fn gpx(&self, name: &str, every: usize) -> String {
-        let mut s = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<gpx version=\"1.1\" creator=\"roll-fixtures\" xmlns=\"http://www.topografix.com/GPX/1/1\">\n");
+        let mut s = String::from(
+            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<gpx version=\"1.1\" creator=\"roll-fixtures\" xmlns=\"http://www.topografix.com/GPX/1/1\">\n",
+        );
         s.push_str(&format!("  <trk><name>{name}</name><trkseg>\n"));
         for p in self.points.iter().step_by(every.max(1)) {
             s.push_str(&format!(
@@ -133,30 +135,30 @@ impl Track {
         let mut last_end: Option<(DateTime<Utc>, usize)> = None;
         for &(start, end, idx) in &self.stops {
             let stop = &self.stop_list[idx];
-            if let Some((prev_end, prev_idx)) = last_end {
-                if start > prev_end {
-                    let prev = &self.stop_list[prev_idx];
-                    let path: Vec<Value> = self
-                        .points
-                        .iter()
-                        .filter(|p| p.t >= prev_end && p.t <= start)
-                        .step_by(5)
-                        .map(|p| json!({"point": ll(p.lat, p.lon), "time": self.local(p.t)}))
-                        .collect();
-                    segments.push(json!({
-                        "startTime": self.local(prev_end), "endTime": self.local(start),
-                        "startTimeTimezoneUtcOffsetMinutes": self.offset.local_minus_utc() / 60,
-                        "endTimeTimezoneUtcOffsetMinutes": self.offset.local_minus_utc() / 60,
-                        "timelinePath": path
-                    }));
-                    segments.push(json!({
-                        "startTime": self.local(prev_end), "endTime": self.local(start),
-                        "activity": {
-                            "start": {"latLng": ll(prev.lat, prev.lon)}, "end": {"latLng": ll(stop.lat, stop.lon)},
-                            "distanceMeters": 12000.0, "topCandidate": {"type": "IN_PASSENGER_VEHICLE", "probability": 0.9}
-                        }
-                    }));
-                }
+            if let Some((prev_end, prev_idx)) = last_end
+                && start > prev_end
+            {
+                let prev = &self.stop_list[prev_idx];
+                let path: Vec<Value> = self
+                    .points
+                    .iter()
+                    .filter(|p| p.t >= prev_end && p.t <= start)
+                    .step_by(5)
+                    .map(|p| json!({"point": ll(p.lat, p.lon), "time": self.local(p.t)}))
+                    .collect();
+                segments.push(json!({
+                    "startTime": self.local(prev_end), "endTime": self.local(start),
+                    "startTimeTimezoneUtcOffsetMinutes": self.offset.local_minus_utc() / 60,
+                    "endTimeTimezoneUtcOffsetMinutes": self.offset.local_minus_utc() / 60,
+                    "timelinePath": path
+                }));
+                segments.push(json!({
+                    "startTime": self.local(prev_end), "endTime": self.local(start),
+                    "activity": {
+                        "start": {"latLng": ll(prev.lat, prev.lon)}, "end": {"latLng": ll(stop.lat, stop.lon)},
+                        "distanceMeters": 12000.0, "topCandidate": {"type": "IN_PASSENGER_VEHICLE", "probability": 0.9}
+                    }
+                }));
             }
             segments.push(json!({
                 "startTime": self.local(start), "endTime": self.local(end),

@@ -4,7 +4,7 @@
 use std::collections::HashMap;
 
 use roll_meta::detect::is_raw_ext;
-use rusqlite::{params, Connection};
+use rusqlite::{Connection, params};
 
 use crate::db::Db;
 
@@ -107,16 +107,22 @@ pub fn find(members: &[Member]) -> Vec<Group> {
                 continue;
             };
             if let Some(o) = ms.iter().find(|o| o.id != m.id && stem(&o.name).eq_ignore_ascii_case(&orig_stem) && !o.video) {
-                claim(Group { kind: "edit", key: format!("{dir}/{orig_stem}"), members: vec![(m.id, "primary"), (o.id, "original")] }, &mut taken);
+                claim(
+                    Group { kind: "edit", key: format!("{dir}/{orig_stem}"), members: vec![(m.id, "primary"), (o.id, "original")] },
+                    &mut taken,
+                );
             }
         }
         // FullSizeRender.jpg inside a folder named after the original.
         for m in ms.iter().filter(|m| stem(&m.name).eq_ignore_ascii_case("FullSizeRender")) {
             let (parent, folder) = dir.rsplit_once('/').map(|(p, f)| (p.to_string(), f)).unwrap_or((String::new(), dir));
-            if let Some((_, siblings)) = dirs.iter().find(|(d, _)| *d == parent) {
-                if let Some(o) = siblings.iter().find(|o| stem(&o.name).eq_ignore_ascii_case(folder) && !o.video) {
-                    claim(Group { kind: "edit", key: format!("{parent}/{folder}"), members: vec![(m.id, "primary"), (o.id, "original")] }, &mut taken);
-                }
+            if let Some((_, siblings)) = dirs.iter().find(|(d, _)| *d == parent)
+                && let Some(o) = siblings.iter().find(|o| stem(&o.name).eq_ignore_ascii_case(folder) && !o.video)
+            {
+                claim(
+                    Group { kind: "edit", key: format!("{parent}/{folder}"), members: vec![(m.id, "primary"), (o.id, "original")] },
+                    &mut taken,
+                );
             }
         }
     }
@@ -185,7 +191,17 @@ mod tests {
     fn m(id: i64, dir: &str, name: &str) -> Member {
         let ext = name.rsplit_once('.').map(|(_, e)| e.to_lowercase()).unwrap_or_default();
         let video = matches!(ext.as_str(), "mov" | "mp4");
-        Member { id, dir: dir.into(), name: name.into(), ext, video, content_id: None, burst_id: None, taken_utc: Some(1000), duration_ms: video.then_some(2000) }
+        Member {
+            id,
+            dir: dir.into(),
+            name: name.into(),
+            ext,
+            video,
+            content_id: None,
+            burst_id: None,
+            taken_utc: Some(1000),
+            duration_ms: video.then_some(2000),
+        }
     }
 
     #[test]

@@ -8,8 +8,8 @@ use base64::Engine;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::exiftool::{arg, ExifTool, ExifToolError, ExifToolPool};
-use crate::model::{format_offset, Gps, MediaKind, Taken};
+use crate::exiftool::{ExifTool, ExifToolError, ExifToolPool, arg};
+use crate::model::{Gps, MediaKind, Taken, format_offset};
 use crate::tags;
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -275,7 +275,13 @@ fn sidecar_plan(edit: &MetaEdit) -> Plan {
                 }
             }
             None => {
-                for tag in ["XMP-exif:GPSLatitude", "XMP-exif:GPSLongitude", "XMP-exif:GPSAltitude", "XMP-exif:GPSAltitudeRef", "XMP-exif:GPSHPositioningError"] {
+                for tag in [
+                    "XMP-exif:GPSLatitude",
+                    "XMP-exif:GPSLongitude",
+                    "XMP-exif:GPSAltitude",
+                    "XMP-exif:GPSAltitudeRef",
+                    "XMP-exif:GPSHPositioningError",
+                ] {
                     p.clear(tag);
                 }
             }
@@ -297,7 +303,10 @@ fn sidecar_plan(edit: &MetaEdit) -> Plan {
     p
 }
 
-fn read_values(tool: &mut ExifTool, file: &Path, touched: &[String]) -> Result<(Vec<(String, Value)>, Option<String>), ExifToolError> {
+/// Previous tag values and the image data hash.
+type Values = (Vec<(String, Value)>, Option<String>);
+
+fn read_values(tool: &mut ExifTool, file: &Path, touched: &[String]) -> Result<Values, ExifToolError> {
     let mut extra: Vec<String> = touched.iter().map(|t| format!("-{t}")).collect();
     extra.push("-ImageDataHash".into());
     let refs: Vec<&str> = extra.iter().map(String::as_str).collect();
@@ -320,7 +329,14 @@ fn read_values(tool: &mut ExifTool, file: &Path, touched: &[String]) -> Result<(
 }
 
 /// Write an edit. Returns the snapshot needed to undo it.
-pub fn apply(pool: &ExifToolPool, file: &Path, kind: MediaKind, format: &str, edit: &MetaEdit, mode: WriteMode) -> Result<Snapshot, WriteError> {
+pub fn apply(
+    pool: &ExifToolPool,
+    file: &Path,
+    kind: MediaKind,
+    format: &str,
+    edit: &MetaEdit,
+    mode: WriteMode,
+) -> Result<Snapshot, WriteError> {
     let mut snap = Snapshot::default();
     if edit.is_empty() {
         return Ok(snap);
@@ -399,9 +415,7 @@ pub fn restore(pool: &ExifToolPool, file: &Path, snap: &Snapshot) -> Result<(), 
         let side = sidecar_path(file);
         match &snap.sidecar_before {
             Some(b64) => {
-                let bytes = base64::engine::general_purpose::STANDARD
-                    .decode(b64)
-                    .map_err(|e| WriteError::Io(std::io::Error::other(e)))?;
+                let bytes = base64::engine::general_purpose::STANDARD.decode(b64).map_err(|e| WriteError::Io(std::io::Error::other(e)))?;
                 std::fs::write(&side, bytes)?;
             }
             None => {
@@ -417,7 +431,7 @@ pub fn restore(pool: &ExifToolPool, file: &Path, snap: &Snapshot) -> Result<(), 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::{parse_datetime, DateSource};
+    use crate::model::{DateSource, parse_datetime};
 
     fn edit() -> MetaEdit {
         let (local, _) = parse_datetime("2019:08:12 14:03:22").unwrap();

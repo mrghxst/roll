@@ -3,11 +3,11 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use roll_core::Library;
 use roll_core::model::*;
 use roll_core::settings::Settings;
-use roll_core::Library;
-use tauri::ipc::Response;
 use tauri::State;
+use tauri::ipc::Response;
 use tauri_plugin_dialog::DialogExt;
 
 pub struct AppState {
@@ -50,11 +50,13 @@ pub fn save_settings(state: State<AppState>, settings: Settings) -> Res<()> {
 
 #[tauri::command]
 pub async fn pick_folder(app: tauri::AppHandle, title: String) -> Option<String> {
-    tauri::async_runtime::spawn_blocking(move || app.dialog().file().set_title(title).blocking_pick_folder().and_then(|p| p.into_path().ok()))
-        .await
-        .ok()
-        .flatten()
-        .map(|p| p.to_string_lossy().into_owned())
+    tauri::async_runtime::spawn_blocking(move || {
+        app.dialog().file().set_title(title).blocking_pick_folder().and_then(|p| p.into_path().ok())
+    })
+    .await
+    .ok()
+    .flatten()
+    .map(|p| p.to_string_lossy().into_owned())
 }
 
 #[tauri::command]

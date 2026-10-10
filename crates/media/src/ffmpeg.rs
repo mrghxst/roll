@@ -24,18 +24,18 @@ fn exe_name(base: &str) -> String {
 /// `ROLL_FFMPEG`, next to the app, or `PATH`.
 pub fn locate(base: &str) -> Option<PathBuf> {
     let env = format!("ROLL_{}", base.to_uppercase());
-    if let Some(p) = std::env::var_os(env).map(PathBuf::from) {
-        if p.is_file() {
-            return Some(p);
-        }
+    if let Some(p) = std::env::var_os(env).map(PathBuf::from)
+        && p.is_file()
+    {
+        return Some(p);
     }
     let name = exe_name(base);
-    if let Ok(exe) = std::env::current_exe() {
-        if let Some(dir) = exe.parent() {
-            for c in [dir.join(&name), dir.join("ffmpeg").join(&name)] {
-                if c.is_file() {
-                    return Some(c);
-                }
+    if let Ok(exe) = std::env::current_exe()
+        && let Some(dir) = exe.parent()
+    {
+        for c in [dir.join(&name), dir.join("ffmpeg").join(&name)] {
+            if c.is_file() {
+                return Some(c);
             }
         }
     }
@@ -81,11 +81,16 @@ impl Ffmpeg {
         if let Some(m) = max_side {
             cmd.args(["-vf", &scale_filter(m)]);
         }
-        let out = cmd.args(["-f", "image2pipe", "-c:v", "bmp", "-pix_fmt", "bgr24", "-"]).stdout(Stdio::piped()).stderr(Stdio::piped()).output()?;
+        let out = cmd
+            .args(["-f", "image2pipe", "-c:v", "bmp", "-pix_fmt", "bgr24", "-"])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .output()?;
         if out.stdout.is_empty() {
             return Err(FfmpegError::Failed(String::from_utf8_lossy(&out.stderr).lines().next().unwrap_or("no frame").to_string()));
         }
-        let img = image::load_from_memory_with_format(&out.stdout, image::ImageFormat::Bmp).map_err(|e| FfmpegError::Failed(e.to_string()))?;
+        let img =
+            image::load_from_memory_with_format(&out.stdout, image::ImageFormat::Bmp).map_err(|e| FfmpegError::Failed(e.to_string()))?;
         Ok(img.to_rgb8())
     }
 
@@ -140,7 +145,24 @@ impl Ffmpeg {
         let status = command(&self.ffmpeg)
             .args(["-v", "error", "-nostdin", "-y", "-i"])
             .arg(input)
-            .args(["-vf", &scale_filter(1920), "-c:v", "libvpx-vp9", "-b:v", "0", "-crf", "33", "-row-mt", "1", "-deadline", "realtime", "-cpu-used", "8", "-c:a", "libopus"])
+            .args([
+                "-vf",
+                &scale_filter(1920),
+                "-c:v",
+                "libvpx-vp9",
+                "-b:v",
+                "0",
+                "-crf",
+                "33",
+                "-row-mt",
+                "1",
+                "-deadline",
+                "realtime",
+                "-cpu-used",
+                "8",
+                "-c:a",
+                "libopus",
+            ])
             .arg(&webm)
             .stdout(Stdio::null())
             .stderr(Stdio::piped())

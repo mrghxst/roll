@@ -11,7 +11,7 @@ use parking_lot::{Condvar, Mutex};
 use rusqlite::params;
 use serde::{Deserialize, Serialize};
 
-use crate::db::{now_ms, Db};
+use crate::db::{Db, now_ms};
 use crate::model::JobInfo;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -125,7 +125,16 @@ impl Jobs {
     pub fn new(db: Arc<Db>, notify: Notify) -> Self {
         // Jobs that were running when the app stopped continue.
         let _ = db.write().execute("UPDATE jobs SET state = 'queued' WHERE state = 'running'", []);
-        Self { db, shared: Arc::new(Shared { live: Mutex::new(HashMap::new()), resumed: Condvar::new(), queue_lock: Mutex::new(()), queued: Condvar::new() }), notify }
+        Self {
+            db,
+            shared: Arc::new(Shared {
+                live: Mutex::new(HashMap::new()),
+                resumed: Condvar::new(),
+                queue_lock: Mutex::new(()),
+                queued: Condvar::new(),
+            }),
+            notify,
+        }
     }
 
     /// Queue a job unless the same one is already waiting or running.
@@ -134,7 +143,9 @@ impl Jobs {
         let id = {
             let c = self.db.write();
             let existing: Option<i64> = c
-                .query_row("SELECT id FROM jobs WHERE params = ?1 AND state IN ('queued', 'running', 'paused')", [&params_json], |r| r.get(0))
+                .query_row("SELECT id FROM jobs WHERE params = ?1 AND state IN ('queued', 'running', 'paused')", [&params_json], |r| {
+                    r.get(0)
+                })
                 .ok();
             match existing {
                 Some(id) => id,
@@ -182,7 +193,10 @@ impl Jobs {
         if let Some(l) = self.shared.live.lock().get_mut(&id) {
             l.control = Control::Cancel;
         }
-        let _ = self.db.write().execute("UPDATE jobs SET state = 'cancelled', finished_at = ?2 WHERE id = ?1 AND state IN ('queued', 'paused')", params![id, now_ms()]);
+        let _ = self.db.write().execute(
+            "UPDATE jobs SET state = 'cancelled', finished_at = ?2 WHERE id = ?1 AND state IN ('queued', 'paused')",
+            params![id, now_ms()],
+        );
         self.shared.resumed.notify_all();
         self.emit();
     }
@@ -239,8 +253,11 @@ impl Jobs {
 
     fn next(&self) -> Option<(i64, JobSpec)> {
         let c = self.db.write();
-        let row: Option<(i64, String)> =
-            c.query_row("SELECT id, params FROM jobs WHERE state = 'queued' ORDER BY priority, id LIMIT 1", [], |r| Ok((r.get(0)?, r.get(1)?))).ok();
+        let row: Option<(i64, String)> = c
+            .query_row("SELECT id, params FROM jobs WHERE state = 'queued' ORDER BY priority, id LIMIT 1", [], |r| {
+                Ok((r.get(0)?, r.get(1)?))
+            })
+            .ok();
         let (id, p) = row?;
         let spec: JobSpec = match serde_json::from_str(&p) {
             Ok(s) => s,

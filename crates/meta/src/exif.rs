@@ -3,7 +3,7 @@
 
 use nom_exif::{EntryValue, Exif, ExifDateTime, ExifTag, IfdIndex, IfdKind};
 
-use crate::model::{parse_datetime, parse_offset, DateSource, FileMeta, Gps, Taken};
+use crate::model::{DateSource, FileMeta, Gps, Taken, parse_datetime, parse_offset};
 
 const TAG_RATING: u16 = 0x4746;
 const TAG_GPS_H_ERROR: u16 = 0x001f;
@@ -32,7 +32,7 @@ fn user_comment(v: Option<&EntryValue>) -> Option<String> {
         &bytes[..]
     };
     if bytes.starts_with(b"UNICODE") {
-        let u: Vec<u16> = body.chunks_exact(2).map(|c| u16::from_be_bytes([c[0], c[1]])).collect();
+        let u: Vec<u16> = body.as_chunks::<2>().0.iter().map(|c| u16::from_be_bytes(*c)).collect();
         return Some(String::from_utf16_lossy(&u).trim_matches('\0').trim().to_string());
     }
     Some(String::from_utf8_lossy(body).trim_matches('\0').trim().to_string())
@@ -56,8 +56,8 @@ pub fn apply(exif: &Exif, m: &mut FileMeta) {
     m.model = text(exif.get(ExifTag::Model));
     m.software = text(exif.get(ExifTag::Software));
     m.lens = text(exif.get(ExifTag::LensModel));
-    m.serial = text(exif.get_by_code_in(IfdIndex::MAIN, IfdKind::Exif, TAG_BODY_SERIAL))
-        .or_else(|| text(exif.get(ExifTag::CameraSerialNumber)));
+    m.serial =
+        text(exif.get_by_code_in(IfdIndex::MAIN, IfdKind::Exif, TAG_BODY_SERIAL)).or_else(|| text(exif.get(ExifTag::CameraSerialNumber)));
     m.description = text(exif.get(ExifTag::ImageDescription));
     m.orientation = exif.get(ExifTag::Orientation).and_then(|v| v.try_as_integer()).map(|v| v as u16);
     if m.width.is_none() {
@@ -72,10 +72,8 @@ pub fn apply(exif: &Exif, m: &mut FileMeta) {
     m.taken = exif_taken(exif, ExifTag::DateTimeOriginal, ExifTag::OffsetTimeOriginal, DateSource::ExifOriginal)
         .or_else(|| exif_taken(exif, ExifTag::CreateDate, ExifTag::OffsetTimeDigitized, DateSource::ExifCreate));
     if let Some(g) = exif.gps_info() {
-        let accuracy_m = exif
-            .get_by_code_in(IfdIndex::MAIN, IfdKind::Gps, TAG_GPS_H_ERROR)
-            .and_then(|v| v.as_urational())
-            .and_then(|r| r.to_f64());
+        let accuracy_m =
+            exif.get_by_code_in(IfdIndex::MAIN, IfdKind::Gps, TAG_GPS_H_ERROR).and_then(|v| v.as_urational()).and_then(|r| r.to_f64());
         if let (Some(lat), Some(lon)) = (g.latitude_decimal(), g.longitude_decimal()) {
             let gps = Gps { lat, lon, alt: g.altitude_meters(), accuracy_m };
             if gps.is_valid() {
@@ -119,11 +117,7 @@ pub fn apple_maker_note(note: &[u8]) -> AppleNote {
             continue;
         }
         let n = n as usize;
-        let raw = if n <= 4 {
-            note.get(e + 8..e + 8 + n)
-        } else {
-            be32(e + 8).and_then(|o| note.get(o as usize..o as usize + n))
-        };
+        let raw = if n <= 4 { note.get(e + 8..e + 8 + n) } else { be32(e + 8).and_then(|o| note.get(o as usize..o as usize + n)) };
         let Some(raw) = raw else { continue };
         let s = String::from_utf8_lossy(raw).trim_end_matches('\0').trim().to_string();
         if s.is_empty() {

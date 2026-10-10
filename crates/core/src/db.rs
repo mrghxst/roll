@@ -46,7 +46,10 @@ impl Db {
         let n = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4).clamp(2, 6);
         let mut readers = Vec::with_capacity(n);
         for _ in 0..n {
-            let r = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX | OpenFlags::SQLITE_OPEN_URI)?;
+            let r = Connection::open_with_flags(
+                path,
+                OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX | OpenFlags::SQLITE_OPEN_URI,
+            )?;
             r.busy_timeout(std::time::Duration::from_secs(10))?;
             r.execute_batch("PRAGMA temp_store = MEMORY; PRAGMA cache_size = -16000; PRAGMA mmap_size = 268435456;")?;
             readers.push(Mutex::new(r));

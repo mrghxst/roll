@@ -4,8 +4,8 @@
 
 use std::path::PathBuf;
 
-use roll_meta::detect::{classify_name, FileClass};
 use roll_meta::MetaReader;
+use roll_meta::detect::{FileClass, classify_name};
 use serde_json::Value;
 
 fn fixtures() -> Option<(PathBuf, Value)> {
@@ -51,7 +51,8 @@ fn reader_matches_manifest() {
                     // Videos without the Apple key store UTC; compare instants.
                     let ok = if is_video && t.offset_min.is_none() {
                         let off = item["file_offset_min"].as_i64().or(item["true_offset_min"].as_i64()).unwrap_or(0);
-                        let exp = chrono::NaiveDateTime::parse_from_str(expect, "%Y-%m-%dT%H:%M:%S").unwrap() - chrono::Duration::minutes(off);
+                        let exp =
+                            chrono::NaiveDateTime::parse_from_str(expect, "%Y-%m-%dT%H:%M:%S").unwrap() - chrono::Duration::minutes(off);
                         t.local == exp
                     } else {
                         got == expect
@@ -79,20 +80,21 @@ fn reader_matches_manifest() {
         } else if m.gps.is_some() {
             failures.push(format!("{rel}: unexpected gps"));
         }
-        let screenshot = item["category"] == "screenshots" && !rel.contains("Screenshot_") && !rel.contains("Recording") && !rel.contains("RPReplay");
+        let screenshot =
+            item["category"] == "screenshots" && !rel.contains("Screenshot_") && !rel.contains("Recording") && !rel.contains("RPReplay");
         if screenshot != m.screenshot_marker {
             failures.push(format!("{rel}: screenshot marker {}", m.screenshot_marker));
         }
         if let Some(group) = item["group"].as_str() {
-            if let Some(id) = group.strip_prefix("live:") {
-                if m.content_id.as_deref() != Some(id) {
-                    failures.push(format!("{rel}: content id {:?}, expected {id}", m.content_id));
-                }
+            if let Some(id) = group.strip_prefix("live:")
+                && m.content_id.as_deref() != Some(id)
+            {
+                failures.push(format!("{rel}: content id {:?}, expected {id}", m.content_id));
             }
-            if let Some(id) = group.strip_prefix("burst:") {
-                if m.burst_id.as_deref() != Some(id) {
-                    failures.push(format!("{rel}: burst id {:?}", m.burst_id));
-                }
+            if let Some(id) = group.strip_prefix("burst:")
+                && m.burst_id.as_deref() != Some(id)
+            {
+                failures.push(format!("{rel}: burst id {:?}", m.burst_id));
             }
         }
         if flags.contains(&"rotated") && m.rotation != Some(90) {

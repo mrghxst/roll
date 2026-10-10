@@ -5,7 +5,7 @@ use std::io::{Read, Seek, SeekFrom};
 
 use chrono::{DateTime, Utc};
 
-use crate::model::{parse_datetime, DateSource, Gps, Taken};
+use crate::model::{DateSource, Gps, Taken, parse_datetime};
 
 const MAX_MOOV: u64 = 64 * 1024 * 1024;
 /// Seconds between 1904-01-01 and 1970-01-01.
@@ -223,21 +223,22 @@ fn read_video_trak(trak: &[u8], mdia: &[u8], q: &mut QtInfo) {
             q.codec = Some(codec_name(fourcc));
         }
         // Visual sample entry: coded width and height.
-        if q.width.is_none() {
-            if let (Some(w), Some(h)) = (stsd.get(40..42), stsd.get(42..44)) {
-                q.width = Some(u16::from_be_bytes([w[0], w[1]]) as u32);
-                q.height = Some(u16::from_be_bytes([h[0], h[1]]) as u32);
-            }
+        if q.width.is_none()
+            && let (Some(w), Some(h)) = (stsd.get(40..42), stsd.get(42..44))
+        {
+            q.width = Some(u16::from_be_bytes([w[0], w[1]]) as u32);
+            q.height = Some(u16::from_be_bytes([h[0], h[1]]) as u32);
         }
     }
     let samples: Option<u64> = stbl.and_then(|s| child(s, b"stts")).and_then(|stts| {
         let n = be32(stts, 4)? as usize;
         (0..n).map(|i| be32(stts, 8 + i * 8).map(|c| c as u64)).sum()
     });
-    if let (Some(samples), Some((_, ts, dur))) = (samples, child(mdia, b"mdhd").and_then(header_times)) {
-        if ts > 0 && dur > 0 {
-            q.fps = Some((samples as f64 * ts as f64 / dur as f64) as f32);
-        }
+    if let (Some(samples), Some((_, ts, dur))) = (samples, child(mdia, b"mdhd").and_then(header_times))
+        && ts > 0
+        && dur > 0
+    {
+        q.fps = Some((samples as f64 * ts as f64 / dur as f64) as f32);
     }
 }
 

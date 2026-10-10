@@ -2,7 +2,7 @@
 //! on the long side), ThumbHash placeholders, dHash and statistics, all
 //! from one decode.
 
-use fast_image_resize::{images::Image, FilterType, PixelType, ResizeAlg, ResizeOptions, Resizer};
+use fast_image_resize::{FilterType, PixelType, ResizeAlg, ResizeOptions, Resizer, images::Image};
 use image::RgbImage;
 
 use crate::stats::{self, ImageStats};

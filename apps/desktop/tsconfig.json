@@ -15,5 +15,5 @@
     "resolveJsonModule": true,
     "types": ["vite/client", "node"]
   },
-  "include": ["src/**/*.ts", "src/**/*.svelte", "tests/**/*.ts", "e2e/**/*.ts", "*.ts"]
+  "include": ["src/**/*.ts", "src/**/*.svelte", "e2e/**/*.ts", "*.ts"]
 }

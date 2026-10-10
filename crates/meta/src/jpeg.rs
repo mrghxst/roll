@@ -91,7 +91,7 @@ pub fn icc_description(p: &[u8]) -> Option<String> {
                 let len = u32::from_be_bytes(data.get(rec_off + 4..rec_off + 8)?.try_into().ok()?) as usize;
                 let soff = u32::from_be_bytes(data.get(rec_off + 8..rec_off + 12)?.try_into().ok()?) as usize;
                 let s = data.get(soff..soff + len)?;
-                let u: Vec<u16> = s.chunks_exact(2).map(|c| u16::from_be_bytes([c[0], c[1]])).collect();
+                let u: Vec<u16> = s.as_chunks::<2>().0.iter().map(|c| u16::from_be_bytes(*c)).collect();
                 Some(String::from_utf16_lossy(&u).trim_end_matches('\0').trim().to_string())
             }
             _ => None,

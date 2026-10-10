@@ -5,7 +5,7 @@
 use quick_xml::events::Event;
 use quick_xml::reader::Reader;
 
-use crate::model::{parse_datetime, DateSource, Gps, Taken};
+use crate::model::{DateSource, Gps, Taken, parse_datetime};
 
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct XmpData {
@@ -52,9 +52,7 @@ impl XmpData {
     pub fn gps(&self) -> Option<Gps> {
         let lat = parse_xmp_coord(self.lat.as_deref()?)?;
         let lon = parse_xmp_coord(self.lon.as_deref()?)?;
-        let alt = self.alt.as_deref().and_then(parse_rational).map(|a| {
-            if self.alt_ref.as_deref() == Some("1") { -a } else { a }
-        });
+        let alt = self.alt.as_deref().and_then(parse_rational).map(|a| if self.alt_ref.as_deref() == Some("1") { -a } else { a });
         let accuracy_m = self.h_error.as_deref().and_then(parse_rational);
         let g = Gps { lat, lon, alt, accuracy_m };
         g.is_valid().then_some(g)
@@ -118,17 +116,9 @@ fn store(d: &mut XmpData, qname: &str, value: String) {
         return;
     }
     match field(d, qname) {
-        Some(FieldRef::List(v)) => {
-            if !v.contains(&value) {
-                v.push(value)
-            }
-        }
-        Some(FieldRef::One(o)) => {
-            if o.is_none() {
-                *o = Some(value)
-            }
-        }
-        None => {}
+        Some(FieldRef::List(v)) if !v.contains(&value) => v.push(value),
+        Some(FieldRef::One(o)) if o.is_none() => *o = Some(value),
+        _ => {}
     }
 }
 
@@ -149,11 +139,7 @@ pub fn parse(xml: &str) -> XmpData {
     // Element stack of qualified names.
     let mut stack: Vec<String> = Vec::new();
     let mut text = String::new();
-    loop {
-        let ev = match reader.read_event() {
-            Ok(e) => e,
-            Err(_) => break,
-        };
+    while let Ok(ev) = reader.read_event() {
         match ev {
             Event::Start(e) => {
                 let name = e.name().as_ref().to_string();

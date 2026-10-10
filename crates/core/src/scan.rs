@@ -6,14 +6,14 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use rayon::prelude::*;
-use roll_meta::detect::{classify_name, extension, FileClass};
+use roll_meta::detect::{FileClass, classify_name, extension};
 use roll_meta::{FileMeta, MediaKind, MetaReader};
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{Connection, OptionalExtension, params};
 use walkdir::WalkDir;
 
 use crate::dates::{self, TzGuess};
-use crate::db::{now_ms, Db};
-use crate::model::{problem, ScanReport};
+use crate::db::{Db, now_ms};
+use crate::model::{ScanReport, problem};
 use crate::paths::{join_rel, rel_dir, rel_string};
 use crate::{sidecars, tags};
 
@@ -64,7 +64,10 @@ pub struct Walk {
 
 pub fn walk(root: &Path) -> Walk {
     let mut w = Walk { media: Vec::new(), sidecars: Vec::new(), placeholders: Vec::new() };
-    let it = WalkDir::new(root).follow_links(false).into_iter().filter_entry(|e| e.depth() == 0 || !(e.file_type().is_dir() && skip_dir(&e.file_name().to_string_lossy())));
+    let it = WalkDir::new(root)
+        .follow_links(false)
+        .into_iter()
+        .filter_entry(|e| e.depth() == 0 || !(e.file_type().is_dir() && skip_dir(&e.file_name().to_string_lossy())));
     for entry in it.flatten() {
         if !entry.file_type().is_file() {
             continue;
@@ -117,7 +120,7 @@ pub fn read_files(root: &Path, files: Vec<Found>, progress: Progress) -> Vec<Rea
             };
             let quick_hash = roll_media::hash::quick_hash(&path).unwrap_or_default();
             let n = done.fetch_add(1, Ordering::Relaxed) + 1;
-            if n % 64 == 0 || n == total {
+            if n.is_multiple_of(64) || n == total {
                 progress("Reading metadata", n, total);
             }
             ReadResult { found, meta, quick_hash, error }
@@ -227,7 +230,10 @@ fn insert(c: &Connection, root_id: i64, r: &ReadResult, d: &Derived, inbox: i64)
         now_ms(),
     ])?;
     let id = c.last_insert_rowid();
-    c.execute("INSERT OR REPLACE INTO asset_orig (asset_id, json) VALUES (?1, ?2)", params![id, serde_json::to_string(m).unwrap_or_default()])?;
+    c.execute(
+        "INSERT OR REPLACE INTO asset_orig (asset_id, json) VALUES (?1, ?2)",
+        params![id, serde_json::to_string(m).unwrap_or_default()],
+    )?;
     for t in &m.tags {
         tags::add(c, id, t, "file", None)?;
     }
@@ -300,10 +306,21 @@ fn refresh(c: &Connection, id: i64, r: &ReadResult, d: &Derived) -> rusqlite::Re
         c.execute(
             "UPDATE assets SET lat = ?2, lon = ?3, alt = ?4, loc_acc = ?5, loc_source = ?6,
                problems = CASE WHEN ?2 IS NULL THEN problems | ?7 ELSE problems & ~?7 END WHERE id = ?1",
-            params![id, m.gps.map(|g| g.lat), m.gps.map(|g| g.lon), m.gps.and_then(|g| g.alt), d.loc_acc, d.loc_source, problem::NO_LOCATION],
+            params![
+                id,
+                m.gps.map(|g| g.lat),
+                m.gps.map(|g| g.lon),
+                m.gps.and_then(|g| g.alt),
+                d.loc_acc,
+                d.loc_source,
+                problem::NO_LOCATION
+            ],
         )?;
     }
-    c.execute("INSERT OR REPLACE INTO asset_orig (asset_id, json) VALUES (?1, ?2)", params![id, serde_json::to_string(m).unwrap_or_default()])?;
+    c.execute(
+        "INSERT OR REPLACE INTO asset_orig (asset_id, json) VALUES (?1, ?2)",
+        params![id, serde_json::to_string(m).unwrap_or_default()],
+    )?;
     Ok(())
 }
 
@@ -318,16 +335,34 @@ struct Existing {
 
 /// Scan one root. `inbox` marks new files for the Inbox (not on the first
 /// scan of a root).
-pub fn scan_root(db: &Db, root_id: i64, root: &Path, tz: &dyn TzGuess, inbox: bool, progress: Progress) -> anyhow::Result<(ScanReport, Vec<i64>)> {
+pub fn scan_root(
+    db: &Db,
+    root_id: i64,
+    root: &Path,
+    tz: &dyn TzGuess,
+    inbox: bool,
+    progress: Progress,
+) -> anyhow::Result<(ScanReport, Vec<i64>)> {
     progress("Looking for files", 0, 0);
     let w = walk(root);
-    let mut report = ScanReport { root_id: root_id as i32, seen: w.media.len() as i32, placeholders: w.placeholders.len() as i32, ..Default::default() };
+    let mut report =
+        ScanReport { root_id: root_id as i32, seen: w.media.len() as i32, placeholders: w.placeholders.len() as i32, ..Default::default() };
 
     let existing: HashMap<String, Existing> = {
         let c = db.read();
         let mut st = c.prepare("SELECT id, rel_path, size, mtime, quick_hash, blake3, missing FROM assets WHERE root_id = ?1")?;
         let rows = st.query_map([root_id], |r| {
-            Ok((r.get::<_, String>(1)?, Existing { id: r.get(0)?, size: r.get(2)?, mtime: r.get(3)?, quick_hash: r.get(4)?, blake3: r.get(5)?, missing: r.get::<_, i64>(6)? != 0 }))
+            Ok((
+                r.get::<_, String>(1)?,
+                Existing {
+                    id: r.get(0)?,
+                    size: r.get(2)?,
+                    mtime: r.get(3)?,
+                    quick_hash: r.get(4)?,
+                    blake3: r.get(5)?,
+                    missing: r.get::<_, i64>(6)? != 0,
+                },
+            ))
         })?;
         rows.collect::<Result<_, _>>()?
     };
@@ -350,7 +385,7 @@ pub fn scan_root(db: &Db, root_id: i64, root: &Path, tz: &dyn TzGuess, inbox: bo
 
     // Assets in the database that were not found on disk: candidates for
     // re-linking to new files with the same size and quick hash.
-    let mut gone: HashMap<(i64, String), Vec<(i64, Option<String>)>> = HashMap::new();
+    let mut gone: Gone = HashMap::new();
     for e in existing.values() {
         if !seen_ids.contains(&e.id) {
             gone.entry((e.size, e.quick_hash.clone())).or_default().push((e.id, e.blake3.clone()));
@@ -374,13 +409,10 @@ pub fn scan_root(db: &Db, root_id: i64, root: &Path, tz: &dyn TzGuess, inbox: bo
                     continue;
                 }
                 if let Some(id) = relink_candidate(&mut gone, root, r) {
-                    tx.execute("UPDATE assets SET rel_path = ?2, dir = ?3, name = ?4, mtime = ?5, missing = 0 WHERE id = ?1", params![
-                        id,
-                        r.found.rel,
-                        rel_dir(&r.found.rel),
-                        r.found.rel.rsplit('/').next().unwrap_or_default(),
-                        r.found.mtime
-                    ])?;
+                    tx.execute(
+                        "UPDATE assets SET rel_path = ?2, dir = ?3, name = ?4, mtime = ?5, missing = 0 WHERE id = ?1",
+                        params![id, r.found.rel, rel_dir(&r.found.rel), r.found.rel.rsplit('/').next().unwrap_or_default(), r.found.mtime],
+                    )?;
                     seen_ids.insert(id);
                     report.relinked += 1;
                     continue;
@@ -408,7 +440,10 @@ pub fn scan_root(db: &Db, root_id: i64, root: &Path, tz: &dyn TzGuess, inbox: bo
     Ok((report, touched))
 }
 
-fn relink_candidate(gone: &mut HashMap<(i64, String), Vec<(i64, Option<String>)>>, root: &Path, r: &ReadResult) -> Option<i64> {
+/// Assets not found on disk, by (size, quick hash): (id, full hash).
+type Gone = HashMap<(i64, String), Vec<(i64, Option<String>)>>;
+
+fn relink_candidate(gone: &mut Gone, root: &Path, r: &ReadResult) -> Option<i64> {
     let list = gone.get_mut(&(r.found.size, r.quick_hash.clone()))?;
     let idx = match list.iter().position(|(_, b)| b.is_some()) {
         // Confirm with the full hash when the old file had one.
@@ -442,7 +477,15 @@ mod tests {
         std::fs::create_dir_all(p.join(".hidden")).unwrap();
         std::fs::create_dir_all(p.join("$RECYCLE.BIN")).unwrap();
         std::fs::create_dir_all(p.join("2019/Photos")).unwrap();
-        for f in ["2019/Photos/a.jpg", "2019/Photos/a.jpg.xmp", "2019/Thumbs.db", ".hidden/b.jpg", "$RECYCLE.BIN/c.jpg", "2019/._a.jpg", "notes.txt"] {
+        for f in [
+            "2019/Photos/a.jpg",
+            "2019/Photos/a.jpg.xmp",
+            "2019/Thumbs.db",
+            ".hidden/b.jpg",
+            "$RECYCLE.BIN/c.jpg",
+            "2019/._a.jpg",
+            "notes.txt",
+        ] {
             std::fs::write(p.join(f), b"x").unwrap();
         }
         let w = walk(p);
@@ -469,7 +512,8 @@ mod tests {
         std::fs::remove_file(root.join("a/y.jpg")).unwrap();
         let (r, _) = scan_root(&db, 1, root, &FixedTz(60), true, &noop).unwrap();
         assert_eq!((r.added, r.relinked, r.missing), (0, 1, 1));
-        let (path, rating): (String, i64) = db.read().query_row("SELECT rel_path, rating FROM assets WHERE id = ?1", [id], |r| Ok((r.get(0)?, r.get(1)?))).unwrap();
+        let (path, rating): (String, i64) =
+            db.read().query_row("SELECT rel_path, rating FROM assets WHERE id = ?1", [id], |r| Ok((r.get(0)?, r.get(1)?))).unwrap();
         assert_eq!((path.as_str(), rating), ("b/x.jpg", 4));
         // Unchanged on the next scan.
         let (r, _) = scan_root(&db, 1, root, &FixedTz(60), true, &noop).unwrap();

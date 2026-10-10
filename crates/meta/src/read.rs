@@ -7,7 +7,7 @@ use std::path::Path;
 
 use nom_exif::{Exif, MediaParser, MediaSource, TrackInfoTag};
 
-use crate::detect::{classify_name, extension, format_of, mime_of, FileClass};
+use crate::detect::{FileClass, classify_name, extension, format_of, mime_of};
 use crate::model::{DateSource, FileMeta, MediaKind, Taken};
 use crate::{exif, jpeg, quicktime, xmp};
 
@@ -58,11 +58,11 @@ impl MetaReader {
             m.icc_profile = j.icc_profile;
             m.qtable = j.qtable;
         }
-        if m.width.is_none() {
-            if let Ok(s) = imagesize::blob_size(head).or_else(|_| imagesize::size(path)) {
-                m.width = Some(s.width as u32);
-                m.height = Some(s.height as u32);
-            }
+        if m.width.is_none()
+            && let Ok(s) = imagesize::blob_size(head).or_else(|_| imagesize::size(path))
+        {
+            m.width = Some(s.width as u32);
+            m.height = Some(s.height as u32);
         }
         if matches!(m.format.as_str(), "jpeg" | "heic" | "avif" | "png" | "tiff" | "raw" | "webp") {
             match MediaSource::open(path).and_then(|ms| self.parser.parse_exif(ms)) {

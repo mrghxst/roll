@@ -34,16 +34,48 @@ pub fn generate(out: &Path, n: usize) -> Result<()> {
             let (make, model) = *rng.pick(CAMERAS);
             let gps = (rng.f() < 0.19).then(|| (35.0 + rng.f() * 20.0, -5.0 + rng.f() * 30.0, 100.0));
             let t = if rng.f() < 0.5 { rng.pick(&photo_t) } else { rng.pick(&portrait_t) };
-            (t, ExifSpec { make: Some(make.into()), model: Some(model.into()), date: Some(local.format("%Y:%m:%d %H:%M:%S").to_string()), offset: Some("+01:00".into()), gps, ..Default::default() })
+            (
+                t,
+                ExifSpec {
+                    make: Some(make.into()),
+                    model: Some(model.into()),
+                    date: Some(local.format("%Y:%m:%d %H:%M:%S").to_string()),
+                    offset: Some("+01:00".into()),
+                    gps,
+                    ..Default::default()
+                },
+            )
         } else if roll < 0.43 {
-            (rng.pick(&screen_t), ExifSpec { date: Some(local.format("%Y:%m:%d %H:%M:%S").to_string()), offset: Some("+01:00".into()), user_comment: Some("Screenshot".into()), width: Some(828), height: Some(1792), ..Default::default() })
+            (
+                rng.pick(&screen_t),
+                ExifSpec {
+                    date: Some(local.format("%Y:%m:%d %H:%M:%S").to_string()),
+                    offset: Some("+01:00".into()),
+                    user_comment: Some("Screenshot".into()),
+                    width: Some(828),
+                    height: Some(1792),
+                    ..Default::default()
+                },
+            )
         } else {
             let (w, h) = *rng.pick(&[(854u32, 1590u32), (1024, 1024), (1152, 2048), (896, 1152), (750, 1334), (1080, 1350)]);
-            (rng.pick(&saved_t), ExifSpec { date: Some(local.format("%Y:%m:%d %H:%M:%S").to_string()), offset: Some("+01:00".into()), width: Some(w), height: Some(h), ..Default::default() })
+            (
+                rng.pick(&saved_t),
+                ExifSpec {
+                    date: Some(local.format("%Y:%m:%d %H:%M:%S").to_string()),
+                    offset: Some("+01:00".into()),
+                    width: Some(w),
+                    height: Some(h),
+                    ..Default::default()
+                },
+            )
         };
         let dir = out.join(local.format("%Y").to_string());
         std::fs::create_dir_all(&dir)?;
-        std::fs::write(dir.join(format!("IMG_stress_{} - {i}.jpeg", local.format("%Y"))), exifblock::insert_into_jpeg(bytes, &exifblock::tiff(&spec)))?;
+        std::fs::write(
+            dir.join(format!("IMG_stress_{} - {i}.jpeg", local.format("%Y"))),
+            exifblock::insert_into_jpeg(bytes, &exifblock::tiff(&spec)),
+        )?;
         if i % 10_000 == 0 && i > 0 {
             eprintln!("  {i} files");
         }

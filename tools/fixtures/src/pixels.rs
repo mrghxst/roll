@@ -3,7 +3,7 @@
 //! content. The same scene seed renders the same scene, so a camera photo
 //! and a phone photo "of the same moment" look alike.
 
-use image::{imageops, Rgb, RgbImage};
+use image::{Rgb, RgbImage, imageops};
 
 /// Deterministic xorshift generator.
 #[derive(Clone)]
@@ -85,7 +85,8 @@ pub fn scene(w: u32, h: u32, seed: u64, variant: u64) -> RgbImage {
     let horizon = 0.45 + r.f() * 0.2;
     let ground_hue = 0.2 + r.f() * 0.15;
     let sun = (r.f(), r.f() * horizon * 0.8, 0.04 + r.f() * 0.05);
-    let objects: Vec<(f64, f64, f64, f64, f64)> = (0..(4 + r.range(0, 8))).map(|_| (r.f(), horizon + r.f() * 0.3, 0.03 + r.f() * 0.12, 0.05 + r.f() * 0.3, r.f())).collect();
+    let objects: Vec<(f64, f64, f64, f64, f64)> =
+        (0..(4 + r.range(0, 8))).map(|_| (r.f(), horizon + r.f() * 0.3, 0.03 + r.f() * 0.12, 0.05 + r.f() * 0.3, r.f())).collect();
     let mut v = Rng::new(seed ^ variant.wrapping_mul(7919));
     let shift = if variant == 0 { 0.0 } else { (v.f() - 0.5) * 0.08 };
     let warm = if variant == 0 { 0.0 } else { (v.f() - 0.5) * 0.06 };

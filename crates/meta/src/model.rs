@@ -150,8 +150,7 @@ pub struct FileMeta {
 
 impl FileMeta {
     pub fn has_camera(&self) -> bool {
-        self.make.as_deref().is_some_and(|m| !m.trim().is_empty())
-            || self.model.as_deref().is_some_and(|m| !m.trim().is_empty())
+        self.make.as_deref().is_some_and(|m| !m.trim().is_empty()) || self.model.as_deref().is_some_and(|m| !m.trim().is_empty())
     }
 
     /// Display size after orientation (EXIF orientation or video rotation).

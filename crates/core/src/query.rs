@@ -1,9 +1,9 @@
 //! Filters to SQL, and the packed timeline payload.
 
 use rusqlite::types::Value;
-use rusqlite::{params_from_iter, Connection};
+use rusqlite::{Connection, params_from_iter};
 
-use crate::model::{problem, tile, Query};
+use crate::model::{Query, problem, tile};
 
 pub struct Sql {
     pub clause: String,
@@ -277,8 +277,10 @@ mod tests {
         let a = insert_asset(&c, "2019/a.jpg");
         let b = insert_asset(&c, "2019/sub/b.mov");
         let x = insert_asset(&c, "2020/c.jpg");
-        c.execute("UPDATE assets SET kind = 1, taken_local = '2019-08-12T10:00:00', width = 1920, height = 1080 WHERE id = ?1", [b]).unwrap();
-        c.execute("UPDATE assets SET taken_local = '2019-08-13T10:00:00', lat = 45.0, lon = 10.0, loc_acc = 5000 WHERE id = ?1", [a]).unwrap();
+        c.execute("UPDATE assets SET kind = 1, taken_local = '2019-08-12T10:00:00', width = 1920, height = 1080 WHERE id = ?1", [b])
+            .unwrap();
+        c.execute("UPDATE assets SET taken_local = '2019-08-13T10:00:00', lat = 45.0, lon = 10.0, loc_acc = 5000 WHERE id = ?1", [a])
+            .unwrap();
         c.execute("UPDATE assets SET category_id = (SELECT id FROM categories WHERE key = 'memes') WHERE id = ?1", [x]).unwrap();
         crate::tags::add(&c, a, "Event/2019-08 Lake Garda", "manual", None).unwrap();
 

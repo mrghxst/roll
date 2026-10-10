@@ -1,7 +1,7 @@
 //! Hierarchical tags. Some tags mirror fields: `Category/<name>`,
 //! `Event/<name>`, `Source/<app>`, `Favorite` and `Private`.
 
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{Connection, OptionalExtension, params};
 
 use roll_meta::tags::normalize;
 
@@ -32,10 +32,8 @@ pub fn add(c: &Connection, asset: i64, path: &str, source: &str, conf: Option<f3
 
 pub fn remove(c: &Connection, asset: i64, path: &str) -> rusqlite::Result<bool> {
     let Some(path) = normalize(path) else { return Ok(false) };
-    let n = c.execute(
-        "DELETE FROM asset_tags WHERE asset_id = ?1 AND tag_id = (SELECT id FROM tags WHERE path = ?2)",
-        params![asset, path],
-    )?;
+    let n =
+        c.execute("DELETE FROM asset_tags WHERE asset_id = ?1 AND tag_id = (SELECT id FROM tags WHERE path = ?2)", params![asset, path])?;
     Ok(n > 0)
 }
 
@@ -48,7 +46,8 @@ pub fn remove_prefix(c: &Connection, asset: i64, prefix: &str) -> rusqlite::Resu
 }
 
 pub fn of_asset(c: &Connection, asset: i64) -> rusqlite::Result<Vec<String>> {
-    let mut st = c.prepare_cached("SELECT t.path FROM asset_tags a JOIN tags t ON t.id = a.tag_id WHERE a.asset_id = ?1 ORDER BY t.path")?;
+    let mut st =
+        c.prepare_cached("SELECT t.path FROM asset_tags a JOIN tags t ON t.id = a.tag_id WHERE a.asset_id = ?1 ORDER BY t.path")?;
     let rows = st.query_map([asset], |r| r.get(0))?;
     rows.collect()
 }

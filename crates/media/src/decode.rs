@@ -4,7 +4,7 @@
 
 use std::path::Path;
 
-use image::{imageops, ImageReader, RgbImage};
+use image::{ImageReader, RgbImage, imageops};
 
 use crate::ffmpeg::{Ffmpeg, FfmpegError};
 use crate::raw;

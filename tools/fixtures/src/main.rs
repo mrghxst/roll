@@ -17,7 +17,7 @@ mod tracks;
 
 use std::path::PathBuf;
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 
 fn find_ffmpeg() -> Option<PathBuf> {
     if let Some(p) = std::env::var_os("ROLL_FFMPEG").map(PathBuf::from) {

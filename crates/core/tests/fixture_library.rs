@@ -27,7 +27,8 @@ fn scan_group_and_thumbnail_fixtures() {
     let (report, _) = scan::scan_root(&db, 1, &lib, &FixedTz(60), false, &noop).unwrap();
     let scan_time = started.elapsed();
     let items = manifest["items"].as_array().unwrap();
-    let media: Vec<&Value> = items.iter().filter(|i| i["kind"] != "sidecar" && i["path"].as_str().unwrap().starts_with("library/")).collect();
+    let media: Vec<&Value> =
+        items.iter().filter(|i| i["kind"] != "sidecar" && i["path"].as_str().unwrap().starts_with("library/")).collect();
     assert_eq!(report.added as usize, media.len(), "errors: {:?}", report.errors);
     let sidecars = items.iter().filter(|i| i["kind"] == "sidecar" && i["path"].as_str().unwrap().starts_with("library/")).count();
     assert_eq!(report.sidecars as usize, sidecars);
@@ -64,7 +65,8 @@ fn scan_group_and_thumbnail_fixtures() {
         st.query_map([], |r| r.get(0)).unwrap().map(Result::unwrap).collect()
     };
     assert_eq!(broken, vec!["Dump/IMG_9999.JPG".to_string()]);
-    let (w, h): (i64, i64) = c.query_row("SELECT width, height FROM assets WHERE rel_path = 'Dump/IMG_7001.MOV'", [], |r| Ok((r.get(0)?, r.get(1)?))).unwrap();
+    let (w, h): (i64, i64) =
+        c.query_row("SELECT width, height FROM assets WHERE rel_path = 'Dump/IMG_7001.MOV'", [], |r| Ok((r.get(0)?, r.get(1)?))).unwrap();
     assert!(h > w, "rotated video should be portrait, got {w}x{h}");
     let heic: i64 = c.query_row("SELECT count(*) FROM assets WHERE format = 'heic' AND thumb = 1", [], |r| r.get(0)).unwrap();
     assert!(heic > 30);

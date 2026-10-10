@@ -11,7 +11,7 @@ use roll_media::decode;
 use roll_media::ffmpeg::Ffmpeg;
 use roll_media::thumb;
 use roll_meta::exiftool::ExifToolPool;
-use rusqlite::{params, params_from_iter, OptionalExtension};
+use rusqlite::{OptionalExtension, params, params_from_iter};
 
 use crate::dates::SystemTz;
 use crate::db::Db;
@@ -58,7 +58,8 @@ impl Library {
         let settings = Settings::load(&db);
         let s2 = sink.clone();
         let jobs = Jobs::new(db.clone(), Arc::new(move |list| s2(LibEvent::Jobs(list))));
-        let pool = rayon::ThreadPoolBuilder::new().num_threads(settings.thread_count()).thread_name(|i| format!("roll-work-{i}")).build()?;
+        let pool =
+            rayon::ThreadPoolBuilder::new().num_threads(settings.thread_count()).thread_name(|i| format!("roll-work-{i}")).build()?;
         Ok(Arc::new(Self {
             data_dir: data_dir.to_path_buf(),
             db,
@@ -110,7 +111,8 @@ impl Library {
                 if !root.is_dir() {
                     anyhow::bail!("The folder {} is not available. Connect the drive or remove the folder in Settings.", root.display());
                 }
-                let first = self.db.read().query_row("SELECT count(*) = 0 FROM assets WHERE root_id = ?1", [root_id], |r| r.get::<_, bool>(0))?;
+                let first =
+                    self.db.read().query_row("SELECT count(*) = 0 FROM assets WHERE root_id = ?1", [root_id], |r| r.get::<_, bool>(0))?;
                 let progress = |_: &str, done: usize, total: usize| {
                     ctx.progress(done, total);
                 };
@@ -141,8 +143,11 @@ impl Library {
     fn run_hash(&self, ctx: &JobCtx) -> anyhow::Result<()> {
         let todo: Vec<(i64, PathBuf)> = {
             let c = self.db.read();
-            let mut st = c.prepare("SELECT a.id, r.path, a.rel_path FROM assets a JOIN roots r ON r.id = a.root_id WHERE a.blake3 IS NULL AND a.missing = 0")?;
-            st.query_map([], |r| Ok((r.get(0)?, join_rel(Path::new(&r.get::<_, String>(1)?), &r.get::<_, String>(2)?))))?.collect::<Result<_, _>>()?
+            let mut st = c.prepare(
+                "SELECT a.id, r.path, a.rel_path FROM assets a JOIN roots r ON r.id = a.root_id WHERE a.blake3 IS NULL AND a.missing = 0",
+            )?;
+            st.query_map([], |r| Ok((r.get(0)?, join_rel(Path::new(&r.get::<_, String>(1)?), &r.get::<_, String>(2)?))))?
+                .collect::<Result<_, _>>()?
         };
         let total = todo.len();
         for (i, chunk) in todo.chunks(64).enumerate() {
@@ -252,7 +257,8 @@ impl Library {
         }
         let c = self.db.read();
         let list = ids.iter().map(|i| i.to_string()).collect::<Vec<_>>().join(",");
-        let mut st = c.prepare(&format!("SELECT id, name, thumb_v, thumbhash, duration_ms, description FROM assets WHERE id IN ({list})"))?;
+        let mut st =
+            c.prepare(&format!("SELECT id, name, thumb_v, thumbhash, duration_ms, description FROM assets WHERE id IN ({list})"))?;
         let rows = st.query_map([], |r| {
             let hash: Option<Vec<u8>> = r.get(3)?;
             Ok(TileInfo {
@@ -406,7 +412,10 @@ impl Library {
             total: one(&format!("SELECT count(*) FROM assets WHERE {live}"))?,
             inbox: one(&format!("SELECT count(*) FROM assets WHERE {live} AND inbox > 0"))?,
             review: one(&format!("SELECT count(*) FROM assets WHERE {live} AND review = 1"))?,
-            date_issues: one(&format!("SELECT count(*) FROM assets WHERE {live} AND (problems & {}) != 0", problem::NO_DATE | problem::SUSPICIOUS_DATE))?,
+            date_issues: one(&format!(
+                "SELECT count(*) FROM assets WHERE {live} AND (problems & {}) != 0",
+                problem::NO_DATE | problem::SUSPICIOUS_DATE
+            ))?,
             no_location: one(&format!(
                 "SELECT count(*) FROM assets WHERE {live} AND lat IS NULL AND (category_id IS NULL OR category_id = (SELECT id FROM categories WHERE key = 'photos'))"
             ))?,
@@ -421,7 +430,10 @@ impl Library {
         let c = self.db.read();
         let sql = query::where_clause(q);
         let facet = |select: &str, group: &str, limit: usize| -> rusqlite::Result<Vec<Facet>> {
-            let stmt = format!("SELECT {select}, count(*) FROM assets a WHERE {} GROUP BY {group} ORDER BY count(*) DESC LIMIT {limit}", sql.clause);
+            let stmt = format!(
+                "SELECT {select}, count(*) FROM assets a WHERE {} GROUP BY {group} ORDER BY count(*) DESC LIMIT {limit}",
+                sql.clause
+            );
             let mut st = c.prepare(&stmt)?;
             let rows = st.query_map(params_from_iter(sql.params.iter()), |r| {
                 let key: Option<String> = r.get(0)?;
@@ -476,12 +488,16 @@ impl Library {
                 sql.clause
             );
             let mut st = c.prepare(&stmt)?;
-            let rows = st.query_map(params_from_iter(sql.params.iter()), |r| Ok(Facet { key: r.get(0)?, label: r.get(0)?, count: r.get(1)? }))?;
+            let rows =
+                st.query_map(params_from_iter(sql.params.iter()), |r| Ok(Facet { key: r.get(0)?, label: r.get(0)?, count: r.get(1)? }))?;
             rows.filter_map(Result::ok).collect()
         };
         let immich = facet(
-            &format!("CASE WHEN a.immich_id IS NOT NULL THEN 'sent' WHEN {sel} = 1 THEN 'pending' ELSE 'local' END,
-                      CASE WHEN a.immich_id IS NOT NULL THEN 'Sent' WHEN {sel} = 1 THEN 'Waiting for the next sync' ELSE 'Local only' END", sel = query::IMMICH_SELECTED),
+            &format!(
+                "CASE WHEN a.immich_id IS NOT NULL THEN 'sent' WHEN {sel} = 1 THEN 'pending' ELSE 'local' END,
+                      CASE WHEN a.immich_id IS NOT NULL THEN 'Sent' WHEN {sel} = 1 THEN 'Waiting for the next sync' ELSE 'Local only' END",
+                sel = query::IMMICH_SELECTED
+            ),
             "1",
             3,
         )?;
@@ -575,10 +591,8 @@ impl Library {
 /// Keep at most `keep` files in a cache folder, dropping the oldest.
 fn prune_dir(dir: &Path, keep: usize) {
     let Ok(rd) = std::fs::read_dir(dir) else { return };
-    let mut files: Vec<(std::time::SystemTime, PathBuf)> = rd
-        .flatten()
-        .filter_map(|e| e.metadata().ok().and_then(|m| m.modified().ok()).map(|t| (t, e.path())))
-        .collect();
+    let mut files: Vec<(std::time::SystemTime, PathBuf)> =
+        rd.flatten().filter_map(|e| e.metadata().ok().and_then(|m| m.modified().ok()).map(|t| (t, e.path()))).collect();
     if files.len() <= keep {
         return;
     }

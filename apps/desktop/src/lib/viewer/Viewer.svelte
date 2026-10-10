@@ -60,8 +60,13 @@
 
   // FLIP: start from the tile's rectangle and zoom to the fitted image.
   const origin = viewer.origin;
+  let root: HTMLDivElement | undefined = $state();
+  let returnFocus: HTMLElement | null = null;
   onMount(() => {
+    returnFocus = document.activeElement as HTMLElement | null;
+    root?.focus();
     requestAnimationFrame(() => requestAnimationFrame(() => (opening = false)));
+    return () => returnFocus?.focus({ preventScroll: true });
   });
   const flip = $derived.by(() => {
     if (!opening || !origin || !stage || reduced) return '';
@@ -143,7 +148,7 @@
 
 <svelte:window onkeydown={onkeydown} />
 
-<div class="viewer" class:quick={viewer.quick} role="dialog" aria-modal="true" aria-label={detail?.name ?? 'Viewer'}>
+<div class="viewer" class:quick={viewer.quick} role="dialog" aria-modal="true" aria-label={detail?.name ?? 'Viewer'} tabindex="-1" bind:this={root}>
   <div class="frame">
     <header>
       <button class="icon" aria-label="Close" onclick={close}><X size={18} strokeWidth={1.5} /></button>
@@ -266,6 +271,7 @@
 
 <style>
   .viewer {
+    outline: none;
     position: fixed;
     inset: 0;
     z-index: 50;

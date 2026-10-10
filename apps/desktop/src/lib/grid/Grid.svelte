@@ -8,6 +8,7 @@
   import { firstVisible, sectionAt, type Layout } from '../layout/justified';
   import { app } from '../state/app.svelte';
   import { selection } from '../state/selection.svelte';
+  import { viewer } from '../state/viewer.svelte';
   import { dayLabel, dayShort, monthLabel, n } from '../util/format';
   import Scrubber from './Scrubber.svelte';
   import Tile from './Tile.svelte';
@@ -63,17 +64,22 @@
   // Layout in a worker.
   const worker = new Worker(new URL('../layout/layout.worker.ts', import.meta.url), { type: 'module' });
   let layoutSeq = 0;
-  let anchor: { index: number; offset: number } | null = null;
+  let anchor: { id: number; offset: number } | null = null;
+  let layoutIds: Uint32Array = new Uint32Array(0);
   worker.onmessage = (e: MessageEvent<{ seq: number; layout: Layout }>) => {
     if (e.data.seq !== layoutSeq) return;
     L = e.data.layout;
     slots = [];
     slotOf = new Map();
-    if (anchor && el && anchor.index < L.y.length) {
-      el.scrollTop = (L.y[anchor.index] ?? 0) - anchor.offset;
-      scrollTop = el.scrollTop;
+    if (anchor && el) {
+      const i = data.ids.indexOf(anchor.id);
+      if (i >= 0 && i < L.y.length) {
+        el.scrollTop = (L.y[i] ?? 0) - anchor.offset;
+        scrollTop = el.scrollTop;
+      }
     }
     anchor = null;
+    layoutIds = data.ids;
     refreshVisible();
   };
   $effect(() => () => worker.terminate());
@@ -83,9 +89,11 @@
     const d = data;
     // Keep the item at the top in place when the layout changes.
     untrack(() => {
-      if (L && el && L.y.length) {
+      // Anchor by id: new items may have been inserted above.
+      if (L && el && el.scrollTop > 0 && L.y.length) {
         const i = firstVisible(L, el.scrollTop);
-        if (i < L.y.length) anchor = { index: i, offset: (L.y[i] ?? 0) - el.scrollTop };
+        const id = layoutIds[i];
+        if (id !== undefined) anchor = { id, offset: (L.y[i] ?? 0) - el.scrollTop };
       }
     });
     worker.postMessage({
@@ -266,7 +274,7 @@
   }
 
   function onkeydown(e: KeyboardEvent) {
-    if (!data.count) return;
+    if (!data.count || viewer.ids) return;
     const mod = e.ctrlKey || e.metaKey;
     let next = focus < 0 ? 0 : focus;
     switch (e.key) {
@@ -288,12 +296,16 @@
       case 'End':
         next = data.count - 1;
         break;
+      // These open the viewer, which listens on window: stop the same
+      // key event from reaching it.
       case 'Enter':
         e.preventDefault();
+        e.stopPropagation();
         open(focus < 0 ? 0 : focus);
         return;
       case ' ':
         e.preventDefault();
+        e.stopPropagation();
         onquicklook?.(data.ids, focus < 0 ? 0 : focus);
         return;
       case 'a':

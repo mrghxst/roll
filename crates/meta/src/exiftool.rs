@@ -32,18 +32,18 @@ pub type Result<T> = std::result::Result<T, ExifToolError>;
 /// Finds ExifTool: `ROLL_EXIFTOOL`, next to the app, on `PATH`, or the
 /// per-user Windows install location.
 pub fn locate() -> Option<PathBuf> {
-    if let Some(p) = std::env::var_os("ROLL_EXIFTOOL").map(PathBuf::from) {
-        if p.is_file() {
-            return Some(p);
-        }
+    if let Some(p) = std::env::var_os("ROLL_EXIFTOOL").map(PathBuf::from)
+        && p.is_file()
+    {
+        return Some(p);
     }
     let exe_name = if cfg!(windows) { "exiftool.exe" } else { "exiftool" };
-    if let Ok(exe) = std::env::current_exe() {
-        if let Some(dir) = exe.parent() {
-            for cand in [dir.join(exe_name), dir.join("exiftool").join(exe_name), dir.join("resources").join("exiftool").join(exe_name)] {
-                if cand.is_file() {
-                    return Some(cand);
-                }
+    if let Ok(exe) = std::env::current_exe()
+        && let Some(dir) = exe.parent()
+    {
+        for cand in [dir.join(exe_name), dir.join("exiftool").join(exe_name), dir.join("resources").join("exiftool").join(exe_name)] {
+            if cand.is_file() {
+                return Some(cand);
             }
         }
     }
@@ -55,12 +55,12 @@ pub fn locate() -> Option<PathBuf> {
             }
         }
     }
-    if cfg!(windows) {
-        if let Some(local) = std::env::var_os("LOCALAPPDATA") {
-            let cand = PathBuf::from(local).join("Programs").join("ExifTool").join("ExifTool.exe");
-            if cand.is_file() {
-                return Some(cand);
-            }
+    if cfg!(windows)
+        && let Some(local) = std::env::var_os("LOCALAPPDATA")
+    {
+        let cand = PathBuf::from(local).join("Programs").join("ExifTool").join("ExifTool.exe");
+        if cand.is_file() {
+            return Some(cand);
         }
     }
     None
@@ -84,10 +84,7 @@ const TIMEOUT: Duration = Duration::from_secs(120);
 impl ExifTool {
     pub fn spawn(exe: &Path) -> Result<Self> {
         let mut cmd = Command::new(exe);
-        cmd.args(["-stay_open", "True", "-@", "-"])
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
+        cmd.args(["-stay_open", "True", "-@", "-"]).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
         #[cfg(windows)]
         {
             use std::os::windows::process::CommandExt;

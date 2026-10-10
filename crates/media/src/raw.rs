@@ -6,14 +6,16 @@ pub fn largest_embedded_jpeg(data: &[u8]) -> Option<&[u8]> {
     let mut best: Option<(usize, usize)> = None;
     let mut i = 0;
     while i + 4 < data.len() {
-        if data[i] == 0xFF && data[i + 1] == 0xD8 && data[i + 2] == 0xFF {
-            if let Some(end) = jpeg_end(data, i) {
-                if best.is_none_or(|(s, e)| end - i > e - s) {
-                    best = Some((i, end));
-                }
-                i = end;
-                continue;
+        if data[i] == 0xFF
+            && data[i + 1] == 0xD8
+            && data[i + 2] == 0xFF
+            && let Some(end) = jpeg_end(data, i)
+        {
+            if best.is_none_or(|(s, e)| end - i > e - s) {
+                best = Some((i, end));
             }
+            i = end;
+            continue;
         }
         i += 1;
     }

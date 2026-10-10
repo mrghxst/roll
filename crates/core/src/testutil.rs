@@ -1,4 +1,4 @@
-use rusqlite::{params, Connection};
+use rusqlite::{Connection, params};
 
 /// Insert a minimal asset row in root 1 (created if needed).
 pub fn insert_asset(c: &Connection, rel: &str) -> i64 {

@@ -66,20 +66,16 @@ pub fn parse(json: &str) -> Option<Takeout> {
 /// the extension (`IMG_1.jpg(1).json` belongs to `IMG_1(1).jpg`).
 pub fn json_matches(json_name: &str, media_name: &str) -> bool {
     let Some(stem) = json_name.strip_suffix(".json") else { return false };
-    let stem = stem
-        .strip_suffix(".supplemental-metadata")
-        .or_else(|| stem.split_once(".suppl").map(|(a, _)| a))
-        .unwrap_or(stem);
+    let stem = stem.strip_suffix(".supplemental-metadata").or_else(|| stem.split_once(".suppl").map(|(a, _)| a)).unwrap_or(stem);
     if stem == media_name {
         return true;
     }
     // `X.ext(N)` belongs to `X(N).ext`.
-    if let Some((base, counter)) = stem.strip_suffix(')').and_then(|s| s.rsplit_once('(')) {
-        if let Some((b_stem, b_ext)) = base.rsplit_once('.') {
-            if media_name == format!("{b_stem}({counter}).{b_ext}") {
-                return true;
-            }
-        }
+    if let Some((base, counter)) = stem.strip_suffix(')').and_then(|s| s.rsplit_once('('))
+        && let Some((b_stem, b_ext)) = base.rsplit_once('.')
+        && media_name == format!("{b_stem}({counter}).{b_ext}")
+    {
+        return true;
     }
     stem.chars().count() >= 40 && media_name.starts_with(stem)
 }
@@ -107,7 +103,10 @@ mod tests {
         assert!(json_matches("IMG_1234.jpg.suppl.json", "IMG_1234.jpg"));
         assert!(json_matches("IMG_1.jpg(1).json", "IMG_1(1).jpg"));
         assert!(!json_matches("IMG_1.jpg(1).json", "IMG_1.jpg"));
-        assert!(json_matches("Screenshot_20190812-140322_Some_Very_Long_App.json", "Screenshot_20190812-140322_Some_Very_Long_App_Name.png"));
+        assert!(json_matches(
+            "Screenshot_20190812-140322_Some_Very_Long_App.json",
+            "Screenshot_20190812-140322_Some_Very_Long_App_Name.png"
+        ));
         assert!(!json_matches("IMG_9.jpg.json", "IMG_1234.jpg"));
     }
 }

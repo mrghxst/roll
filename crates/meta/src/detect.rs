@@ -7,16 +7,13 @@ pub enum FileClass {
     Ignored,
 }
 
-const PHOTO_EXT: &[&str] = &[
-    "jpg", "jpeg", "jpe", "jfif", "heic", "heif", "hif", "avif", "png", "gif", "webp", "tif", "tiff", "bmp", "jxl",
-];
+const PHOTO_EXT: &[&str] =
+    &["jpg", "jpeg", "jpe", "jfif", "heic", "heif", "hif", "avif", "png", "gif", "webp", "tif", "tiff", "bmp", "jxl"];
 const RAW_EXT: &[&str] = &[
-    "dng", "cr2", "cr3", "crw", "nef", "nrw", "arw", "srf", "sr2", "raf", "orf", "rw2", "pef", "srw", "x3f", "3fr", "erf",
-    "kdc", "mrw", "iiq", "raw",
+    "dng", "cr2", "cr3", "crw", "nef", "nrw", "arw", "srf", "sr2", "raf", "orf", "rw2", "pef", "srw", "x3f", "3fr", "erf", "kdc", "mrw",
+    "iiq", "raw",
 ];
-const VIDEO_EXT: &[&str] = &[
-    "mov", "mp4", "m4v", "3gp", "3g2", "avi", "mkv", "webm", "mts", "m2ts", "wmv", "mpg", "mpeg",
-];
+const VIDEO_EXT: &[&str] = &["mov", "mp4", "m4v", "3gp", "3g2", "avi", "mkv", "webm", "mts", "m2ts", "wmv", "mpg", "mpeg"];
 const SIDECAR_EXT: &[&str] = &["xmp", "aae", "json"];
 
 /// Names that are never indexed: OS metadata files and partial downloads.

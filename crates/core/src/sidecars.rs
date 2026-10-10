@@ -5,8 +5,8 @@
 use std::collections::HashMap;
 use std::path::Path;
 
-use roll_meta::{takeout, xmp, DateSource};
-use rusqlite::{params, Connection, OptionalExtension};
+use roll_meta::{DateSource, takeout, xmp};
+use rusqlite::{Connection, OptionalExtension, params};
 
 use crate::dates::TzGuess;
 use crate::db::Db;
@@ -28,7 +28,8 @@ pub fn owner<'a>(sidecar: &str, names: &'a [(i64, String)]) -> Option<&'a (i64, 
             return Some(n);
         }
         let mut same_stem: Vec<&(i64, String)> = names.iter().filter(|(_, n)| stem(n).to_lowercase() == base).collect();
-        same_stem.sort_by_key(|(_, n)| roll_meta::detect::classify_name(n) != roll_meta::detect::FileClass::Media(roll_meta::MediaKind::Photo));
+        same_stem
+            .sort_by_key(|(_, n)| roll_meta::detect::classify_name(n) != roll_meta::detect::FileClass::Media(roll_meta::MediaKind::Photo));
         return same_stem.into_iter().next();
     }
     if let Some(base) = lower.strip_suffix(".aae") {
@@ -68,7 +69,9 @@ pub fn sync(db: &Db, root_id: i64, root: &Path, found: &[Found], tz: &dyn TzGues
             let Some((asset, _)) = owner(name, names) else { continue };
             matched += 1;
             let prev: Option<(i64, i64)> = tx
-                .query_row("SELECT size, mtime FROM sidecars WHERE root_id = ?1 AND rel_path = ?2", params![root_id, f.rel], |r| Ok((r.get(0)?, r.get(1)?)))
+                .query_row("SELECT size, mtime FROM sidecars WHERE root_id = ?1 AND rel_path = ?2", params![root_id, f.rel], |r| {
+                    Ok((r.get(0)?, r.get(1)?))
+                })
                 .optional()?;
             let kind = kind_of(name);
             tx.execute(
@@ -112,7 +115,14 @@ pub fn apply_xmp(c: &Connection, asset: i64, x: &xmp::XmpData) -> rusqlite::Resu
             "UPDATE assets SET taken_local = ?2, tz_offset = ?3,
                taken_utc = CASE WHEN ?3 IS NULL THEN taken_utc ELSE ?4 END,
                date_source = ?5, date_conf = 0.95, problems = problems & ~?6 WHERE id = ?1",
-            params![asset, t.local.format("%Y-%m-%dT%H:%M:%S").to_string(), off, t.utc_ms(), DateSource::Sidecar.as_str(), problem::NO_DATE],
+            params![
+                asset,
+                t.local.format("%Y-%m-%dT%H:%M:%S").to_string(),
+                off,
+                t.utc_ms(),
+                DateSource::Sidecar.as_str(),
+                problem::NO_DATE
+            ],
         )?;
     }
     if let (Some(g), false) = (x.gps(), edited(c, asset, "location")?) {
@@ -166,7 +176,8 @@ mod tests {
 
     #[test]
     fn owners() {
-        let names = vec![(1, "IMG_1.HEIC".to_string()), (2, "IMG_1.MOV".to_string()), (3, "IMG_E1.JPG".to_string()), (4, "PXL_1.jpg".to_string())];
+        let names =
+            vec![(1, "IMG_1.HEIC".to_string()), (2, "IMG_1.MOV".to_string()), (3, "IMG_E1.JPG".to_string()), (4, "PXL_1.jpg".to_string())];
         assert_eq!(owner("IMG_1.HEIC.xmp", &names).unwrap().0, 1);
         assert_eq!(owner("IMG_1.xmp", &names).unwrap().0, 1);
         assert_eq!(owner("IMG_1.AAE", &names).unwrap().0, 1);

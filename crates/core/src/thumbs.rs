@@ -9,9 +9,9 @@ use rayon::prelude::*;
 use roll_media::decode::{self, Source};
 use roll_media::ffmpeg::Ffmpeg;
 use roll_media::thumb;
-use rusqlite::{params, OptionalExtension};
+use rusqlite::{OptionalExtension, params};
 
-use crate::db::{now_ms, Db};
+use crate::db::{Db, now_ms};
 use crate::model::problem;
 use crate::paths::join_rel;
 
@@ -59,7 +59,8 @@ impl ThumbStore {
     pub fn put_many(&self, rows: &[(i64, i64, i64, Vec<u8>)]) -> rusqlite::Result<()> {
         let now = now_ms();
         self.db.tx(|tx| {
-            let mut st = tx.prepare_cached("INSERT OR REPLACE INTO thumbs (asset_id, size, v, data, accessed) VALUES (?1, ?2, ?3, ?4, ?5)")?;
+            let mut st =
+                tx.prepare_cached("INSERT OR REPLACE INTO thumbs (asset_id, size, v, data, accessed) VALUES (?1, ?2, ?3, ?4, ?5)")?;
             for (a, s, v, d) in rows {
                 st.execute(params![a, s, v, d, now])?;
             }
@@ -68,7 +69,8 @@ impl ThumbStore {
     }
 
     pub fn touch(&self, asset: i64, size: i64) {
-        let _ = self.db.write().execute("UPDATE thumbs SET accessed = ?3 WHERE asset_id = ?1 AND size = ?2", params![asset, size, now_ms()]);
+        let _ =
+            self.db.write().execute("UPDATE thumbs SET accessed = ?3 WHERE asset_id = ?1 AND size = ?2", params![asset, size, now_ms()]);
     }
 
     pub fn remove(&self, asset: i64) -> rusqlite::Result<()> {
@@ -208,7 +210,13 @@ pub fn save(db: &Db, store: &ThumbStore, made: &[(Made, Option<(i64, i64)>)]) ->
 
 /// Thumbnail every asset that has none, newest first. Resumable: it simply
 /// continues with what is left.
-pub fn run_pending(db: &Db, store: &ThumbStore, ff: Option<&Ffmpeg>, pool: &rayon::ThreadPool, check: &dyn Fn(usize, usize) -> bool) -> anyhow::Result<usize> {
+pub fn run_pending(
+    db: &Db,
+    store: &ThumbStore,
+    ff: Option<&Ffmpeg>,
+    pool: &rayon::ThreadPool,
+    check: &dyn Fn(usize, usize) -> bool,
+) -> anyhow::Result<usize> {
     let total: i64 = db.read().query_row("SELECT count(*) FROM assets WHERE thumb = 0 AND missing = 0", [], |r| r.get(0))?;
     let done = AtomicUsize::new(0);
     loop {

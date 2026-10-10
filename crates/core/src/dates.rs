@@ -3,7 +3,7 @@
 //! and a confidence.
 
 use chrono::{DateTime, Datelike, Local, NaiveDateTime, Offset, TimeZone, Timelike, Utc};
-use roll_meta::filename::{from_file_name, from_folder_name, Precision};
+use roll_meta::filename::{Precision, from_file_name, from_folder_name};
 use roll_meta::{DateSource, FileMeta};
 
 use crate::model::problem;
@@ -136,8 +136,8 @@ pub fn decide(meta: &FileMeta, name: &str, folders: &[&str], mtime_ms: i64, now_
 #[cfg(test)]
 mod tests {
     use super::*;
-    use roll_meta::model::parse_datetime;
     use roll_meta::Taken;
+    use roll_meta::model::parse_datetime;
 
     fn now() -> i64 {
         1_790_000_000_000
