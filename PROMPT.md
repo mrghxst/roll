@@ -126,8 +126,10 @@ The owner wants:
 5. **Cheap, local-first AI.** For a one-time pass over 100k+ items, AI costs
    at most $10 per 100k through the API, ideally under $2. A local model costs
    nothing. Slow is acceptable.
-6. **Photos stay where they are.** Roll works on a folder the owner picks.
-   There is no import and no copying into a hidden store.
+6. **Photos stay where they are.** Roll works on a folder the owner picks,
+   with no hidden store. New photos from outside (a camera card, a friend's
+   folder, an old event folder) are added to the archive through a guided
+   check (4.11).
 
 ## 2. What real input looks like
 
@@ -640,7 +642,55 @@ local archive never affects it.
   explains this and recommends leaving it off. New photos then reach the
   archive through the usual export and Roll's Inbox.
 
-### 4.11 Settings, privacy and first run
+### 4.11 Add photos (import an event)
+
+A guided flow for bringing a folder from outside the archive into it, usually
+one event: a camera card, a friend's photos, an old trip folder, a phone
+export. Start it with "Add photos…", by dragging a folder onto the window, or
+when a camera card or phone is connected.
+
+1. **Pick the source.** Roll indexes it read-only, in place, as a staging set.
+   It shows:
+   - the count, date range, cameras and formats;
+   - how many items are already in the archive (BLAKE3 and visual match).
+     These are skipped by default.
+2. **Check the dates.** The set is shown on the archive's timeline, next to
+   the photos the owner already has from that time.
+   - Roll flags a camera clock that looks wrong: dates in the future,
+     defaults like 2000-01-01, no overlap with anything plausible.
+   - It runs the smart offset against the archive's phone photos (4.5) and
+     proposes a shift, with matching pairs as evidence.
+   - It has the same reference-photo, time zone and shift tools as 4.5,
+     applied to the staging set.
+   - Nothing is accepted silently. The step ends with "Dates look right" or a
+     fix.
+3. **Check the places.**
+   - Roll proposes locations from archive photos taken at the same time (4.6),
+     from location history, and from the folder name ("2019 Lake Garda").
+   - Items without a suggestion can get one pin for the whole set, or per
+     day.
+   - A mini map shows the result, with approximate locations as dashed rings.
+4. **Sort the set.** Rules and models sort the set (4.3). It is proposed as one
+   event:
+   - the name comes from the folder name, or "{Month YYYY} {Place}";
+   - screenshots and memes inside it get their usual categories;
+   - a set spanning a long time can be split into several events.
+5. **Preview the plan.**
+   - **Copy** (the default: the source stays untouched, each copy is verified
+     with BLAKE3) or **move**.
+   - The target is `{year}/{yyyy-mm} {name}`, or another template.
+   - Metadata is written as in section 6.
+   - Immich: send the event as an album (on by default for events), and
+     optionally share it with chosen users.
+6. **Apply.** The files join the archive and the timeline in the right place,
+   and the batch lands in History with undo. The Immich part runs as a normal
+   sync with its own plan (4.10).
+
+The same flow handles folders already inside the library that were never
+checked, such as an event folder copied in by hand. They show up in the Inbox
+as "Not checked yet".
+
+### 4.12 Settings, privacy and first run
 
 - **First run:**
   1. Welcome.
@@ -1268,13 +1318,17 @@ and a short note to the owner.
 - Immich sync through the API: selection, upload, albums and sharing,
   pushing metadata changes, and removal with confirmation. Plus the CLI script
   export and the Immich guide.
+- Add photos (4.11): the guided import of an event, with date and place
+  checks against the archive and the Immich album.
 - Importers for Google Takeout JSON and WhatsApp exports.
 - Onboarding and the guided first sort; full Settings.
 - Accessibility, performance and copy passes; Windows installer; user docs.
 - *Accept:* on a copy of the owner's library, with their permission, the
   owner can go from a dump to a sorted, reviewed and applied archive, plus a
   first sync of only the selected items to a test Immich, in one evening of
-  work (the machine may run overnight).
+  work (the machine may run overnight). A fixture camera card with a wrong
+  clock and no GPS gets imported as an event: correct dates and places, its
+  own folder and an Immich album, in under 2 minutes of the owner's time.
 
 **M7 Later**
 - Linux and macOS packaging polish.
