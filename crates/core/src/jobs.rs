@@ -17,30 +17,52 @@ use crate::model::JobInfo;
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum JobSpec {
-    Scan { root_id: i64 },
+    /// Finish file operations interrupted by a crash. Runs first.
+    Recover,
+    Scan {
+        root_id: i64,
+    },
+    Apply {
+        batch: i64,
+    },
+    Undo {
+        batch: i64,
+    },
     Thumbs,
+    Classify,
     Hash,
 }
 
 impl JobSpec {
     pub fn kind(&self) -> &'static str {
         match self {
+            JobSpec::Recover => "recover",
             JobSpec::Scan { .. } => "scan",
+            JobSpec::Apply { .. } => "apply",
+            JobSpec::Undo { .. } => "undo",
             JobSpec::Thumbs => "thumbs",
+            JobSpec::Classify => "classify",
             JobSpec::Hash => "hash",
         }
     }
     pub fn priority(&self) -> i64 {
         match self {
+            JobSpec::Recover => 0,
+            JobSpec::Apply { .. } | JobSpec::Undo { .. } => 5,
             JobSpec::Scan { .. } => 10,
             JobSpec::Thumbs => 20,
+            JobSpec::Classify => 25,
             JobSpec::Hash => 30,
         }
     }
     pub fn label(&self) -> String {
         match self {
+            JobSpec::Recover => "Finishing interrupted changes".into(),
             JobSpec::Scan { .. } => "Indexing the library".into(),
+            JobSpec::Apply { .. } => "Applying changes".into(),
+            JobSpec::Undo { .. } => "Undoing changes".into(),
             JobSpec::Thumbs => "Making thumbnails".into(),
+            JobSpec::Classify => "Sorting with rules".into(),
             JobSpec::Hash => "Checking files for duplicates".into(),
         }
     }

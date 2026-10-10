@@ -329,7 +329,9 @@ fn read_values(tool: &mut ExifTool, file: &Path, touched: &[String]) -> Result<V
 }
 
 /// Write an edit. Returns the snapshot needed to undo it.
-pub fn apply(
+/// Read what an edit is about to replace. Store this before calling
+/// [`perform`], so an interrupted write can still be undone.
+pub fn snapshot(
     pool: &ExifToolPool,
     file: &Path,
     kind: MediaKind,
@@ -341,43 +343,75 @@ pub fn apply(
     if edit.is_empty() {
         return Ok(snap);
     }
+    if mode == WriteMode::FileAndSidecar && supports_in_file(format) {
+        let plan = file_plan(edit, kind, format);
+        let (previous, hash) = pool.with(|tool| read_values(tool, file, &plan.touched))?;
+        snap.touched = plan.touched;
+        snap.previous = previous;
+        snap.image_hash = hash;
+    }
+    let before = std::fs::read(sidecar_path(file)).ok();
+    snap.sidecar_before = before.map(|b| base64::engine::general_purpose::STANDARD.encode(b));
+    snap.sidecar_written = true;
+    Ok(snap)
+}
+
+/// Write an edit whose snapshot was taken. Writing the same edit twice is
+/// harmless, which makes an interrupted write safe to repeat.
+pub fn perform(
+    pool: &ExifToolPool,
+    file: &Path,
+    kind: MediaKind,
+    format: &str,
+    edit: &MetaEdit,
+    snap: &Snapshot,
+) -> Result<(), WriteError> {
+    if edit.is_empty() {
+        return Ok(());
+    }
     let image_changed = pool.with(|tool| -> Result<bool, ExifToolError> {
-        if mode == WriteMode::FileAndSidecar && supports_in_file(format) {
-            let plan = file_plan(edit, kind, format);
-            let (previous, hash) = read_values(tool, file, &plan.touched)?;
-            snap.touched = plan.touched.clone();
-            snap.previous = previous;
-            snap.image_hash = hash;
-            let mut assign = plan.assign;
+        if !snap.touched.is_empty() {
+            let mut assign = file_plan(edit, kind, format).assign;
             if edit.tags.is_some() && matches!(format, "jpeg" | "tiff") {
                 assign.splice(0..0, ["-charset".to_string(), "iptc=UTF8".to_string()]);
             }
             tool.write(file, &assign)?;
             let after = read_values(tool, file, &[])?.1;
             if snap.image_hash.is_some() && after != snap.image_hash {
-                restore_in_file(tool, file, &snap)?;
+                restore_in_file(tool, file, snap)?;
                 return Ok(true);
             }
         }
         let side = sidecar_path(file);
-        let before = std::fs::read(&side).ok();
-        snap.sidecar_before = before.as_ref().map(|b| base64::engine::general_purpose::STANDARD.encode(b));
-        if before.is_none() {
+        let existed = side.exists();
+        if !existed {
             std::fs::write(&side, EMPTY_XMP).map_err(|e| ExifToolError::Failed(e.to_string()))?;
         }
-        let plan = sidecar_plan(edit);
-        if let Err(e) = tool.write(&side, &plan.assign) {
-            if before.is_none() {
+        if let Err(e) = tool.write(&side, &sidecar_plan(edit).assign) {
+            if !existed {
                 let _ = std::fs::remove_file(&side);
             }
             return Err(e);
         }
-        snap.sidecar_written = true;
         Ok(false)
     })?;
     if image_changed {
         return Err(WriteError::ImageDataChanged);
     }
+    Ok(())
+}
+
+/// Snapshot and write in one step. Returns the snapshot needed to undo it.
+pub fn apply(
+    pool: &ExifToolPool,
+    file: &Path,
+    kind: MediaKind,
+    format: &str,
+    edit: &MetaEdit,
+    mode: WriteMode,
+) -> Result<Snapshot, WriteError> {
+    let snap = snapshot(pool, file, kind, format, edit, mode)?;
+    perform(pool, file, kind, format, edit, &snap)?;
     Ok(snap)
 }
 

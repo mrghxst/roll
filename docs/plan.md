@@ -31,9 +31,16 @@ Milestones from PROMPT.md section 10. `[x]` done, `[~]` partly done,
 
 ## M2 Organize core
 
-- [ ] Categories, provenance, rules engine with defaults
-- [ ] Folder templates, plan preview, apply with journal, undo, recovery
-- [ ] Trash, ExifTool writes, long paths, conflicts
+- [x] Categories (add, rename, nest, delete), provenance, rules engine with
+      defaults, classification after scans and thumbnails
+- [x] Folder templates, planner, journal (apply, undo, crash recovery),
+      tested with a hash manifest
+- [x] Trash and Recycle Bin, ExifTool writes with snapshots (round trip on
+      JPEG, HEIC, PNG, MOV, MP4), long paths, case-only conflicts
+- [ ] Tauri commands and UI: Organize preview, History with Ctrl+Z, batch
+      edit actions, Trash view, Settings for categories and rules
+- [ ] Acceptance run on the fixture library; Explorer check by hand;
+      Immich round trip (needs Docker)
 
 ## M3 Dates, places, map
 ## M4 Local AI
@@ -43,5 +50,5 @@ Milestones from PROMPT.md section 10. `[x]` done, `[~]` partly done,
 
 ## Next
 
-M2: categories and rules, organize plans with the journal, undo, trash and
-metadata writes.
+Finish M2: expose the new core APIs as commands, build the Organize,
+History and Trash views, then run the acceptance checks.

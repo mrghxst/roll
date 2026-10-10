@@ -13,15 +13,18 @@ use roll_media::thumb;
 use roll_meta::exiftool::ExifToolPool;
 use rusqlite::{OptionalExtension, params, params_from_iter};
 
+use crate::actions::EditAction;
 use crate::dates::SystemTz;
 use crate::db::Db;
 use crate::jobs::{JobCtx, JobSpec, Jobs};
 use crate::model::*;
 use crate::paths::{app_data_dir, join_rel};
+use crate::planner::{PlanOptions, PlanSummary};
 use crate::query;
 use crate::settings::Settings;
 use crate::thumbs::{self, ThumbStore};
-use crate::{groups, scan, tags, watch, why};
+use crate::{actions, categories, classify, groups, journal, planner, scan, tags, watch, why};
+use roll_meta::write::WriteMode;
 
 #[derive(Debug, Clone)]
 pub enum LibEvent {
@@ -54,6 +57,7 @@ impl Library {
     pub fn open(data_dir: &Path, sink: EventSink) -> anyhow::Result<Arc<Self>> {
         std::fs::create_dir_all(data_dir)?;
         let db = Arc::new(Db::open(&data_dir.join("library.db"))?);
+        crate::rules::seed(&db.write())?;
         let thumbs = ThumbStore::open(&data_dir.join("thumbs.db"))?;
         let settings = Settings::load(&db);
         let s2 = sink.clone();
@@ -82,11 +86,17 @@ impl Library {
             Some(lib) => lib.execute(spec, ctx),
             None => Ok(()),
         }));
+        let _ = self.jobs.enqueue(JobSpec::Recover);
         self.restart_watcher();
         for r in self.roots() {
             let _ = self.jobs.enqueue(JobSpec::Scan { root_id: r.id as i64 });
         }
         let _ = self.jobs.enqueue(JobSpec::Thumbs);
+    }
+
+    pub fn tools(&self) -> journal::Tools<'_> {
+        let mode = if self.settings().write_mode == "sidecar_only" { WriteMode::SidecarOnly } else { WriteMode::FileAndSidecar };
+        journal::Tools { exiftool: self.exiftool.as_ref(), write_mode: mode }
     }
 
     fn emit(&self, e: LibEvent) {
@@ -123,8 +133,9 @@ impl Library {
                         self.emit(LibEvent::Changed("assets"));
                     }
                 };
-                let (report, _touched) = scan::scan_root(&self.db, *root_id, &root, &self.tz, !first, &progress)?;
+                let (report, touched) = scan::scan_root(&self.db, *root_id, &root, &self.tz, !first, &progress)?;
                 groups::rebuild(&self.db, *root_id)?;
+                classify::run(&self.db.write(), Some(&touched))?;
                 self.emit(LibEvent::Scanned(report));
                 self.emit(LibEvent::Changed("assets"));
                 self.jobs.enqueue(JobSpec::Thumbs)?;
@@ -141,9 +152,47 @@ impl Library {
                     ctx.progress(done, total)
                 })?;
                 self.emit(LibEvent::Changed("thumbs"));
+                // Junk rules need the pixel statistics the thumbnails bring.
+                self.jobs.enqueue(JobSpec::Classify)?;
+                Ok(())
+            }
+            JobSpec::Classify => {
+                let out = classify::run(&self.db.write(), None)?;
+                if out != classify::Outcome::default() {
+                    self.emit(LibEvent::Changed("assets"));
+                }
                 Ok(())
             }
             JobSpec::Hash => self.run_hash(ctx),
+            JobSpec::Recover => {
+                if journal::recover(&self.db, &self.tools())? > 0 {
+                    self.emit(LibEvent::Changed("assets"));
+                }
+                Ok(())
+            }
+            JobSpec::Apply { batch } => {
+                let report = journal::apply(&self.db, &self.tools(), *batch, &|done, total| ctx.progress(done, total))?;
+                self.emit(LibEvent::Changed("assets"));
+                self.emit(LibEvent::Changed("history"));
+                if !report.errors.is_empty() {
+                    anyhow::bail!(
+                        "{} of {} changes could not be made. First: {}",
+                        report.failed,
+                        report.failed + report.done,
+                        report.errors[0]
+                    );
+                }
+                Ok(())
+            }
+            JobSpec::Undo { batch } => {
+                let report = journal::undo(&self.db, &self.tools(), *batch, &|done, total| ctx.progress(done, total))?;
+                self.emit(LibEvent::Changed("assets"));
+                self.emit(LibEvent::Changed("history"));
+                if !report.errors.is_empty() {
+                    anyhow::bail!("{} changes could not be undone. First: {}", report.failed, report.errors[0]);
+                }
+                Ok(())
+            }
         }
     }
 
@@ -592,6 +641,187 @@ impl Library {
 
     pub fn codec(&self, id: i64) -> anyhow::Result<Option<String>> {
         Ok(self.db.read().query_row("SELECT codec FROM assets WHERE id = ?1", [id], |r| r.get(0)).optional()?.flatten())
+    }
+}
+
+impl Library {
+    // Edits, plans and history
+
+    pub fn edit(&self, ids: &[i64], action: &EditAction) -> anyhow::Result<usize> {
+        let (_, n) = self.db.tx(|tx| actions::apply(tx, ids, action))?;
+        self.emit(LibEvent::Changed("assets"));
+        Ok(n)
+    }
+
+    pub fn set_trashed(&self, ids: &[i64], trashed: bool) -> anyhow::Result<()> {
+        self.db.tx(|tx| crate::trash::set_trashed(tx, ids, trashed))?;
+        self.emit(LibEvent::Changed("assets"));
+        Ok(())
+    }
+
+    /// Send trashed items to the system Recycle Bin (all when `ids` is None).
+    pub fn empty_trash(&self, ids: Option<&[i64]>) -> anyhow::Result<usize> {
+        let n = crate::trash::empty(&self.db.write(), ids)?;
+        for id in ids.unwrap_or(&[]) {
+            let _ = self.thumbs.remove(*id);
+        }
+        self.emit(LibEvent::Changed("assets"));
+        Ok(n)
+    }
+
+    pub fn plan(&self, opts: &PlanOptions) -> anyhow::Result<PlanSummary> {
+        let s = planner::plan(&self.db.write(), opts)?;
+        self.emit(LibEvent::Changed("history"));
+        Ok(s)
+    }
+
+    pub fn plan_csv(&self, batch: i64) -> anyhow::Result<String> {
+        Ok(planner::csv(&self.db.read(), batch)?)
+    }
+
+    pub fn apply(&self, batch: i64) -> anyhow::Result<()> {
+        if self.exiftool.is_none() {
+            let writes: i64 =
+                self.db.read().query_row("SELECT count(*) FROM ops WHERE batch_id = ?1 AND kind = 'write_meta'", [batch], |r| r.get(0))?;
+            if writes > 0 {
+                anyhow::bail!(
+                    "ExifTool is needed to save metadata, and it was not found. Install it or turn off saving metadata for this plan."
+                );
+            }
+        }
+        self.jobs.enqueue(JobSpec::Apply { batch })?;
+        Ok(())
+    }
+
+    /// Undo a batch: edits at once, file changes as a job.
+    pub fn undo(&self, batch: i64) -> anyhow::Result<()> {
+        let (kind, state): (String, String) =
+            self.db.read().query_row("SELECT kind, state FROM batches WHERE id = ?1", [batch], |r| Ok((r.get(0)?, r.get(1)?)))?;
+        if state != "applied" {
+            anyhow::bail!("Only applied changes can be undone.");
+        }
+        match kind.as_str() {
+            "organize" => {
+                self.jobs.enqueue(JobSpec::Undo { batch })?;
+            }
+            "empty_trash" => anyhow::bail!("Items sent to the Recycle Bin can be restored from the Recycle Bin."),
+            _ => {
+                journal::undo(&self.db, &self.tools(), batch, &|_, _| true)?;
+                self.emit(LibEvent::Changed("assets"));
+                self.emit(LibEvent::Changed("history"));
+            }
+        }
+        Ok(())
+    }
+
+    /// Undo the most recent applied batch. Returns its label.
+    pub fn undo_last(&self) -> anyhow::Result<Option<String>> {
+        let last: Option<(i64, String)> = self
+            .db
+            .read()
+            .query_row(
+                "SELECT id, label FROM batches WHERE state = 'applied' AND kind != 'empty_trash'
+                 ORDER BY coalesce(applied_at, created_at) DESC, id DESC LIMIT 1",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .optional()?;
+        match last {
+            Some((id, label)) => {
+                self.undo(id)?;
+                Ok(Some(label))
+            }
+            None => Ok(None),
+        }
+    }
+
+    pub fn history(&self, limit: i64) -> anyhow::Result<Vec<BatchInfo>> {
+        let c = self.db.read();
+        let mut st = c.prepare(
+            "SELECT b.id, b.kind, b.label, b.state, b.created_at, b.applied_at, b.summary,
+                    (SELECT count(*) FROM ops o WHERE o.batch_id = b.id) + (SELECT count(*) FROM field_history h WHERE h.batch_id = b.id),
+                    (SELECT count(*) FROM ops o WHERE o.batch_id = b.id AND o.state = 'failed')
+             FROM batches b WHERE b.state != 'planned' ORDER BY b.id DESC LIMIT ?1",
+        )?;
+        let rows = st.query_map([limit], |r| {
+            Ok(BatchInfo {
+                id: r.get(0)?,
+                kind: r.get(1)?,
+                label: r.get(2)?,
+                state: r.get(3)?,
+                created_at: r.get(4)?,
+                applied_at: r.get(5)?,
+                summary: r.get(6)?,
+                ops: r.get(7)?,
+                failed: r.get(8)?,
+            })
+        })?;
+        Ok(rows.collect::<Result<_, _>>()?)
+    }
+
+    /// Items with changes not yet written to their files.
+    pub fn unsaved(&self) -> anyhow::Result<i64> {
+        Ok(self.db.read().query_row(
+            "SELECT count(*) FROM assets WHERE meta_dirty = 1 AND missing = 0 AND trashed_at IS NULL",
+            [],
+            |r| r.get(0),
+        )?)
+    }
+
+    // Categories and rules
+
+    pub fn add_category(&self, name: &str, parent: Option<&str>, definition: &str) -> anyhow::Result<String> {
+        let key = categories::add(&self.db.write(), name, parent, definition)?;
+        self.emit(LibEvent::Changed("categories"));
+        Ok(key)
+    }
+
+    pub fn update_category(&self, key: &str, patch: &categories::CategoryPatch) -> anyhow::Result<()> {
+        categories::update(&self.db.write(), key, patch)?;
+        self.emit(LibEvent::Changed("categories"));
+        Ok(())
+    }
+
+    pub fn delete_category(&self, key: &str) -> anyhow::Result<()> {
+        categories::delete(&self.db.write(), key)?;
+        self.emit(LibEvent::Changed("categories"));
+        Ok(())
+    }
+
+    pub fn rules(&self) -> anyhow::Result<Vec<crate::rules::Rule>> {
+        Ok(crate::rules::load(&self.db.read())?)
+    }
+
+    pub fn save_rule(&self, rule: &crate::rules::Rule) -> anyhow::Result<i64> {
+        let def = serde_json::to_string(&rule.def)?;
+        let id = {
+            let c = self.db.write();
+            if rule.id > 0 {
+                c.execute(
+                    "UPDATE rules SET name = ?2, enabled = ?3, priority = ?4, def = ?5 WHERE id = ?1",
+                    params![rule.id, rule.name, rule.enabled, rule.priority, def],
+                )?;
+                rule.id as i64
+            } else {
+                c.execute(
+                    "INSERT INTO rules (name, enabled, priority, def) VALUES (?1, ?2, ?3, ?4)",
+                    params![rule.name, rule.enabled, rule.priority, def],
+                )?;
+                c.last_insert_rowid()
+            }
+        };
+        self.jobs.enqueue(JobSpec::Classify)?;
+        Ok(id)
+    }
+
+    pub fn delete_rule(&self, id: i64) -> anyhow::Result<()> {
+        let builtin: bool =
+            self.db.read().query_row("SELECT builtin FROM rules WHERE id = ?1", [id], |r| r.get::<_, i64>(0).map(|b| b != 0))?;
+        if builtin {
+            anyhow::bail!("Built-in rules can be turned off but not deleted.");
+        }
+        self.db.write().execute("DELETE FROM rules WHERE id = ?1", [id])?;
+        Ok(())
     }
 }
 

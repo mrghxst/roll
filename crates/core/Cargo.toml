@@ -28,6 +28,13 @@ thiserror.workspace = true
 tracing.workspace = true
 ts-rs.workspace = true
 walkdir.workspace = true
+trash = "5.2.9"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_Storage_FileSystem"] }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2.190"
 
 [dev-dependencies]
 memory-stats = "1.2.0"
