@@ -26,6 +26,7 @@ dirs = "7.0.0"
 fast_image_resize = { version = "6.1.0", features = ["image"] }
 half = "2.7.1"
 imagesize = "0.15.0"
+keyring = "4.2.0"
 image = { version = "0.25.10", default-features = false, features = ["jpeg", "png", "gif", "webp", "tiff", "bmp"] }
 nom-exif = "3.8.0"
 notify = "8.2.0"

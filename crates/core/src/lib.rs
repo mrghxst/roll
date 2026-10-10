@@ -10,6 +10,7 @@ pub mod model;
 pub mod paths;
 pub mod query;
 pub mod scan;
+pub mod secrets;
 pub mod schema;
 pub mod settings;
 pub mod sidecars;

@@ -170,13 +170,14 @@ pub fn where_clause(q: &Query) -> Sql {
 }
 
 /// Header: magic, version, count. Then arrays, each 4-byte aligned:
-/// ids u32, days u32 (yyyymmdd), aspect f32, color u32, flags u16.
+/// ids u32, days u32 (yyyymmdd), aspect f32, color u32, flags u16,
+/// thumbnail version u16.
 pub const MAGIC: u32 = 0x4C4C_4F52; // "ROLL"
 
 pub fn timeline(c: &Connection, q: &Query) -> rusqlite::Result<Vec<u8>> {
     let sql = where_clause(q);
     let stmt = format!(
-        "SELECT a.id, a.taken_local, a.width, a.height, a.kind, g.kind, a.favorite, a.problems, a.avg_color, a.private, a.thumb, a.format, a.group_role
+        "SELECT a.id, a.taken_local, a.width, a.height, a.kind, g.kind, a.favorite, a.problems, a.avg_color, a.private, a.thumb, a.format, a.thumb_v
          FROM assets a LEFT JOIN groups g ON g.id = a.group_id WHERE {} ORDER BY a.taken_local DESC, a.id DESC",
         sql.clause
     );
@@ -186,6 +187,7 @@ pub fn timeline(c: &Connection, q: &Query) -> rusqlite::Result<Vec<u8>> {
     let mut aspects = Vec::new();
     let mut colors = Vec::new();
     let mut flags = Vec::new();
+    let mut versions = Vec::new();
     let mut rows = st.query(params_from_iter(sql.params.iter()))?;
     while let Some(r) = rows.next()? {
         ids.push(r.get::<_, i64>(0)? as u32);
@@ -225,9 +227,10 @@ pub fn timeline(c: &Connection, q: &Query) -> rusqlite::Result<Vec<u8>> {
             f |= tile::NO_THUMB;
         }
         flags.push(f);
+        versions.push(r.get::<_, i64>(12)?.clamp(0, u16::MAX as i64) as u16);
     }
     let n = ids.len();
-    let mut out = Vec::with_capacity(12 + n * 18 + 4);
+    let mut out = Vec::with_capacity(12 + n * 20);
     out.extend_from_slice(&MAGIC.to_le_bytes());
     out.extend_from_slice(&1u32.to_le_bytes());
     out.extend_from_slice(&(n as u32).to_le_bytes());
@@ -243,7 +246,7 @@ pub fn timeline(c: &Connection, q: &Query) -> rusqlite::Result<Vec<u8>> {
     for v in &colors {
         out.extend_from_slice(&v.to_le_bytes());
     }
-    for v in &flags {
+    for v in flags.iter().chain(&versions) {
         out.extend_from_slice(&v.to_le_bytes());
     }
     Ok(out)
@@ -294,7 +297,7 @@ mod tests {
         assert_eq!(u32::from_le_bytes(bytes[0..4].try_into().unwrap()), MAGIC);
         let n = u32::from_le_bytes(bytes[8..12].try_into().unwrap()) as usize;
         assert_eq!(n, 3);
-        assert_eq!(bytes.len(), 12 + n * 18);
+        assert_eq!(bytes.len(), 12 + n * 20);
         // Newest first: a (Aug 13), then b (Aug 12).
         assert_eq!(u32::from_le_bytes(bytes[12..16].try_into().unwrap()) as i64, a);
         let day_b = u32::from_le_bytes(bytes[12 + n * 4 + 4..12 + n * 4 + 8].try_into().unwrap());

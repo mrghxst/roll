@@ -303,3 +303,13 @@ pub struct Counts {
     pub trash: i32,
     pub duplicates: i32,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct AppInfo {
+    pub version: String,
+    pub data_dir: String,
+    pub exiftool: Option<String>,
+    pub ffmpeg: Option<String>,
+    pub os: String,
+}
