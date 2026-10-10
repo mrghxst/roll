@@ -11,7 +11,8 @@ Milestones from PROMPT.md section 10. `[x]` done, `[~]` partly done,
 - [x] First-run flow, light and dark
 - [x] Fixture generator with ground-truth manifest and stress mode
 - [x] CLAUDE.md, docs/plan.md, docs/decisions.md
-- [ ] CI on Windows, Linux and macOS
+- [x] CI workflow on Windows, Linux and macOS (`.github/workflows/ci.yml`);
+      not yet run on GitHub: needs the commits pushed
 
 ## M1 Library
 
@@ -24,8 +25,9 @@ Milestones from PROMPT.md section 10. `[x]` done, `[~]` partly done,
 - [x] Viewer: preview then full, zoom, pan, filmstrip, info, video with
       proxy fallback, Live Photo playback
 - [x] Folders view, filters (facets), file watching, Activity panel
-- [ ] Stress library measured against the budgets in 7.5
-- [ ] Playwright tests against the mock backend
+- [x] Stress library measured against the budgets in 7.5 (docs/benchmarks.md)
+- [x] Playwright tests against the mock backend, including 100k scrolling
+- [x] Scan streams in committed chunks; the grid fills while indexing
 
 ## M2 Organize core
 
@@ -41,4 +43,5 @@ Milestones from PROMPT.md section 10. `[x]` done, `[~]` partly done,
 
 ## Next
 
-Measure the stress library, add Playwright and CI, then start M2.
+M2: categories and rules, organize plans with the journal, undo, trash and
+metadata writes.

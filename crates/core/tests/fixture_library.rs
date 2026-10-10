@@ -70,5 +70,15 @@ fn scan_group_and_thumbnail_fixtures() {
     assert!(h > w, "rotated video should be portrait, got {w}x{h}");
     let heic: i64 = c.query_row("SELECT count(*) FROM assets WHERE format = 'heic' AND thumb = 1", [], |r| r.get(0)).unwrap();
     assert!(heic > 30);
+    // HEVC playback fallback: a proxy the WebView can play.
+    if let Some(ff) = &ff {
+        let out = std::env::temp_dir().join(format!("roll-proxy-{}.bin", std::process::id()));
+        let started = std::time::Instant::now();
+        let mime = ff.proxy(&lib.join("Dump/20230618_190500.mp4"), &out).unwrap();
+        assert!(mime == "video/mp4" || mime == "video/webm");
+        assert!(std::fs::metadata(&out).unwrap().len() > 1000);
+        eprintln!("proxy {mime} in {:?}", started.elapsed());
+        std::fs::remove_file(out).ok();
+    }
     eprintln!("scan {:?}, thumbnails {:?} for {} files", scan_time, thumb_time, media.len());
 }

@@ -24,6 +24,12 @@ pub struct Found {
     pub mtime: i64,
 }
 
+/// Files read and committed per transaction.
+const CHUNK: usize = 1000;
+
+/// The progress phase reported after each committed chunk.
+pub const SAVED: &str = "Saved";
+
 /// Progress callback: (phase, done, total).
 pub type Progress<'a> = &'a (dyn Fn(&str, usize, usize) + Sync);
 
@@ -101,9 +107,8 @@ pub struct ReadResult {
     pub error: Option<String>,
 }
 
-pub fn read_files(root: &Path, files: Vec<Found>, progress: Progress) -> Vec<ReadResult> {
-    let total = files.len();
-    let done = AtomicUsize::new(0);
+pub fn read_files(root: &Path, files: Vec<Found>, offset: usize, total: usize, progress: Progress) -> Vec<ReadResult> {
+    let done = AtomicUsize::new(offset);
     files
         .into_par_iter()
         .map_init(MetaReader::default, |reader, found| {
@@ -381,8 +386,6 @@ pub fn scan_root(
             None => to_read.push(f),
         }
     }
-    let results = read_files(root, to_read, progress);
-
     // Assets in the database that were not found on disk: candidates for
     // re-linking to new files with the same size and quick hash.
     let mut gone: Gone = HashMap::new();
@@ -392,12 +395,22 @@ pub fn scan_root(
         }
     }
 
+    // Read and commit in chunks, so the first items appear within seconds
+    // even in a library of 100k files.
     let now = now_ms();
     let mut touched = Vec::new();
-    let total = results.len();
-    for (chunk_no, chunk) in results.chunks(500).enumerate() {
+    let total = to_read.len();
+    let mut offset = 0;
+    let mut pending = to_read.into_iter();
+    loop {
+        let chunk: Vec<Found> = pending.by_ref().take(CHUNK).collect();
+        if chunk.is_empty() {
+            break;
+        }
+        let n = chunk.len();
+        let results = read_files(root, chunk, offset, total, progress);
         db.tx(|tx| {
-            for r in chunk {
+            for r in &results {
                 if let Some(e) = r.error.as_ref() {
                     report.errors.push(format!("{}: {e}", r.found.rel));
                 }
@@ -423,7 +436,8 @@ pub fn scan_root(
             }
             Ok(())
         })?;
-        progress("Saving", ((chunk_no + 1) * 500).min(total), total);
+        offset += n;
+        progress(SAVED, offset, total);
     }
 
     // Mark what is still gone as missing.

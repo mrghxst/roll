@@ -113,8 +113,15 @@ impl Library {
                 }
                 let first =
                     self.db.read().query_row("SELECT count(*) = 0 FROM assets WHERE root_id = ?1", [root_id], |r| r.get::<_, bool>(0))?;
-                let progress = |_: &str, done: usize, total: usize| {
+                // Show new items as chunks are committed, at most every 2 s.
+                let last = Mutex::new(std::time::Instant::now() - std::time::Duration::from_secs(10));
+                let progress = |phase: &str, done: usize, total: usize| {
                     ctx.progress(done, total);
+                    let mut l = last.lock();
+                    if phase == scan::SAVED && l.elapsed().as_secs() >= 2 {
+                        *l = std::time::Instant::now();
+                        self.emit(LibEvent::Changed("assets"));
+                    }
                 };
                 let (report, _touched) = scan::scan_root(&self.db, *root_id, &root, &self.tz, !first, &progress)?;
                 groups::rebuild(&self.db, *root_id)?;

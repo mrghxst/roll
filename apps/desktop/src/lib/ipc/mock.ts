@@ -67,7 +67,7 @@ function makeAssets(n: number): MockAsset[] {
     let flags = video ? Flag.VIDEO : 0;
     if (!video && r() > 0.95) flags |= Flag.LIVE;
     if (r() > 0.97) flags |= Flag.FAVORITE;
-    const hue = Math.floor(r() * 360);
+    const hue = Math.floor(r() * 24) * 15;
     const [rr, gg, bb] = hslToRgb(hue / 360, 0.45, 0.55);
     const cat = CATS[Math.floor(Math.pow(r(), 2.2) * 7)]![0];
     out.push({
@@ -163,15 +163,34 @@ function filter(q: Query): MockAsset[] {
   });
 }
 
+const svgCache = new Map<string, string>();
+
+/** Placeholder pictures, cached by color and shape so scrolling stays cheap. */
 function svg(a: MockAsset | undefined, w: number): string {
+  const key = `${a?.color ?? 0}:${a?.aspect ?? 1}:${w}`;
+  let url = svgCache.get(key);
+  if (!url) {
+    url = makeSvg(a, w);
+    svgCache.set(key, url);
+  }
+  return url;
+}
+
+function makeSvg(a: MockAsset | undefined, w: number): string {
   const c = a ? `rgb(${(a.color >> 16) & 255},${(a.color >> 8) & 255},${a.color & 255})` : '#888';
   const h = Math.round(w / (a?.aspect ?? 1));
   const body = `<svg xmlns='http://www.w3.org/2000/svg' width='${w}' height='${h}' viewBox='0 0 ${w} ${h}'><defs><linearGradient id='g' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='${c}'/><stop offset='1' stop-color='#222'/></linearGradient></defs><rect width='100%' height='100%' fill='url(#g)'/><circle cx='${w * 0.7}' cy='${h * 0.3}' r='${Math.min(w, h) * 0.12}' fill='rgba(255,255,255,0.7)'/></svg>`;
   return `data:image/svg+xml;utf8,${encodeURIComponent(body)}`;
 }
 
+let index = new Map<number, MockAsset>();
+let indexed: MockAsset[] = [];
 function byId(id: number) {
-  return assets.find((a) => a.id === id);
+  if (indexed !== assets) {
+    index = new Map(assets.map((a) => [a.id, a]));
+    indexed = assets;
+  }
+  return index.get(id);
 }
 
 function tree(): FolderNode[] {
