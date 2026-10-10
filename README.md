@@ -8,9 +8,13 @@ A local photo and video library that sorts itself.
 Roll turns a phone dump of 100,000+ photos and videos into a library sorted by
 year:
 
-- **Folders by year.** Camera photos go to `2023/Photos`, confirmed events to
-  `2023/2023-07 Lake Garda`. Screenshots, memes, social media saves and
-  documents get folders of their own, and wallpapers go to an archive.
+- **A complete archive on your PC.** Camera photos go to `2023/Photos`,
+  confirmed events to `2023/2023-07 Lake Garda`. Screenshots, memes, social
+  media saves, documents and wallpapers get folders of their own. Everything
+  is kept and readable in Windows Explorer.
+- **A curated Immich.** Immich only gets what you pick for your phone and for
+  sharing, by default your photos and events. Roll keeps that in sync: later
+  fixes, albums and shared albums.
 - **Dates and places, fixed in bulk.** A wrong camera clock is corrected from
   one reference photo. Missing places are filled from nearby photos, location
   history, or a pin on the map.

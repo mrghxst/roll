@@ -148,6 +148,19 @@ From the CLI (`packages/cli/src`):
 - `--visibility` accepts the asset visibility values: `archive`, `timeline`,
   `hidden` and `locked`.
 
+From the OpenAPI spec (`open-api/immich-openapi-specs.json`, 3.3.0-rc.0 on
+`main`), these are the endpoints Roll's sync needs:
+
+| Endpoint | Use |
+|---|---|
+| `POST /assets` | Upload, with `assetData`, `sidecarData`, `visibility`, `isFavorite`, `livePhotoVideoId`, `fileCreatedAt` and `fileModifiedAt` |
+| `POST /assets/bulk-upload-check` | Skip files Immich already has |
+| `PUT /assets` | Bulk update of `dateTimeOriginal`, `dateTimeRelative`, `timeZone`, `latitude`, `longitude`, `description`, `rating`, `isFavorite` and `visibility` |
+| `DELETE /assets` | Delete by `ids`; without `force`, assets go to Immich's trash |
+| `PUT /tags/assets` | Bulk tagging |
+| `POST /albums`, `PUT /albums/{id}/assets` | Albums |
+| `PUT /albums/{id}/users` | Share an album |
+
 **Models:** Immich publishes ONNX exports of SigLIP 2 on Hugging Face, for
 example `immich-app/ViT-B-16-SigLIP2__webli`. Its visual model is 372 MB and
 its text model 1.13 GB (fp32). Larger variants up to SO400M and gopt also

@@ -16,6 +16,11 @@ clean library sorted by year:
 - Wrong dates and missing places are fixed in bulk.
 - Everything is tagged in a way Immich and other photo apps understand.
 
+The folders on the PC are the complete archive. Everything is kept there, and
+it's pleasant to browse both in Roll and in Windows Explorer. Immich only gets
+a curated part: what the owner wants on the phone, to show friends and to
+share.
+
 Roll works on the files where they are and never loses anything. Sorting
 100,000 photos costs at most a few dollars of AI, or nothing with local
 models.
@@ -104,18 +109,24 @@ Metadata is broken too:
 
 The owner wants:
 
-1. **Tags as the source of truth.**
+1. **A complete local archive and a curated Immich.**
+   - The folders on the Windows PC keep absolutely everything, sorted. They
+     are the backup and the place to browse it all.
+   - Immich only gets what the owner wants on the phone: photos to show
+     friends, and albums to share (shared albums, partner sharing).
+   - Memes, screenshots and the rest stay local unless the owner picks them.
+2. **Tags as the source of truth.**
    - Categories, events and sources are tags written into standard metadata,
      readable by Immich.
    - Folders are derived from tags, so the library can be re-foldered at any
      time.
-2. **Fast, smart bulk fixes for dates and places.**
-3. **A great library.** Timeline, filters, search, viewer, video, and a map
+3. **Fast, smart bulk fixes for dates and places.**
+4. **A great library.** Timeline, filters, search, viewer, video, and a map
    with a time slider on the left that selects which period is shown.
-4. **Cheap, local-first AI.** For a one-time pass over 100k+ items, AI costs
+5. **Cheap, local-first AI.** For a one-time pass over 100k+ items, AI costs
    at most $10 per 100k through the API, ideally under $2. A local model costs
    nothing. Slow is acceptable.
-5. **Photos stay where they are.** Roll works on a folder the owner picks.
+6. **Photos stay where they are.** Roll works on a folder the owner picks.
    There is no import and no copying into a hidden store.
 
 ## 2. What real input looks like
@@ -145,10 +156,14 @@ GPU.
 
 ## 3. Core concepts
 
-- **Library root.** A folder the owner picks. Roll indexes it recursively and
-  organizes inside it. There can be several roots.
-- **Archive root** (optional). A second folder for things to keep but not
-  show in Immich, such as wallpapers.
+- **Library root.** A folder the owner picks: the complete archive.
+  - Roll indexes it recursively and organizes inside it.
+  - Nothing leaves it unless the owner deletes it.
+  - There can be several roots.
+- **Immich selection.** Which assets also go to Immich.
+  - Defaults come per category and per event (4.10).
+  - Any item, folder or event can be switched on or off.
+  - The local library always keeps everything.
 - **Asset.** One photo or video file.
 - **Asset group.** Assets that belong together and always move together.
   They show as one tile with a badge.
@@ -242,6 +257,7 @@ GPU.
   - resolution, orientation, aspect ratio, duration, format, folder;
   - rating, favorite;
   - duplicates, AI confidence, review state;
+  - Immich: sent, local only, waiting for the next sync;
   - metadata problems: no date, suspicious date, date changed, no location.
 - **Saved filters** act as smart albums in the sidebar.
 - **Semantic search:**
@@ -262,16 +278,19 @@ GPU.
 **Default categories** (editable; the definitions are also used in the AI
 prompts):
 
-| Category | What belongs | Default folder | Immich |
+| Category | What belongs | Default folder | Sent to Immich |
 |---|---|---|---|
-| Photos | Real-life photos and videos: people, places, events, things. Includes personal photos received from friends (tagged `Source/Chat`). | `{year}/Photos`, or the event folder | timeline |
-| Screenshots | Screen captures and screen recordings from any device. | `{year}/Screenshots` | archive |
-| Memes | Made to be funny or shared: captions over images, reaction images, comics, joke formats, stickers, GIFs. | `{year}/Memes` | archive |
-| Social media | Saved posts, stories, reels and pictures from apps and websites that aren't memes: other people's photos, outfits, recipes, products, news, quotes. | `{year}/Social media` | archive |
-| Wallpapers | Backgrounds, digital art, AI-generated images and design assets with no personal content. | `Wallpapers` in the Archive root | skip |
-| Documents | Photos or scans of paper, receipts, tickets, IDs, whiteboards, notes and labels, or a screen photographed for its text. | `{year}/Documents` | archive |
-| Junk | Accidental, black or very blurry shots, pocket shots, test shots, broken files. | Not moved: review it, then send it to the Recycle Bin | skip |
-| Unsorted | Not decided yet. | Stays where it is | skip |
+| Photos | Real-life photos and videos: people, places, events, things. Includes personal photos received from friends (tagged `Source/Chat`). | `{year}/Photos`, or the event folder | yes, in the timeline |
+| Screenshots | Screen captures and screen recordings from any device. | `{year}/Screenshots` | no |
+| Memes | Made to be funny or shared: captions over images, reaction images, comics, joke formats, stickers, GIFs. | `{year}/Memes` | no |
+| Social media | Saved posts, stories, reels and pictures from apps and websites that aren't memes: other people's photos, outfits, recipes, products, news, quotes. | `{year}/Social media` | no |
+| Wallpapers | Backgrounds, digital art, AI-generated images and design assets with no personal content. | `Wallpapers` | no |
+| Documents | Photos or scans of paper, receipts, tickets, IDs, whiteboards, notes and labels, or a screen photographed for its text. | `{year}/Documents` | no |
+| Junk | Accidental, black or very blurry shots, pocket shots, test shots, broken files. | `{year}/Junk`, kept until the owner deletes it | no |
+| Unsorted | Not decided yet. | Stays where it is | no |
+
+Any item, folder, category or event can be switched to "send to Immich". For
+example, a few memes can go there as an album to show friends.
 
 **Privacy guard.** Items that look like IDs, payment cards, passwords,
 medical or intimate content get the tag `Private`:
@@ -280,7 +299,8 @@ medical or intimate content get the tag `Private`:
   (Luhn-valid card numbers, IBANs, passport MRZ lines).
 - These items are never sent to a cloud model unless the owner allows it.
 - They are never moved without review.
-- The Immich plan can map them to `locked` visibility.
+- They are never sent to Immich unless the owner picks them, and then they
+  go to Immich's locked folder.
 
 **Signals per asset:**
 
@@ -370,14 +390,13 @@ pocket shots (dark with motion blur), images under 200 px, and broken files.
 - **Folder templates** per category. Tokens: `{year}`, `{month}` (01–12),
   `{month_name}`, `{date}` (YYYY-MM-DD), `{event}`, `{category}`,
   `{subcategory}`, `{source}`, `{camera}`, `{country}`, `{city}`.
-  - Each category also sets its destination root (Library or Archive).
   - The year is that of the date taken, in local time.
   - Renaming files is opt-in, with its own template (for example
     `{date} {time} {camera}`). Names are kept by default.
 - **Default layout:**
 
   ```
-  <Library>/
+  <Library>/                  the complete archive: everything is kept
     2023/
       Photos/                 camera photos and videos not in an event
       2023-07 Lake Garda/     events the owner confirmed
@@ -385,9 +404,14 @@ pocket shots (dark with motion blur), images under 200 px, and broken files.
       Memes/
       Social media/
       Documents/
-  <Archive>/
+      Junk/                   kept until the owner deletes it
     Wallpapers/
   ```
+
+- **Readable in Windows Explorer.**
+  - Folder and file names sort correctly (`2023-07 …` before `2023-08 …`).
+  - Metadata is written so that Explorer and the Photos app show the right
+    date, tags, rating and location (section 6).
 
 - **Modes:**
   - **Move in place.** Instant on the same drive (rename).
@@ -563,58 +587,87 @@ zone (offline lookup) on items without an offset.
   the city if the event stays in one, otherwise the region or country. The
   text model can refine it from captions ("Hiking in the Dolomites").
 - **Owner actions:** confirm, rename, merge, split, or dismiss.
-- **Confirmed events** get the tag `Event/<name>` and a folder
-  `{year}/{yyyy-mm} {name}`, which becomes an Immich album through the CLI's
-  `--album`. The folder is optional.
+- **Confirmed events** get the tag `Event/<name>` and, optionally, a folder
+  `{year}/{yyyy-mm} {name}`. An event sent to Immich becomes an album there
+  and can be shared with chosen Immich users.
 
 ### 4.10 Immich
 
-Write metadata so Immich reads it on upload or scan (field mapping in section
-6, tested in 9.3). Organize first, then import. After import, change tags
-rather than moving files: Immich treats a moved file as a new asset.
+Immich is the curated, social part: what the owner wants on the phone, to show
+friends, and to share. The local library stays the complete archive and the
+master copy. Immich keeps its own copy of what it gets, so re-foldering the
+local archive never affects it.
 
-- **Upload plan.** Roll generates an Immich CLI script (PowerShell and sh)
-  per destination:
-  - Timeline folders: `immich upload --recursive <Library>/2023/Photos`.
-    Don't use `--album` here: it names albums after the parent folder, so
-    every year would land in one "Photos" album.
-  - Event folders: `immich upload --recursive --album <folder>`.
-  - Screenshots, Memes, Social media and Documents:
-    `--visibility archive --album-name "<Category>"`.
-  - Private items: `--visibility locked`.
-  - Wallpapers and Junk: skipped.
-
-  The CLI uploads `<file>.<ext>.xmp` sidecars and prefers them over
-  `<file>.xmp`.
-- **External library guide.** Mount the Library root read-only. Immich's
-  discover job picks up the sidecars.
-- **Direct API integration** (later milestone): upload, set visibility,
-  create albums and set tags through the Immich 3.x API, using a server URL
-  and an API key kept in the OS keychain.
+- **What goes to Immich:**
+  - Defaults per category (table in 4.3): Photos yes, everything else no.
+  - Confirmed events: yes, each as an album.
+  - Overrides on any item, selection, folder, category or event: "Send to
+    Immich" or "Keep local only". The state shows as a small badge on tiles
+    and as a filter.
+  - Private items go only when the owner picks them, and then with `locked`
+    visibility.
+- **Sync through the Immich API.** The server URL and API key live in the OS
+  keychain. Target Immich v3.x, and check the OpenAPI spec of the owner's
+  server version.
+  - **Upload** new selected items with `POST /assets` (the file plus
+    `sidecarData`). Check checksums first with
+    `POST /assets/bulk-upload-check`, so nothing is uploaded twice. Link Live
+    Photos (`livePhotoVideoId`).
+  - **Store** the Immich asset id for every uploaded file.
+  - **Push later edits** from Roll with `PUT /assets` (date and time, time
+    zone, location, description, rating, favorite, visibility) and
+    `PUT /tags/assets`.
+  - **Albums:** create albums for events (`POST /albums`,
+    `PUT /albums/{id}/assets`) and share them with chosen users
+    (`PUT /albums/{id}/users`).
+  - **Remove:** after a confirmation, items switched to "Keep local only" go
+    to Immich's trash (`DELETE /assets` without `force`). A sync never
+    touches local files.
+  - **Plan first:** every sync shows a plan before it runs ("Uploads 412,
+    updates 38, removes 3 from Immich"). It runs as a resumable job and lands
+    in History.
+- **Script export** as a fallback: an Immich CLI script per destination.
+  - Timeline folders use plain `immich upload --recursive`. Never use
+    `--album` there: it names albums after the parent folder, so every year
+    would land in one "Photos" album.
+  - Event folders use `--album`.
+  - The CLI uploads `<file>.<ext>.xmp` sidecars and prefers them over
+    `<file>.xmp`.
+- **No external library on the archive.** Pointing an Immich external
+  library at the archive would show everything. The docs say so.
+- **Phone backup.** If the Immich app's automatic phone backup is on, Immich
+  gets the whole camera roll, not the selection. The Immich guide in `docs/`
+  explains this and recommends leaving it off. New photos then reach the
+  archive through the usual export and Roll's Inbox.
 
 ### 4.11 Settings, privacy and first run
 
 - **First run:**
   1. Welcome.
-  2. Choose the library folder.
-  3. Choose an Archive folder (optional).
-  4. Choose how to save changes:
-     - **Sidecar files** (recommended): `.xmp` files next to each photo.
-       Originals stay untouched, and Immich, digiKam and Lightroom read
-       them.
-     - **Inside the files:** portable, but changes the files. Roll keeps
-       backups until the owner confirms.
-  5. Choose AI:
+  2. Choose the library folder (the complete archive).
+  3. Choose how to save changes:
+     - **In the files and as sidecars** (recommended):
+       - Windows Explorer and the Photos app show the fixed dates, places and
+         tags.
+       - Immich, digiKam and Lightroom read the `.xmp` sidecars.
+       - Only metadata is rewritten, never the image data.
+     - **Sidecars only:** originals stay untouched byte for byte, but
+       Explorer and the Photos app don't see the changes.
+  4. Choose AI:
      - **Local:** detects Ollama, LM Studio or llama.cpp.
      - **OpenRouter:** paste an API key, stored in the OS keychain.
      - **Off:** rules and local embeddings only.
+  5. Connect Immich (optional): server URL and API key. Nothing is sent until
+     the owner has reviewed the first sync plan.
   6. Start. The grid fills while indexing runs.
 
   After indexing, a short guide walks through: review automatic decisions,
-  Discover, fix dates, fix places, Organize preview, Apply.
+  Discover, fix dates, fix places, Organize preview, Apply, and the first
+  Immich sync.
 - **Settings:**
-  - library and archive roots;
-  - categories with their templates, roots and Immich visibility;
+  - library roots;
+  - categories with their folder templates and Immich defaults;
+  - Immich: server, API key, what to send, sharing, sync;
   - rules;
   - metadata write mode;
   - AI: endpoints, models, privacy and budget;
@@ -627,6 +680,7 @@ rather than moving files: Immich treats a moved file as a new asset.
   - advanced: export or import the app state, rebuild the index.
 - **Network panel.** It lists every feature that can reach the internet and
   whether it's on:
+  - the owner's Immich server;
   - the AI provider;
   - downloads of models, maps and geodata;
   - online map tiles;
@@ -786,10 +840,19 @@ for search.
 - **Writing.** ExifTool in `-stay_open` mode, bundled.
   - On Windows always pass `-charset filename=utf8` and use UTF-8 argument
     files, or non-ASCII names break.
-  - Sidecar mode (default): `<file>.<ext>.xmp` next to the file, merged with
-    existing content.
-  - Embedded mode: write in place, with Roll's own backup until the owner
-    confirms.
+  - The default mode writes into the file and to a `<file>.<ext>.xmp`
+    sidecar, merged with existing content. Sidecar-only mode is the
+    alternative.
+  - Writing into a file rewrites metadata only. Check ExifTool's
+    `ImageDataHash` before and after: it must not change. The journal keeps
+    the previous values, so undo can restore them.
+  - Write what Windows shows, and check it in Explorer and the Photos app on
+    Windows:
+    - EXIF `DateTimeOriginal`: Explorer's "Date taken";
+    - EXIF GPS;
+    - `XMP-dc:Subject` plus `IPTC:Keywords`: Explorer's "Tags";
+    - `XMP-xmp:Rating` plus EXIF `Rating` and `RatingPercent`;
+    - QuickTime `CreateDate` for videos: "Media created".
 - **Time.**
   - EXIF `DateTimeOriginal` is local time. `OffsetTimeOriginal` carries the
     zone if present.
@@ -803,7 +866,7 @@ for search.
 Immich mapping, verified against the Immich v3.3.1 source
 (`server/src/services/metadata.service.ts`):
 
-| Roll field | Sidecar (XMP) written | Embedded (when enabled) | What Immich reads |
+| Roll field | Sidecar (XMP) written | In the file (default mode) | What Immich reads |
 |---|---|---|---|
 | Tags | `XMP-digiKam:TagsList` (`A/B`), `XMP-lr:HierarchicalSubject` (`A\|B`), `XMP-dc:Subject` (leaf names) | same, plus `IPTC:Keywords` for JPEG | `TagsList`, else `HierarchicalSubject`, else `Keywords` |
 | Date taken | `XMP-exif:DateTimeOriginal` with offset, `XMP-photoshop:DateCreated`, `XMP-xmp:CreateDate` | `DateTimeOriginal`, `CreateDate`, `OffsetTime*`, `SubSec*`; for video QuickTime `CreateDate` (UTC) and `Keys:CreationDate` | Sidecar date first. Then in order: `SubSecDateTimeOriginal`, `SubSecCreateDate`, `DateTimeOriginal`, `CreationDate`, `CreateDate`, `MediaCreateDate`, … |
@@ -870,8 +933,8 @@ packs.json              downloadable packs: URL, size, SHA-256, license
     from `packs.json`);
   - `logs/`.
 
-  Nothing is written inside photo folders except moved files and sidecars
-  (in sidecar mode).
+  Inside photo folders Roll only moves files and writes their metadata and
+  sidecars. It never puts databases, caches or hidden folders there.
 - **Main tables:**
   - `assets`: path relative to the root, size, mtime, quick hash, BLAKE3,
     type, size in pixels, duration, orientation, date taken (UTC and local)
@@ -1096,13 +1159,21 @@ cheap pixels, for the performance budgets.
 ### 9.3 Immich round trip
 
 `e2e/immich` starts Immich v3.x with Docker Compose. It uploads the fixtures
-with the Immich CLI (with sidecars) and asserts through the API that:
+twice, once with the Immich CLI (with sidecars) and once with Roll's API sync.
+It then asserts through the API that:
 
 - tags (hierarchical), date and time zone, GPS, description and rating match;
-- Live Photos are linked.
+- Live Photos are linked;
+- only selected items are in Immich, events are albums, and nothing is
+  uploaded twice;
+- after the next sync, a later date, place or tag change in Roll shows up in
+  Immich;
+- re-foldering the local archive changes nothing in Immich;
+- "Keep local only" moves the item to Immich's trash and leaves the local
+  file untouched.
 
-Run it before every milestone that touches metadata, and in CI where Docker
-is available.
+Run it before every milestone that touches metadata or sync, and in CI where
+Docker is available.
 
 ### 9.4 CI and releases
 
@@ -1145,7 +1216,11 @@ and a short note to the owner.
   paths, conflicts.
 - *Accept:*
   - Rule-decidable fixtures land in the right folders.
-  - Undo restores a byte-identical tree.
+  - Undo of moves restores a byte-identical tree.
+  - Undo of metadata writes restores the previous values, with an unchanged
+    `ImageDataHash`.
+  - On Windows, Explorer and the Photos app show the written date, tags,
+    rating and GPS. This is checked by hand and documented.
   - Killing the app during apply, then restarting, gives a consistent state.
   - The Immich round trip passes for tags, dates and GPS.
 
@@ -1190,14 +1265,16 @@ and a short note to the owner.
 
 **M6 Events, Immich, polish**
 - Event detection and naming; event folders and albums.
-- Immich upload plan and external library guide.
+- Immich sync through the API: selection, upload, albums and sharing,
+  pushing metadata changes, and removal with confirmation. Plus the CLI script
+  export and the Immich guide.
 - Importers for Google Takeout JSON and WhatsApp exports.
 - Onboarding and the guided first sort; full Settings.
 - Accessibility, performance and copy passes; Windows installer; user docs.
 - *Accept:* on a copy of the owner's library, with their permission, the
-  owner can go from a dump to a sorted, reviewed and applied library, and an
-  upload to a test Immich, in one evening of work (the machine may run
-  overnight).
+  owner can go from a dump to a sorted, reviewed and applied archive, plus a
+  first sync of only the selected items to a test Immich, in one evening of
+  work (the machine may run overnight).
 
 **M7 Later**
 - Linux and macOS packaging polish.
@@ -1206,7 +1283,7 @@ and a short note to the owner.
   Immich face import.
 - One-click local AI (bundled llama.cpp).
 - Offline region map downloads.
-- Direct Immich API sync, auto-updates, code signing.
+- Auto-updates, code signing.
 
 ## 11. Manual steps for the owner
 
@@ -1214,8 +1291,9 @@ and a short note to the owner.
   into chat, code or the repo. Add $5 of credit.
 - Optional: install Ollama and pull a suggested vision model (Roll shows the
   command).
-- Optional: an Immich server URL and API key for the round trip and upload
-  (a test instance is fine).
+- The Immich server URL and an API key with permission for assets, albums and
+  tags. Development uses a local test Immich in Docker. The real server is
+  only used after the owner says so.
 - When the first release is ready: a minisign key pair for updates
   (`pnpm tauri signer generate`), stored as GitHub secrets, and a decision
   on Windows code signing (SmartScreen warns on unsigned installers).
