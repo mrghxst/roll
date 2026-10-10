@@ -1,0 +1,13 @@
+{
+  "name": "roll-workspace",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@12.11.2",
+  "scripts": {
+    "dev": "pnpm --filter @roll/desktop tauri dev",
+    "build": "pnpm --filter @roll/desktop tauri build",
+    "check": "pnpm --filter @roll/desktop check",
+    "test": "pnpm --filter @roll/desktop test",
+    "e2e": "pnpm --filter @roll/desktop e2e"
+  }
+}

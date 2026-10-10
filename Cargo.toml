@@ -1,0 +1,62 @@
+[workspace]
+resolver = "3"
+members = ["crates/*", "apps/desktop/src-tauri", "tools/fixtures"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+repository = "https://github.com/mrghxst/roll"
+rust-version = "1.90"
+
+[workspace.dependencies]
+roll-core = { path = "crates/core" }
+roll-media = { path = "crates/media" }
+roll-meta = { path = "crates/meta" }
+roll-ai = { path = "crates/ai" }
+roll-geo = { path = "crates/geo" }
+
+anyhow = "1.0.104"
+base64 = "0.23.1"
+blake3 = { version = "1.8.7", features = ["mmap", "rayon"] }
+chrono = { version = "0.4.45", default-features = false, features = ["std", "clock", "serde"] }
+chrono-tz = "0.10.4"
+crossbeam-channel = "0.5.17"
+dirs = "7.0.0"
+fast_image_resize = { version = "6.1.0", features = ["image"] }
+half = "2.7.1"
+imagesize = "0.15.0"
+image = { version = "0.25.10", default-features = false, features = ["jpeg", "png", "gif", "webp", "tiff", "bmp"] }
+image_hasher = "3.1.1"
+nom-exif = "3.8.0"
+notify = "8.2.0"
+parking_lot = "0.12.5"
+quick-xml = "0.42.0"
+rayon = "1.12.0"
+regex = "1.13.1"
+rusqlite = { version = "0.40.2", features = ["bundled", "blob", "functions"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.152"
+tempfile = "3.27.0"
+thiserror = "2.0.21"
+thumbhash = "0.1.0"
+tokio = { version = "1.53.2", features = ["rt-multi-thread", "macros", "sync", "time", "process", "fs", "io-util"] }
+tracing = "0.1.44"
+ts-rs = { version = "12.0.1", features = ["serde-json-impl", "no-serde-warnings"] }
+walkdir = "2.5.0"
+webp = "0.3.1"
+zune-jpeg = "0.5.15"
+
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 3
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true
+
+[profile.dev.package.roll-fixtures]
+opt-level = 3

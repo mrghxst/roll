@@ -1,0 +1,50 @@
+:root {
+  --bg: #ffffff;
+  --fg: #000000;
+  --muted: #666666;
+  --border: #eaeaea;
+  --surface: #fafafa;
+  --border-strong: #c9c9c9;
+  --danger: #ee0000;
+  --overlay: rgba(0, 0, 0, 0.12);
+  --sans: 'Geist Variable', 'Geist', ui-sans-serif, system-ui, 'Segoe UI', sans-serif;
+  --mono: 'Geist Mono Variable', 'Geist Mono', ui-monospace, Consolas, monospace;
+  --t12: 12px;
+  --t13: 13px;
+  --t14: 14px;
+  --t16: 16px;
+  --t24: 24px;
+  --r-1: 4px;
+  --r-btn: 6px;
+  --r-sheet: 8px;
+  --ease: cubic-bezier(0.16, 1, 0.3, 1);
+  --topbar: 48px;
+  --sidebar: 232px;
+  --sidebar-collapsed: 56px;
+  --info: 320px;
+  color-scheme: light;
+}
+
+/* Same dark values in both blocks: System (OS is dark) and Dark (chosen). */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --bg: #000000;
+    --fg: #ffffff;
+    --muted: #a1a1a1;
+    --border: #333333;
+    --surface: #0a0a0a;
+    --border-strong: #4d4d4d;
+    --overlay: rgba(0, 0, 0, 0.6);
+    color-scheme: dark;
+  }
+}
+:root[data-theme='dark'] {
+  --bg: #000000;
+  --fg: #ffffff;
+  --muted: #a1a1a1;
+  --border: #333333;
+  --surface: #0a0a0a;
+  --border-strong: #4d4d4d;
+  --overlay: rgba(0, 0, 0, 0.6);
+  color-scheme: dark;
+}

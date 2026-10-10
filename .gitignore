@@ -13,3 +13,4 @@ test-results/
 !.env.example
 .DS_Store
 Thumbs.db
+/apps/desktop/src-tauri/gen/

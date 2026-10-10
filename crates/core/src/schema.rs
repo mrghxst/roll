@@ -1,0 +1,271 @@
+//! Database migrations. Append only: never edit a shipped migration.
+
+pub const MIGRATIONS: &[&str] = &[M1];
+
+const M1: &str = r#"
+CREATE TABLE settings (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
+
+CREATE TABLE roots (
+  id INTEGER PRIMARY KEY,
+  path TEXT NOT NULL UNIQUE,
+  -- 'library' (the archive) or 'staging' (an import being checked)
+  kind TEXT NOT NULL DEFAULT 'library',
+  added_at INTEGER NOT NULL
+);
+
+CREATE TABLE categories (
+  id INTEGER PRIMARY KEY,
+  key TEXT NOT NULL UNIQUE,
+  name TEXT NOT NULL,
+  parent_id INTEGER REFERENCES categories(id) ON DELETE CASCADE,
+  definition TEXT NOT NULL DEFAULT '',
+  folder_template TEXT,
+  -- Subcategories are tags only unless they get their own folder.
+  own_folder INTEGER NOT NULL DEFAULT 1,
+  immich_default INTEGER NOT NULL DEFAULT 0,
+  auto_threshold REAL,
+  sort INTEGER NOT NULL DEFAULT 0,
+  builtin INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE groups (
+  id INTEGER PRIMARY KEY,
+  kind TEXT NOT NULL,
+  key TEXT NOT NULL,
+  UNIQUE(kind, key)
+);
+
+CREATE TABLE assets (
+  id INTEGER PRIMARY KEY,
+  root_id INTEGER NOT NULL REFERENCES roots(id) ON DELETE CASCADE,
+  rel_path TEXT NOT NULL,
+  dir TEXT NOT NULL,
+  name TEXT NOT NULL,
+  ext TEXT NOT NULL,
+  size INTEGER NOT NULL,
+  mtime INTEGER NOT NULL,
+  quick_hash TEXT NOT NULL,
+  blake3 TEXT,
+  kind INTEGER NOT NULL,
+  format TEXT NOT NULL,
+  width INTEGER,
+  height INTEGER,
+  duration_ms INTEGER,
+  fps REAL,
+  has_audio INTEGER,
+  codec TEXT,
+  orientation INTEGER,
+  rotation INTEGER,
+  taken_utc INTEGER,
+  taken_local TEXT,
+  tz_offset INTEGER,
+  date_source TEXT,
+  date_conf REAL,
+  lat REAL,
+  lon REAL,
+  alt REAL,
+  loc_acc REAL,
+  loc_source TEXT,
+  make TEXT,
+  model TEXT,
+  serial TEXT,
+  lens TEXT,
+  software TEXT,
+  screenshot INTEGER NOT NULL DEFAULT 0,
+  content_id TEXT,
+  burst_id TEXT,
+  icc TEXT,
+  qtable TEXT,
+  signature TEXT,
+  has_xmp INTEGER NOT NULL DEFAULT 0,
+  has_makernotes INTEGER NOT NULL DEFAULT 0,
+  group_id INTEGER REFERENCES groups(id) ON DELETE SET NULL,
+  group_role TEXT,
+  category_id INTEGER REFERENCES categories(id) ON DELETE SET NULL,
+  category_source TEXT,
+  category_conf REAL,
+  -- 0 undecided, 1 proposed, 2 auto-accepted, 3 reviewed by the owner
+  review INTEGER NOT NULL DEFAULT 0,
+  rating INTEGER NOT NULL DEFAULT 0,
+  favorite INTEGER NOT NULL DEFAULT 0,
+  description TEXT,
+  private INTEGER NOT NULL DEFAULT 0,
+  -- 'default', 'send' or 'local'
+  immich TEXT NOT NULL DEFAULT 'default',
+  immich_id TEXT,
+  immich_synced TEXT,
+  -- Edits in the database not yet written into files and sidecars.
+  meta_dirty INTEGER NOT NULL DEFAULT 0,
+  missing INTEGER NOT NULL DEFAULT 0,
+  trashed_at INTEGER,
+  -- 0 pending, 1 done, 2 failed
+  thumb INTEGER NOT NULL DEFAULT 0,
+  thumb_v INTEGER NOT NULL DEFAULT 0,
+  avg_color INTEGER,
+  thumbhash BLOB,
+  stats TEXT,
+  phash INTEGER,
+  problems INTEGER NOT NULL DEFAULT 0,
+  -- 0 seen, 1 new, 2 not checked yet
+  inbox INTEGER NOT NULL DEFAULT 0,
+  added_at INTEGER NOT NULL,
+  UNIQUE(root_id, rel_path)
+);
+CREATE INDEX assets_taken ON assets(taken_utc);
+CREATE INDEX assets_dir ON assets(root_id, dir);
+CREATE INDEX assets_quick ON assets(size, quick_hash);
+CREATE INDEX assets_blake3 ON assets(blake3);
+CREATE INDEX assets_category ON assets(category_id);
+CREATE INDEX assets_group ON assets(group_id);
+CREATE INDEX assets_thumb ON assets(thumb) WHERE thumb = 0;
+
+-- The values a file had when Roll first read it.
+CREATE TABLE asset_orig (
+  asset_id INTEGER PRIMARY KEY REFERENCES assets(id) ON DELETE CASCADE,
+  json TEXT NOT NULL
+);
+
+CREATE TABLE sidecars (
+  id INTEGER PRIMARY KEY,
+  root_id INTEGER NOT NULL REFERENCES roots(id) ON DELETE CASCADE,
+  rel_path TEXT NOT NULL,
+  asset_id INTEGER REFERENCES assets(id) ON DELETE SET NULL,
+  -- 'xmp', 'aae' or 'takeout'
+  kind TEXT NOT NULL,
+  size INTEGER NOT NULL,
+  mtime INTEGER NOT NULL,
+  UNIQUE(root_id, rel_path)
+);
+CREATE INDEX sidecars_asset ON sidecars(asset_id);
+
+CREATE TABLE tags (
+  id INTEGER PRIMARY KEY,
+  path TEXT NOT NULL UNIQUE COLLATE NOCASE
+);
+
+CREATE TABLE asset_tags (
+  asset_id INTEGER NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
+  tag_id INTEGER NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
+  source TEXT NOT NULL DEFAULT 'manual',
+  conf REAL,
+  PRIMARY KEY(asset_id, tag_id)
+);
+CREATE INDEX asset_tags_tag ON asset_tags(tag_id);
+
+CREATE TABLE events (
+  id INTEGER PRIMARY KEY,
+  name TEXT NOT NULL,
+  start_utc INTEGER,
+  end_utc INTEGER,
+  lat REAL,
+  lon REAL,
+  place TEXT,
+  -- 'proposed', 'confirmed' or 'dismissed'
+  state TEXT NOT NULL DEFAULT 'proposed',
+  own_folder INTEGER NOT NULL DEFAULT 1,
+  immich TEXT NOT NULL DEFAULT 'default',
+  immich_album_id TEXT,
+  created_at INTEGER NOT NULL
+);
+
+CREATE TABLE event_assets (
+  event_id INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+  asset_id INTEGER NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
+  PRIMARY KEY(event_id, asset_id)
+);
+CREATE INDEX event_assets_asset ON event_assets(asset_id);
+
+-- Provenance and undo for every editable field.
+CREATE TABLE field_history (
+  id INTEGER PRIMARY KEY,
+  asset_id INTEGER NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
+  field TEXT NOT NULL,
+  old TEXT,
+  new TEXT,
+  source TEXT NOT NULL,
+  source_ref TEXT,
+  conf REAL,
+  why TEXT,
+  batch_id INTEGER,
+  at INTEGER NOT NULL
+);
+CREATE INDEX field_history_asset ON field_history(asset_id, field);
+CREATE INDEX field_history_batch ON field_history(batch_id);
+
+-- The journal: a batch of file operations and their states.
+CREATE TABLE batches (
+  id INTEGER PRIMARY KEY,
+  kind TEXT NOT NULL,
+  label TEXT NOT NULL,
+  -- 'planned', 'applying', 'applied', 'undoing', 'undone', 'failed'
+  state TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  applied_at INTEGER,
+  undone_at INTEGER,
+  summary TEXT
+);
+
+CREATE TABLE ops (
+  id INTEGER PRIMARY KEY,
+  batch_id INTEGER NOT NULL REFERENCES batches(id) ON DELETE CASCADE,
+  seq INTEGER NOT NULL,
+  -- 'mkdir', 'move', 'copy', 'write_meta', 'trash', 'rmdir'
+  kind TEXT NOT NULL,
+  asset_id INTEGER,
+  src TEXT,
+  dst TEXT,
+  payload TEXT,
+  -- 'pending', 'performing', 'done', 'undoing', 'undone', 'failed', 'skipped'
+  state TEXT NOT NULL DEFAULT 'pending',
+  error TEXT
+);
+CREATE INDEX ops_batch ON ops(batch_id, seq);
+
+CREATE TABLE jobs (
+  id INTEGER PRIMARY KEY,
+  kind TEXT NOT NULL,
+  label TEXT NOT NULL,
+  -- 'queued', 'running', 'paused', 'done', 'failed', 'cancelled'
+  state TEXT NOT NULL,
+  priority INTEGER NOT NULL,
+  done INTEGER NOT NULL DEFAULT 0,
+  total INTEGER NOT NULL DEFAULT 0,
+  cost_usd REAL NOT NULL DEFAULT 0,
+  params TEXT,
+  error TEXT,
+  created_at INTEGER NOT NULL,
+  started_at INTEGER,
+  finished_at INTEGER
+);
+
+CREATE TABLE rules (
+  id INTEGER PRIMARY KEY,
+  key TEXT UNIQUE,
+  name TEXT NOT NULL,
+  enabled INTEGER NOT NULL DEFAULT 1,
+  priority INTEGER NOT NULL DEFAULT 100,
+  -- JSON: { "when": [conditions], "then": actions }
+  def TEXT NOT NULL,
+  builtin INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE saved_filters (
+  id INTEGER PRIMARY KEY,
+  name TEXT NOT NULL,
+  query TEXT NOT NULL,
+  sort INTEGER NOT NULL DEFAULT 0
+);
+
+INSERT INTO categories (key, name, definition, folder_template, immich_default, sort, builtin) VALUES
+ ('photos', 'Photos', 'Real-life photos and videos: people, places, events, things. Includes personal photos received from friends.', '{year}/Photos', 1, 1, 1),
+ ('screenshots', 'Screenshots', 'Screen captures and screen recordings from any device.', '{year}/Screenshots', 0, 2, 1),
+ ('memes', 'Memes', 'Made to be funny or shared: captions over images, reaction images, comics, joke formats, stickers, GIFs.', '{year}/Memes', 0, 3, 1),
+ ('social_media', 'Social media', 'Saved posts, stories, reels and pictures from apps and websites that are not memes: other people''s photos, outfits, recipes, products, news, quotes.', '{year}/Social media', 0, 4, 1),
+ ('wallpapers', 'Wallpapers', 'Backgrounds, digital art, AI-generated images and design assets with no personal content.', 'Wallpapers', 0, 5, 1),
+ ('documents', 'Documents', 'Photos or scans of paper, receipts, tickets, IDs, whiteboards, notes and labels, or a screen photographed for its text.', '{year}/Documents', 0, 6, 1),
+ ('junk', 'Junk', 'Accidental, black or very blurry shots, pocket shots, test shots, broken files.', '{year}/Junk', 0, 7, 1),
+ ('unsorted', 'Unsorted', 'Not decided yet.', NULL, 0, 8, 1);
+"#;
