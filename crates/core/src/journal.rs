@@ -514,7 +514,9 @@ mod tests {
         let s = plan_moves_only(&db);
         assert_eq!(s.undecided, 1, "unknown.jpg has no decision");
         assert_eq!(s.moved, 4);
-        assert_eq!(s.conflicts.len(), 1, "the case-only duplicate name gets a number");
+        // Case-only twins collide only on case-insensitive file systems.
+        let insensitive = cfg!(any(windows, target_os = "macos"));
+        assert_eq!(s.conflicts.len(), usize::from(insensitive), "the case-only duplicate name gets a number");
         apply(&db, &tools(), s.batch_id as i64, &|_, _| true).unwrap();
         let after = manifest(root);
         assert!(after.contains_key("2020/Screenshots/Screenshot_20200302-101500.png"), "{after:?}");
@@ -522,7 +524,7 @@ mod tests {
         // The case-only twin gets a number instead of overwriting.
         let twins = after.keys().filter(|k| k.to_lowercase().starts_with("2020/screenshots/screenshot_20200301-101500")).count();
         assert_eq!(twins, 2, "{after:?}");
-        assert!(after.keys().any(|k| k.contains(" (2).")), "{after:?}");
+        assert_eq!(after.keys().any(|k| k.contains(" (2).")), insensitive, "{after:?}");
         assert!(after.contains_key("Dump/notes.txt") && after.contains_key("Dump/unknown.jpg"));
         assert!(!root.join("Dump/Old").exists(), "emptied folder removed");
         // The database follows the files.
