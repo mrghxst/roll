@@ -28,6 +28,7 @@ import type { FolderNode } from './bindings/FolderNode';
 import type { JobInfo } from './bindings/JobInfo';
 import type { PlanOptions } from './bindings/PlanOptions';
 import type { PlanSummary } from './bindings/PlanSummary';
+import type { EventInfo } from './bindings/EventInfo';
 import type { PackStatus } from './bindings/PackStatus';
 import type { Query } from './bindings/Query';
 import type { RootInfo } from './bindings/RootInfo';
@@ -107,6 +108,17 @@ export interface Api {
   /** Asks for the folder with GeoNames files; null when cancelled. */
   installPlaces(): Promise<PlacesInfo | null>;
   placeSearch(query: string): Promise<PlaceHit[]>;
+  /** Detects events again, then lists proposed and confirmed ones. */
+  events(): Promise<EventInfo[]>;
+  /** Tags the items Event/<name>; a new name renames first. */
+  eventConfirm(id: number, name: string | null): Promise<void>;
+  eventRename(id: number, name: string): Promise<void>;
+  /** A proposed event is hidden; a confirmed one loses its tags. */
+  eventDismiss(id: number): Promise<void>;
+  eventMerge(ids: number[]): Promise<void>;
+  /** `at` and later items become a new event; false when `at` is first. */
+  eventSplit(id: number, at: number, name: string): Promise<boolean>;
+  eventOwnFolder(id: number, on: boolean): Promise<void>;
   /** Downloadable place names and models, with their state. */
   packs(): Promise<PackStatus[]>;
   /** Starts a download the owner has confirmed. */

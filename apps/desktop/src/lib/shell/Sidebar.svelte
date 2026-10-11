@@ -3,6 +3,7 @@
     Activity,
     AtSign,
     CalendarClock,
+    CalendarRange,
     Copy,
     Sparkles,
     ListChecks,
@@ -79,6 +80,7 @@
     {@render item('Timeline', Images, isScope('all'), () => goScope(ALL), undefined, 'nav-timeline')}
     {@render item('Folders', Folder, app.view === 'folders', () => goView('folders'), undefined, 'nav-folders')}
     {@render item('Map', Map, app.view === 'map', () => goView('map'), undefined, 'nav-map')}
+    {@render item('Events', CalendarRange, app.view === 'events', () => goView('events'), undefined, 'nav-events')}
 
     {#if !collapsed}<div class="section">Fix</div>{:else}<hr />{/if}
     {@render item('Review', ListChecks, app.view === 'review', () => goView('review'), app.counts.review, 'nav-review')}

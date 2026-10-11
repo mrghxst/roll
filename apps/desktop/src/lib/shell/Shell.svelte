@@ -9,6 +9,7 @@
   import History from '../views/History.svelte';
   import Dates from '../views/Dates.svelte';
   import Discover from '../views/Discover.svelte';
+  import Events from '../views/Events.svelte';
   import Duplicates from '../views/Duplicates.svelte';
   import Review from '../views/Review.svelte';
   import MapPage from '../views/MapPage.svelte';
@@ -125,6 +126,8 @@
           <Review />
         {:else if app.view === 'duplicates'}
           <Duplicates />
+        {:else if app.view === 'events'}
+          <Events />
         {:else if app.view === 'discover'}
           <Discover />
         {:else if app.view === 'places'}

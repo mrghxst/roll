@@ -101,6 +101,16 @@ Milestones from PROMPT.md section 10. `[x]` done, `[~]` partly done,
       Discover, smart time offset, OCR and the Private guard
 ## M5 Decision models and cost
 ## M6 Events, Immich, polish
+
+- [x] Events: detection (4 h / 12 h gaps, 50 km from home, 8 items,
+      trips merged, file-time and suspicious dates ignored), home from
+      night photos or the setting, names from the gazetteer; Events view
+      with confirm, rename, merge, split, dismiss and own folder, all
+      undoable; on the fixtures: Italy 2019, New York 2021, Lisbon 2022,
+      the Dolomites hike, Christmas 2018 at home
+- [ ] Immich sync (needs a test server: Docker), CLI export, guide
+- [ ] Add photos (4.11), Takeout and WhatsApp importers
+- [ ] Onboarding pass, accessibility, Windows installer, user docs
 ## M7 Later
 
 ## Next

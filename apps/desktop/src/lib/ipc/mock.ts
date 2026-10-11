@@ -15,6 +15,7 @@ import { emptyMapPoints, type MapPoints } from './mappoints';
 import type { Category } from './bindings/Category';
 import type { FolderNode } from './bindings/FolderNode';
 import type { JobInfo } from './bindings/JobInfo';
+import type { EventInfo } from './bindings/EventInfo';
 import type { PackStatus } from './bindings/PackStatus';
 import type { PlanSummary } from './bindings/PlanSummary';
 import type { Query } from './bindings/Query';
@@ -252,6 +253,91 @@ const packs: PackStatus[] = [
   pack('text-reader', 'Text in photos', 31_114_837, 'github.com', 'Apache-2.0'),
 ];
 const packTimers = new Map<string, ReturnType<typeof setInterval>>();
+
+// Events: quarters with 8 or more photos stand in for detection (the
+// mock library spreads its photos thinly over eleven years).
+interface MockEvent {
+  id: number;
+  name: string;
+  state: 'proposed' | 'confirmed' | 'dismissed';
+  ids: number[];
+  own_folder: boolean;
+  custom: boolean;
+  /** Merged or split by the owner: detection leaves it alone. */
+  shaped: boolean;
+}
+let mockEvents: MockEvent[] = [];
+let eventSeq = 0;
+const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+function detectEvents() {
+  const held = new Set(mockEvents.filter((e) => e.state !== 'proposed' || e.shaped).flatMap((e) => e.ids));
+  const byMonth = new Map<string, MockAsset[]>();
+  for (const a of assets) {
+    if (a.trashed || a.category !== 'photos' || held.has(a.id)) continue;
+    const k = `${a.local.slice(0, 4)}-${Math.floor((Number(a.local.slice(5, 7)) - 1) / 3)}`;
+    byMonth.set(k, [...(byMonth.get(k) ?? []), a]);
+  }
+  const old = new Map(mockEvents.filter((e) => e.state === 'proposed' && !e.shaped).map((e) => [e.ids[0], e]));
+  const next: MockEvent[] = mockEvents.filter((e) => e.state !== 'proposed' || e.shaped);
+  for (const [k, list] of byMonth) {
+    if (list.length < 8) continue;
+    list.sort((a, b) => a.utc - b.utc);
+    const located = list.find((a) => a.lat != null);
+    const place = located && placesInstalled ? ` ${nearest(located.lat!, located.lon!).name}` : '';
+    const prev = old.get(list[0]!.id);
+    next.push({
+      id: prev?.id ?? ++eventSeq,
+      name: prev?.custom ? prev.name : `${MONTH_NAMES[Number(list[0]!.local.slice(5, 7)) - 1]} ${k.slice(0, 4)}${place}`,
+      state: 'proposed',
+      ids: list.map((a) => a.id),
+      own_folder: true,
+      custom: prev?.custom ?? false,
+      shaped: false,
+    });
+  }
+  mockEvents = next;
+}
+
+function eventInfo(e: MockEvent): EventInfo {
+  const items = e.ids.map((id) => byId(id)).filter((a): a is MockAsset => !!a);
+  const step = Math.max(1, Math.floor(items.length / 8));
+  return {
+    id: e.id,
+    name: e.name,
+    state: e.state,
+    start_local: items[0]?.local ?? '',
+    end_local: items[items.length - 1]?.local ?? '',
+    count: items.length,
+    place: null,
+    away: (() => {
+      const located = items.filter((a) => a.lat != null);
+      const far = located.filter((a) => Math.hypot(a.lat! - 47.37, (a.lon! - 8.54) * 0.68) > 0.45);
+      return located.length > 0 && far.length * 2 > located.length;
+    })(),
+    own_folder: e.own_folder,
+    samples: items
+      .filter((_, i) => i % step === 0)
+      .slice(0, 8)
+      .map((a) => a.id),
+  };
+}
+
+function retagEvent(ids: number[], remove: string | null, add: string | null) {
+  for (const id of ids) {
+    const a = byId(id);
+    if (!a) continue;
+    if (remove) a.tags = a.tags.filter((t) => t !== `Event/${remove}`);
+    if (add && !a.tags.includes(`Event/${add}`)) a.tags.push(`Event/${add}`);
+  }
+  emit('changed', 'assets');
+}
+
+const eventById = (id: number) => {
+  const e = mockEvents.find((x) => x.id === id);
+  if (!e) throw new Error('This event is gone. Open Events again.');
+  return e;
+};
 let tracks: TrackInfo[] = [];
 const dismissed = new Set<string>();
 let dupePairs: number[][] | null = null;
@@ -281,7 +367,7 @@ function mockGroups(): PlaceGroup[] {
   const none = assets.filter((a) => !a.trashed && a.lat == null).sort((a, b) => (a.local < b.local ? -1 : 1));
   const byMonth = new Map<string, MockAsset[]>();
   for (const a of none) {
-    const k = a.local.slice(0, 7);
+    const k = `${a.local.slice(0, 4)}-${Math.floor((Number(a.local.slice(5, 7)) - 1) / 3)}`;
     byMonth.set(k, [...(byMonth.get(k) ?? []), a]);
   }
   return [...byMonth.entries()]
@@ -360,6 +446,7 @@ function filter(q: Query): MockAsset[] {
     if (a.trashed !== q.trashed) return false;
     if (q.min_rating != null && a.rating < q.min_rating) return false;
     if (q.tags.length && !q.tags.every((t) => a.tags.includes(t))) return false;
+    if (q.event_id != null && !mockEvents.find((e) => e.id === q.event_id)?.ids.includes(a.id)) return false;
     if (q.text && !a.name.toLowerCase().includes(q.text.toLowerCase())) return false;
     return true;
   });
@@ -852,6 +939,69 @@ export const mockApi: Api = {
     placesInstalled = true;
     emit('changed', 'places');
     return { installed: true, count: PLACES.length };
+  },
+  events: async () => {
+    detectEvents();
+    return mockEvents
+      .filter((e) => e.state !== 'dismissed')
+      .map(eventInfo)
+      .sort((a, b) => (a.start_local < b.start_local ? 1 : -1));
+  },
+  eventConfirm: async (id, name) => {
+    const e = eventById(id);
+    if (name) {
+      e.name = name;
+      e.custom = true;
+    }
+    e.state = 'confirmed';
+    retagEvent(e.ids, null, e.name);
+  },
+  eventRename: async (id, name) => {
+    const e = eventById(id);
+    if (e.state === 'confirmed') retagEvent(e.ids, e.name, name);
+    e.name = name;
+    e.custom = true;
+    emit('changed', 'assets');
+  },
+  eventDismiss: async (id) => {
+    const e = eventById(id);
+    if (e.state === 'confirmed') retagEvent(e.ids, e.name, null);
+    e.state = 'dismissed';
+    emit('changed', 'assets');
+  },
+  eventMerge: async (ids) => {
+    const list = ids.map(eventById).sort((a, b) => (byId(a.ids[0]!)?.utc ?? 0) - (byId(b.ids[0]!)?.utc ?? 0));
+    const [first, ...rest] = list;
+    if (!first) return;
+    const confirmed = list.find((e) => e.state === 'confirmed');
+    for (const e of rest) {
+      if (e.state === 'confirmed') retagEvent(e.ids, e.name, null);
+      first.ids.push(...e.ids);
+    }
+    mockEvents = mockEvents.filter((e) => !rest.includes(e));
+    first.ids.sort((a, b) => (byId(a)?.utc ?? 0) - (byId(b)?.utc ?? 0));
+    if (confirmed) {
+      first.name = confirmed.name;
+      first.state = 'confirmed';
+      retagEvent(first.ids, null, first.name);
+    }
+    first.custom = true;
+    first.shaped = true;
+    emit('changed', 'assets');
+  },
+  eventSplit: async (id, at, name) => {
+    const e = eventById(id);
+    const pos = e.ids.indexOf(at);
+    if (pos <= 0) return false;
+    const later = e.ids.splice(pos);
+    e.shaped = true;
+    mockEvents.push({ id: ++eventSeq, name, state: e.state, ids: later, own_folder: e.own_folder, custom: true, shaped: true });
+    if (e.state === 'confirmed') retagEvent(later, e.name, name);
+    emit('changed', 'assets');
+    return true;
+  },
+  eventOwnFolder: async (id, on) => {
+    eventById(id).own_folder = on;
   },
   packs: async () => packs.map((p) => ({ ...p })),
   downloadPack: async (id) => {

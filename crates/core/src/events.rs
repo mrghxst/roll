@@ -200,7 +200,8 @@ pub struct EventInfo {
 
 /// Photos that can form events: primaries in Photos (or its subcategories)
 /// with a capture date that is neither a file time nor suspicious (a
-/// camera reset to 2000-01-01), not yet in a confirmed or dismissed event.
+/// camera reset to 2000-01-01), not yet in a confirmed or dismissed event
+/// or in one the owner shaped (merged or split; those have no key).
 pub fn items(c: &Connection) -> rusqlite::Result<Vec<Item>> {
     let mut st = c.prepare(
         "SELECT a.id, a.taken_utc, a.taken_local, a.lat, a.lon FROM assets a JOIN categories cat ON cat.id = a.category_id
@@ -209,7 +210,7 @@ pub fn items(c: &Connection) -> rusqlite::Result<Vec<Item>> {
            AND (a.problems & ?1) = 0
            AND (cat.key = 'photos' OR cat.parent_id = (SELECT id FROM categories WHERE key = 'photos'))
            AND NOT EXISTS (SELECT 1 FROM event_assets ea JOIN events e ON e.id = ea.event_id
-                           WHERE ea.asset_id = a.id AND e.state IN ('confirmed', 'dismissed'))",
+                           WHERE ea.asset_id = a.id AND (e.state IN ('confirmed', 'dismissed') OR e.key IS NULL))",
     )?;
     st.query_map([crate::model::problem::NO_DATE | crate::model::problem::SUSPICIOUS_DATE], |r| {
         let (lat, lon): (Option<f64>, Option<f64>) = (r.get(3)?, r.get(4)?);
@@ -681,6 +682,9 @@ mod tests {
         // Merge back, then undo merge, split and confirm in turn.
         let mb = merge(&c, &[later, rome]).unwrap();
         assert_eq!(assets_of(&c, rome).unwrap().len(), 28);
+        // Detection leaves owner-shaped events alone.
+        refresh(&c, None, &place).unwrap();
+        assert_eq!(list(&c).unwrap().len(), 2);
         assert!(crate::tags::of_asset(&c, day12).unwrap().contains(&"Event/Rome with Anna".to_string()));
         for b in [mb, sb, batch] {
             crate::edits::undo_batch(&c, b).unwrap();
@@ -690,6 +694,16 @@ mod tests {
         assert_eq!(info(&c, rome).unwrap(), ("Rome with Anna".to_string(), "proposed".to_string()));
         assert!(crate::tags::of_asset(&c, day12).unwrap().iter().all(|t| !t.starts_with("Event/")));
         assert!(info(&c, later).is_err(), "the split-off event is gone again");
+
+        // Merging two suggestions holds: refreshing doesn't bring them back.
+        let zurich = list(&c).unwrap().iter().find(|e| e.name.contains("Zürich")).unwrap().id as i64;
+        let m = merge(&c, &[rome, zurich]).unwrap();
+        refresh(&c, None, &place).unwrap();
+        assert_eq!(list(&c).unwrap().len(), 1);
+        crate::edits::undo_batch(&c, m).unwrap();
+        undo(&c, m).unwrap();
+        refresh(&c, None, &place).unwrap();
+        assert_eq!(list(&c).unwrap().len(), 2);
 
         dismiss(&c, rome).unwrap();
         refresh(&c, None, &place).unwrap();
