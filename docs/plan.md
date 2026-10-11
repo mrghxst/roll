@@ -70,11 +70,27 @@ Milestones from PROMPT.md section 10. `[x]` done, `[~]` partly done,
 - [ ] Opt-in online detail tiles (OpenFreeMap), place names download with
       consent (with the M4 pack manager), event centroids (M6)
 ## M4 Local AI
+
+- [x] Review: proposals per category, most doubtful first, keys 1–9, X,
+      Enter, Space, Z; accept all at 95% or higher; 1% audit with a
+      precision estimate
+- [x] Duplicates: exact (BLAKE3 on same-size candidates), smaller copies of
+      camera photos, look-alikes (dHash), bursts; keep-best and merge
+- [x] Discover by source signature (the 854×1590 fixtures form one
+      cluster); assign, new category, split by folder, ignore
+- [x] Search: FTS5 index and the deterministic parser, chips on Enter,
+      under 300 ms on 100k
+- [ ] Pack manager (consent, size, SHA-256) and downloads: needs the
+      owner's go-ahead to download model files
+- [ ] SigLIP 2 embeddings (GPU and CPU), semantic search with RRF,
+      zero-shot and learned classifiers, Teach, embedding clusters in
+      Discover, smart time offset, OCR and the Private guard
 ## M5 Decision models and cost
 ## M6 Events, Immich, polish
 ## M7 Later
 
 ## Next
 
-M4: the pack manager, SigLIP 2 embeddings, search, classifiers, Review,
-Teach and Discover, duplicates, OCR and the Private guard.
+M4 models: waiting for the owner's go-ahead to download SigLIP 2, OCR
+models and ONNX Runtime. Meanwhile: the pack manager and the Private
+guard's text patterns (card numbers, IBANs, passport lines).
