@@ -127,6 +127,8 @@ pub fn run() {
             commands::review_summary,
             commands::review_items,
             commands::accept_above,
+            commands::discover,
+            commands::discover_ignore,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Roll");

@@ -946,6 +946,17 @@ impl Library {
         Ok(n)
     }
 
+    // Discover
+
+    pub fn discover(&self, split: Option<&str>) -> anyhow::Result<Vec<crate::discover::Cluster>> {
+        Ok(crate::discover::clusters(&self.db.read(), split)?)
+    }
+
+    pub fn discover_ignore(&self, key: &str) -> anyhow::Result<()> {
+        crate::discover::ignore(&self.db.write(), key)?;
+        Ok(())
+    }
+
     // Duplicates
 
     pub fn dupe_groups(&self) -> anyhow::Result<Vec<crate::dupes::DupeGroup>> {

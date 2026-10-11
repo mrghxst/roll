@@ -7,6 +7,7 @@ use roll_core::Library;
 use roll_core::actions::EditAction;
 use roll_core::categories::CategoryPatch;
 use roll_core::datefix::{Candidate, DateFix, DatePreview, DateSet};
+use roll_core::discover::Cluster;
 use roll_core::dupes::DupeGroup;
 use roll_core::library::PlacesInfo;
 use roll_core::model::*;
@@ -486,4 +487,17 @@ pub async fn review_items(state: State<'_, AppState>, key: String, limit: i64) -
 pub async fn accept_above(state: State<'_, AppState>, key: String, min: f32) -> Res<usize> {
     let lib = state.lib.clone();
     blocking(move || lib.accept_above(&key, min)).await
+}
+
+// Discover
+
+#[tauri::command]
+pub async fn discover(state: State<'_, AppState>, split: Option<String>) -> Res<Vec<Cluster>> {
+    let lib = state.lib.clone();
+    blocking(move || lib.discover(split.as_deref())).await
+}
+
+#[tauri::command]
+pub fn discover_ignore(state: State<AppState>, key: String) -> Res<()> {
+    state.lib.discover_ignore(&key).map_err(e)
 }

@@ -52,3 +52,14 @@ test('merges duplicates and dismisses a group', async ({ page }) => {
   await groups.first().getByRole('button', { name: 'Not duplicates' }).click();
   await expect(groups).toHaveCount(before - 2);
 });
+
+test('assigns a Discover cluster in one decision', async ({ page }) => {
+  await page.getByTestId('nav-discover').click();
+  const clusters = page.getByTestId('clusters').locator(':scope > li');
+  await expect(clusters.first()).toBeVisible();
+  const before = await clusters.count();
+  await clusters.first().getByTestId('assign-cluster').click();
+  await page.getByRole('menuitem', { name: 'Memes' }).click();
+  await expect(page.getByTestId('toast')).toContainText(/Moved \d+ items to Memes/);
+  await expect(clusters).toHaveCount(before - 1);
+});

@@ -72,6 +72,8 @@ export const tauriApi: Api = {
   reviewSummary: () => invoke('review_summary'),
   reviewItems: (key, limit) => invoke('review_items', { key, limit }),
   acceptAbove: (key, min) => invoke('accept_above', { key, min }),
+  discover: (split) => invoke('discover', { split }),
+  discoverIgnore: (key) => invoke('discover_ignore', { key }),
   dupeGroups: () => invoke('dupe_groups'),
   mergeDupes: (keep, others) => invoke('merge_dupes', { keep, others }),
   on<K extends keyof Events>(event: K, cb: Events[K]) {

@@ -7,6 +7,7 @@ pub mod classify;
 pub mod datefix;
 pub mod dates;
 pub mod db;
+pub mod discover;
 pub mod dupes;
 pub mod edits;
 pub mod fsops;

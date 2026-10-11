@@ -8,6 +8,7 @@ import type { Candidate } from './bindings/Candidate';
 import type { DateFix } from './bindings/DateFix';
 import type { DatePreview } from './bindings/DatePreview';
 import type { DateSet } from './bindings/DateSet';
+import type { Cluster } from './bindings/Cluster';
 import type { DupeGroup } from './bindings/DupeGroup';
 import type { ReviewItem } from './bindings/ReviewItem';
 import type { ReviewSummary } from './bindings/ReviewSummary';
@@ -119,6 +120,9 @@ export interface Api {
   /** A category key or "audit"; most doubtful first. */
   reviewItems(key: string, limit: number): Promise<ReviewItem[]>;
   acceptAbove(key: string, min: number): Promise<number>;
+  /** Clusters of undecided items; `split` breaks one up by folder. */
+  discover(split: string | null): Promise<Cluster[]>;
+  discoverIgnore(key: string): Promise<void>;
   dupeGroups(): Promise<DupeGroup[]>;
   /** Keep one, move the others to Roll's trash. */
   mergeDupes(keep: number, others: number[]): Promise<number>;

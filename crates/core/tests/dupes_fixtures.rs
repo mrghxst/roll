@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use roll_core::dates::FixedTz;
 use roll_core::db::Db;
 use roll_core::thumbs::{self, ThumbStore};
-use roll_core::{classify, dupes, groups, rules, scan};
+use roll_core::{classify, discover, dupes, groups, rules, scan};
 use serde_json::Value;
 
 fn noop(_: &str, _: usize, _: usize) {}
@@ -71,4 +71,19 @@ fn fixture_duplicates_are_grouped() {
             g.ids.iter().map(|id| db.read().query_row("SELECT rel_path FROM assets WHERE id = ?1", [id], |r| r.get(0)).unwrap()).collect();
         eprintln!("similar: {names:?}");
     }
+
+    // Discover: the 24 screenshots-of-an-app at 854×1590 form one cluster.
+    let sig: Vec<i32> = manifest["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|i| i["flags"].as_array().unwrap().iter().any(|f| f == "signature_854x1590"))
+        .map(|i| id_of(i["path"].as_str().unwrap().strip_prefix("library/").unwrap()))
+        .collect();
+    assert_eq!(sig.len(), 24);
+    let clusters = discover::clusters(&db.read(), None).unwrap();
+    let holding: Vec<&discover::Cluster> = clusters.iter().filter(|c| sig.iter().any(|id| c.ids.contains(id))).collect();
+    assert_eq!(holding.len(), 1, "{clusters:#?}");
+    assert!(sig.iter().all(|id| holding[0].ids.contains(id)));
+    assert_eq!(holding[0].count, 24, "only the signature fixtures: {:?}", holding[0]);
 }

@@ -913,6 +913,28 @@ export const mockApi: Api = {
       a.review = 3;
       return true;
     }),
+  discover: async (split) => {
+    const pool = assets.filter((a) => !a.trashed && a.review < 2 && a.category !== 'photos');
+    const bySig = new Map<string, MockAsset[]>();
+    for (const a of pool) {
+      const k = split ? `${split}|${a.dir}` : `jpeg:${Math.round(a.aspect * 100)}:nocam:q`;
+      if (split && !split.startsWith('jpeg:')) continue;
+      bySig.set(k, [...(bySig.get(k) ?? []), a]);
+    }
+    return [...bySig.entries()]
+      .filter(([k, v]) => (split ? true : v.length >= 5) && !dismissed.has(k))
+      .sort((a, b) => b[1].length - a[1].length)
+      .slice(0, 8)
+      .map(([key, v]) => ({
+        key,
+        label: split ? `Same size, in ${key.split('|')[1]}` : `${Math.round(1000 * v[0]!.aspect)} × 1000 JPEG, no camera data, one encoder`,
+        count: v.length,
+        samples: v.slice(0, 12).map((a) => a.id),
+        ids: v.map((a) => a.id),
+        proposed: v[0]!.category,
+      }));
+  },
+  discoverIgnore: async (key) => void dismissed.add(key),
   dupeGroups: async () => {
     // Fixed pairs, chosen once, so merging one group leaves the others.
     if (!dupePairs) {
