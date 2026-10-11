@@ -122,4 +122,22 @@ fn dates_and_places_on_fixtures() {
     // (unit tests cover items without one).
     let ids: Vec<i64> = covered.iter().map(|(rel, _)| id_of(rel)).collect();
     assert!(places::zone_proposals(&db.read(), &ids).unwrap().is_empty());
+
+    // M6: events. With dates and places fixed and rules applied, the trips
+    // come out as events named after their place.
+    roll_core::rules::seed(&db.write()).unwrap();
+    roll_core::classify::run(&db.write(), None).unwrap();
+    let open = |n: &str| std::io::BufReader::new(std::fs::File::open(root.join("geonames").join(n)).unwrap());
+    let gaz = roll_geo::gazetteer::build(open("cities500.txt"), open("admin1CodesASCII.txt"), open("countryInfo.txt")).unwrap();
+    let place = |pts: &[(f64, f64)]| roll_core::events::common_place(pts, &gaz);
+    db.tx(|tx| roll_core::events::refresh(tx, None, &place)).unwrap();
+    let events = roll_core::events::list(&db.read()).unwrap();
+    let summary: Vec<(String, i32, bool)> = events.iter().map(|e| (e.name.clone(), e.count, e.away)).collect();
+    let has = |name: &str, min: i32| summary.iter().any(|(n, c, away)| n == name && *c >= min && *away);
+    assert!(has("July 2022 Trentino-Alto Adige", 500), "{summary:?}");
+    assert!(has("May 2022 Lisbon", 16), "{summary:?}");
+    assert!(has("June 2021 United States", 40), "{summary:?}");
+    assert!(has("August 2019 Italy", 90), "{summary:?}");
+    assert!(summary.iter().any(|(n, c, away)| n == "December 2018" && *c == 10 && !away), "{summary:?}");
+    assert!(!summary.iter().any(|(n, _, _)| n.contains("2000")), "reset camera clocks form no event: {summary:?}");
 }

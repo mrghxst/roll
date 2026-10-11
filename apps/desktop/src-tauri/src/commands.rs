@@ -9,6 +9,7 @@ use roll_core::categories::CategoryPatch;
 use roll_core::datefix::{Candidate, DateFix, DatePreview, DateSet};
 use roll_core::discover::Cluster;
 use roll_core::dupes::DupeGroup;
+use roll_core::events::EventInfo;
 use roll_core::library::PlacesInfo;
 use roll_core::model::*;
 use roll_core::packs::PackStatus;
@@ -537,4 +538,46 @@ pub async fn cancel_pack(state: State<'_, AppState>, id: String) -> Res<()> {
 pub async fn remove_pack(state: State<'_, AppState>, id: String) -> Res<()> {
     let lib = state.lib.clone();
     blocking(move || lib.remove_pack(&id)).await
+}
+
+#[tauri::command]
+pub async fn events(state: State<'_, AppState>) -> Res<Vec<EventInfo>> {
+    let lib = state.lib.clone();
+    blocking(move || lib.events()).await
+}
+
+#[tauri::command]
+pub async fn event_confirm(state: State<'_, AppState>, id: i64, name: Option<String>) -> Res<()> {
+    let lib = state.lib.clone();
+    blocking(move || lib.event_confirm(id, name.as_deref())).await
+}
+
+#[tauri::command]
+pub async fn event_rename(state: State<'_, AppState>, id: i64, name: String) -> Res<()> {
+    let lib = state.lib.clone();
+    blocking(move || lib.event_rename(id, &name)).await
+}
+
+#[tauri::command]
+pub async fn event_dismiss(state: State<'_, AppState>, id: i64) -> Res<()> {
+    let lib = state.lib.clone();
+    blocking(move || lib.event_dismiss(id)).await
+}
+
+#[tauri::command]
+pub async fn event_merge(state: State<'_, AppState>, ids: Vec<i64>) -> Res<()> {
+    let lib = state.lib.clone();
+    blocking(move || lib.event_merge(&ids)).await
+}
+
+#[tauri::command]
+pub async fn event_split(state: State<'_, AppState>, id: i64, at: i64, name: String) -> Res<bool> {
+    let lib = state.lib.clone();
+    blocking(move || lib.event_split(id, at, &name)).await
+}
+
+#[tauri::command]
+pub async fn event_own_folder(state: State<'_, AppState>, id: i64, on: bool) -> Res<()> {
+    let lib = state.lib.clone();
+    blocking(move || lib.event_own_folder(id, on)).await
 }

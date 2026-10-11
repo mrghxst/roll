@@ -316,6 +316,7 @@ pub fn undo(db: &Db, tools: &Tools, batch: i64, check: Check) -> anyhow::Result<
     if kind.as_deref() != Some("organize") {
         db.tx(|tx| {
             report.done = crate::edits::undo_batch(tx, batch)?.len();
+            crate::events::undo(tx, batch)?;
             tx.execute("UPDATE batches SET state = 'undone', undone_at = ?2 WHERE id = ?1", params![batch, now_ms()])?;
             Ok(())
         })?;

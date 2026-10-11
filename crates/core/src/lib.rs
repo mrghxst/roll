@@ -11,6 +11,7 @@ pub mod discover;
 pub mod dupes;
 pub mod edits;
 pub mod embeddings;
+pub mod events;
 pub mod fsops;
 pub mod groups;
 pub mod jobs;

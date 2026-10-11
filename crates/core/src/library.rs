@@ -1071,6 +1071,68 @@ impl Library {
         Ok(())
     }
 
+    // Events
+
+    /// Detect again, then list proposed and confirmed events.
+    pub fn events(&self) -> anyhow::Result<Vec<crate::events::EventInfo>> {
+        let home = self.settings().home.filter(|h| h.len() == 2).map(|h| (h[0], h[1]));
+        let gaz = self.gaz();
+        let place = |pts: &[(f64, f64)]| gaz.as_deref().and_then(|g| crate::events::common_place(pts, g));
+        self.db.tx(|tx| crate::events::refresh(tx, home, &place))?;
+        Ok(crate::events::list(&self.db.read())?)
+    }
+
+    /// One event action as an undoable batch; refreshes what shows tags.
+    fn event_action<T>(&self, f: impl FnOnce(&rusqlite::Transaction) -> rusqlite::Result<T>, ids: &[i64]) -> anyhow::Result<T> {
+        let out = self.db.tx_any(|tx| f(tx).map_err(anyhow::Error::from))?;
+        self.reindex(ids);
+        self.emit(LibEvent::Changed("assets"));
+        self.emit(LibEvent::Changed("history"));
+        Ok(out)
+    }
+
+    fn event_items(&self, ids: &[i64]) -> Vec<i64> {
+        let c = self.db.read();
+        ids.iter().flat_map(|id| crate::events::assets_of(&c, *id).unwrap_or_default()).collect()
+    }
+
+    pub fn event_confirm(&self, id: i64, name: Option<&str>) -> anyhow::Result<()> {
+        let items = self.event_items(&[id]);
+        self.event_action(|tx| crate::events::confirm(tx, id, name), &items)?;
+        Ok(())
+    }
+
+    pub fn event_rename(&self, id: i64, name: &str) -> anyhow::Result<()> {
+        anyhow::ensure!(!name.trim().is_empty(), "An event needs a name");
+        let items = self.event_items(&[id]);
+        self.event_action(|tx| crate::events::rename(tx, id, name), &items)?;
+        Ok(())
+    }
+
+    pub fn event_dismiss(&self, id: i64) -> anyhow::Result<()> {
+        let items = self.event_items(&[id]);
+        self.event_action(|tx| crate::events::dismiss(tx, id), &items)?;
+        Ok(())
+    }
+
+    pub fn event_merge(&self, ids: &[i64]) -> anyhow::Result<()> {
+        anyhow::ensure!(ids.len() >= 2, "Choose at least two events to merge");
+        let items = self.event_items(ids);
+        self.event_action(|tx| crate::events::merge(tx, ids), &items)?;
+        Ok(())
+    }
+
+    /// Returns false when `at` is the first item (nothing to split off).
+    pub fn event_split(&self, id: i64, at: i64, name: &str) -> anyhow::Result<bool> {
+        let items = self.event_items(&[id]);
+        Ok(self.event_action(|tx| crate::events::split(tx, id, at, name), &items)?.is_some())
+    }
+
+    pub fn event_own_folder(&self, id: i64, on: bool) -> anyhow::Result<()> {
+        crate::events::set_own_folder(&self.db.write(), id, on)?;
+        Ok(())
+    }
+
     // Duplicates
 
     pub fn dupe_groups(&self) -> anyhow::Result<Vec<crate::dupes::DupeGroup>> {

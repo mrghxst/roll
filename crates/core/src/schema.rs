@@ -1,6 +1,6 @@
 //! Database migrations. Append only: never edit a shipped migration.
 
-pub const MIGRATIONS: &[&str] = &[M1, M2, M3, M4, M5];
+pub const MIGRATIONS: &[&str] = &[M1, M2, M3, M4, M5, M6];
 
 const M1: &str = r#"
 CREATE TABLE settings (
@@ -331,5 +331,20 @@ CREATE TABLE ocr (
   -- Share of the image covered by text boxes, 0–1.
   area REAL NOT NULL DEFAULT 0,
   at INTEGER NOT NULL
+);
+"#;
+
+/// M6: events keep their detection key and whether the owner named them;
+/// event actions keep the rows they change, for undo.
+const M6: &str = r#"
+ALTER TABLE events ADD COLUMN key TEXT;
+ALTER TABLE events ADD COLUMN custom_name INTEGER NOT NULL DEFAULT 0;
+CREATE TABLE event_undo (
+  batch_id INTEGER NOT NULL,
+  event_id INTEGER NOT NULL,
+  -- The event as JSON before the batch; NULL when the batch created it.
+  row TEXT,
+  assets TEXT NOT NULL,
+  PRIMARY KEY (batch_id, event_id)
 );
 "#;
