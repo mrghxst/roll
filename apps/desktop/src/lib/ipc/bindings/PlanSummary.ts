@@ -2,4 +2,8 @@
 import type { PlanConflict } from "./PlanConflict";
 import type { PlanFolder } from "./PlanFolder";
 
-export type PlanSummary = { batch_id: number, moved: number, renamed: number, unchanged: number, undecided: number, writes: number, new_folders: number, files: number, conflicts: Array<PlanConflict>, folders: Array<PlanFolder>, };
+export type PlanSummary = { batch_id: number, moved: number, renamed: number, unchanged: number, undecided: number, 
+/**
+ * Private items that stay until the owner has reviewed them.
+ */
+private_held: number, writes: number, new_folders: number, files: number, conflicts: Array<PlanConflict>, folders: Array<PlanFolder>, };

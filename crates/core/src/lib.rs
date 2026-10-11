@@ -20,6 +20,7 @@ pub mod packs;
 pub mod paths;
 pub mod places;
 pub mod planner;
+pub mod privacy;
 pub mod query;
 pub mod review;
 pub mod rules;

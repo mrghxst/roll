@@ -680,9 +680,14 @@ export const mockApi: Api = {
     const folders = new Map<string, { count: number; samples: number[] }>();
     let undecided = 0;
     let unchanged = 0;
+    let privateHeld = 0;
     for (const a of live) {
       if (a.category === 'unsorted') {
         undecided++;
+        continue;
+      }
+      if (a.flags & Flag.PRIVATE && a.review < 3) {
+        privateHeld++;
         continue;
       }
       const dir = targetDir(a);
@@ -704,6 +709,7 @@ export const mockApi: Api = {
       renamed: options.rename ? moved : 0,
       unchanged,
       undecided,
+      private_held: privateHeld,
       writes,
       new_folders: folders.size,
       files: moved,

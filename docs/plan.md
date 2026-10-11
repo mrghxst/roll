@@ -87,6 +87,11 @@ Milestones from PROMPT.md section 10. `[x]` done, `[~]` partly done,
       checksum check; Settings › Models and data; place names download
       from the Places page (tested against a local server)
 - [ ] First real downloads: waiting for the owner's go-ahead
+- [x] Private guard, text part: Luhn-valid card numbers, IBANs (mod 97),
+      passport and ID machine-readable lines (check digits); marks items
+      Private with a reason that never repeats the number; the owner's own
+      "not private" wins; Organize holds Private items until reviewed.
+      Runs on descriptions now and on OCR text once the reader is in
 - [ ] SigLIP 2 embeddings (GPU and CPU), semantic search with RRF,
       zero-shot and learned classifiers, Teach, embedding clusters in
       Discover, smart time offset, OCR and the Private guard
@@ -98,5 +103,5 @@ Milestones from PROMPT.md section 10. `[x]` done, `[~]` partly done,
 
 M4 models: waiting for the owner's go-ahead to download SigLIP 2 (1.4 GB),
 PP-OCRv6 small (30 MB) and GeoNames (13 MB) through the pack manager, and
-ONNX Runtime with the `ort` crate. Meanwhile: the Private guard's text
-patterns (card numbers, IBANs, passport lines) and the embedding store.
+ONNX Runtime with the `ort` crate. Meanwhile: the embedding store and
+search ranking (RRF) that the model will feed.

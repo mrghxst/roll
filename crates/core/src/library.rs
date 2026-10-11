@@ -174,6 +174,7 @@ impl Library {
                 let (report, touched) = scan::scan_root(&self.db, *root_id, &root, &self.tz, !first, &progress)?;
                 groups::rebuild(&self.db, *root_id)?;
                 classify::run(&self.db.write(), Some(&touched))?;
+                crate::privacy::guard_descriptions(&self.db.write(), Some(&touched))?;
                 self.reindex(&touched);
                 self.emit(LibEvent::Scanned(report));
                 self.emit(LibEvent::Changed("assets"));
@@ -198,7 +199,8 @@ impl Library {
             }
             JobSpec::Classify => {
                 let out = classify::run(&self.db.write(), None)?;
-                if out != classify::Outcome::default() {
+                let marked = crate::privacy::guard_descriptions(&self.db.write(), None)?;
+                if out != classify::Outcome::default() || marked > 0 {
                     self.emit(LibEvent::Changed("assets"));
                 }
                 Ok(())

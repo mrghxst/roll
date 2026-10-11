@@ -153,3 +153,10 @@ questions. One line of reason each. Newest at the bottom of each section.
   vectored handler: vectored handlers also see first-chance exceptions that
   libraries catch on purpose. The report is written synchronously because
   the log writer's thread may not run again.
+- **Private guard reasons never repeat what was found.** History says
+  "Payment card number ending 4242" or "Machine-readable lines of a
+  passport", so the database, the logs and an exported history hold no
+  card, account or passport numbers. A passport name line alone (`P<UTO…`
+  with `<<` fillers) counts, because OCR often loses the second line.
+- **Private items move only after review** (review state 3, which a
+  manual category sets). The plan counts them as "Private, not reviewed".

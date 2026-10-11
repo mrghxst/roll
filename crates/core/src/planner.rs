@@ -60,6 +60,8 @@ pub struct PlanSummary {
     pub renamed: i32,
     pub unchanged: i32,
     pub undecided: i32,
+    /// Private items that stay until the owner has reviewed them.
+    pub private_held: i32,
     pub writes: i32,
     pub new_folders: i32,
     pub files: i32,
@@ -77,6 +79,7 @@ struct Item {
     primary: bool,
     category: Option<String>,
     review: i64,
+    private: bool,
     local: Option<String>,
     camera: Option<String>,
     dirty: bool,
@@ -163,7 +166,8 @@ pub fn plan(c: &Connection, opts: &PlanOptions) -> anyhow::Result<PlanSummary> {
     };
     let items: Vec<Item> = {
         let mut st = c.prepare(
-            "SELECT a.id, a.root_id, a.rel_path, a.name, a.group_id, a.group_role, c.key, a.review, a.taken_local, coalesce(a.model, a.make), a.meta_dirty
+            "SELECT a.id, a.root_id, a.rel_path, a.name, a.group_id, a.group_role, c.key, a.review, a.taken_local, coalesce(a.model, a.make), a.meta_dirty,
+                    a.private
              FROM assets a JOIN roots r ON r.id = a.root_id AND r.kind = 'library' LEFT JOIN categories c ON c.id = a.category_id
              WHERE a.missing = 0 AND a.trashed_at IS NULL",
         )?;
@@ -180,6 +184,7 @@ pub fn plan(c: &Connection, opts: &PlanOptions) -> anyhow::Result<PlanSummary> {
                 local: r.get(8)?,
                 camera: r.get(9)?,
                 dirty: r.get::<_, i64>(10)? != 0,
+                private: r.get::<_, i64>(11)? != 0,
             })
         })?
         .collect::<Result<_, _>>()?
@@ -244,6 +249,11 @@ pub fn plan(c: &Connection, opts: &PlanOptions) -> anyhow::Result<PlanSummary> {
         let decided = i.review >= 2 && i.category.as_deref().is_some_and(|k| k != "unsorted");
         if !decided {
             summary.undecided += 1;
+            continue;
+        }
+        // Private items move only after the owner looked at them.
+        if members.iter().any(|m| m.private) && i.review < 3 {
+            summary.private_held += 1;
             continue;
         }
         let key = i.category.clone().unwrap_or_default();
@@ -471,6 +481,28 @@ pub fn csv(c: &Connection, batch: i64) -> rusqlite::Result<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn private_items_wait_for_review() {
+        let db = crate::db::Db::memory().unwrap();
+        let c = db.write();
+        let a = crate::testutil::insert_asset(&c, "in/a.png");
+        let b = crate::testutil::insert_asset(&c, "in/b.png");
+        c.execute(
+            "UPDATE assets SET review = 2, taken_local = '2020-05-01T10:00:00',
+               category_id = (SELECT id FROM categories WHERE key = 'screenshots')",
+            [],
+        )
+        .unwrap();
+        c.execute("UPDATE assets SET private = 1 WHERE id = ?1", [b]).unwrap();
+        let s = plan(&c, &PlanOptions::default()).unwrap();
+        assert_eq!((s.moved, s.private_held), (1, 1));
+        assert_eq!(s.folders.len(), 1);
+        let _ = a;
+        c.execute("UPDATE assets SET review = 3 WHERE id = ?1", [b]).unwrap();
+        let s = plan(&c, &PlanOptions::default()).unwrap();
+        assert_eq!((s.moved, s.private_held), (2, 0));
+    }
 
     #[test]
     fn sidecar_names_follow() {

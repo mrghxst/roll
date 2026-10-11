@@ -78,6 +78,7 @@
           ['Renamed', plan.renamed],
           ['Unchanged', plan.unchanged],
           ['Without a category', plan.undecided],
+          ['Private, not reviewed', plan.private_held],
           ['Metadata saves', plan.writes],
           ['New folders', plan.new_folders],
         ]
@@ -150,6 +151,11 @@
       </dl>
       {#if plan.undecided}
         <p class="muted small">Items without a category stay where they are. Review them, then preview again.</p>
+      {/if}
+      {#if plan.private_held}
+        <p class="muted small">
+          Private items move only after you have looked at them. Open them from the Private filter, set their category, then preview again.
+        </p>
       {/if}
 
       {#if plan.conflicts.length}
