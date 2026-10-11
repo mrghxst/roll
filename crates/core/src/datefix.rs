@@ -114,7 +114,9 @@ pub fn sets(c: &Connection, now_ms: i64) -> rusqlite::Result<Vec<DateSet>> {
         })?
         .filter_map(|row| {
             let (id, make, model, serial, local, utc, offset, problems, dir) = row.ok()?;
-            let label = if model.to_lowercase().starts_with(&make.to_lowercase()) || make.is_empty() {
+            // "NIKON CORPORATION" + "NIKON D750" reads as "NIKON D750".
+            let brand = make.split_whitespace().next().unwrap_or("").to_lowercase();
+            let label = if make.is_empty() || (!brand.is_empty() && model.to_lowercase().starts_with(&brand)) {
                 model.clone()
             } else {
                 format!("{make} {model}")
@@ -705,7 +707,7 @@ mod tests {
         add(&c, "Dump/IMG_1001.JPG", "Apple", "iPhone XS", "2019-08-03T09:06:57", Some(120));
         let s = sets(&c, i64::MAX).unwrap();
         assert_eq!(s.len(), 1, "phones without problems are not listed: {s:?}");
-        assert_eq!(s[0].label, "NIKON CORPORATION NIKON D750");
+        assert_eq!(s[0].label, "NIKON D750");
         assert!(s[0].reasons[0].contains("The folder says 2019"), "{:?}", s[0].reasons);
 
         let fix = DateFix {

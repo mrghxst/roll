@@ -59,3 +59,29 @@ session. To check:
 
 Needs a local test Immich in Docker, which is not installed on this
 machine yet.
+
+## M3 Dates, places, map
+
+Automated in `crates/core/tests/places_acceptance.rs` on the fixture
+library:
+
+- **Camera set +1 y 2 h.** The NIKON D750 set is listed with "The folder
+  says 2019, but the photos are dated 2020". One reference with its true
+  time and zone shifts the set by −1 y 2 h; every wrong-clock photo lands on
+  its true local time to the second.
+- **500 photos from one GPX.** Importing `dolomites-hike-2022-07-16.gpx`
+  gives one suggestion with all 500 Sony photos; accepting it places every
+  one within 150 m of its true position.
+- **Home time zone.** The Canon set on home time is flagged against the
+  phones' UTC−4.
+
+In the real app (2026-10-11, driven over WebView2's DevTools port with the
+fixture library): Dates opens on the NIKON set; picking a photo, typing its
+true time, choosing UTC+2 and pressing Fix fixed 32 items (28 photos and 4
+RAW partners), four actions in all. The map shows the fixture clusters
+(New York, Lisbon, Lake Garda) with thumbnail pins and no console errors.
+
+UI tests (`e2e/places.spec.ts`, mock backend): map pins and tray, drag
+and drop onto the map, accepting a suggestion with the time zone
+follow-up, "Set location…" by search and by coordinates, "Change date…",
+and the four-step camera fix. Map speed: docs/benchmarks.md.
