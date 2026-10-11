@@ -10,6 +10,7 @@ pub mod db;
 pub mod discover;
 pub mod dupes;
 pub mod edits;
+pub mod embeddings;
 pub mod fsops;
 pub mod groups;
 pub mod jobs;

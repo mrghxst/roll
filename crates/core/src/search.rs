@@ -18,7 +18,7 @@ pub fn fts_match(text: &str) -> Option<String> {
     (!words.is_empty()).then(|| words.join(" "))
 }
 
-/// id, name, folder, lat, lon, description, camera, tags.
+/// id, name, folder, lat, lon, description and OCR text, camera, tags.
 type IndexRow = (i64, String, String, Option<f64>, Option<f64>, String, String, Option<String>);
 
 /// Rebuild the index rows of `ids`, or of every item.
@@ -38,7 +38,9 @@ pub fn reindex(c: &Connection, ids: Option<&[i64]>, place: &dyn Fn(f64, f64) -> 
         }
     }
     let mut st = c.prepare(&format!(
-        "SELECT a.id, a.name, a.dir, a.lat, a.lon, coalesce(a.description, ''), coalesce(a.make, '') || ' ' || coalesce(a.model, ''),
+        "SELECT a.id, a.name, a.dir, a.lat, a.lon,
+                coalesce(a.description, '') || ' ' || coalesce((SELECT o.text FROM ocr o WHERE o.asset_id = a.id), ''),
+                coalesce(a.make, '') || ' ' || coalesce(a.model, ''),
                 (SELECT group_concat(t.path, ' ') FROM asset_tags at JOIN tags t ON t.id = at.tag_id WHERE at.asset_id = a.id)
          FROM assets a {filter}"
     ))?;

@@ -77,3 +77,9 @@ about 17 ms. The CI test asserts a looser 34 ms because CI has no GPU.
 
 The metadata index took 62 s in this run against 10.7 s earlier; the stress
 files were not in the operating system's file cache this time.
+
+## Vector search
+
+`cargo test -p roll-ai --release -- --ignored --nocapture`: brute force
+over 100,000 normalized 768-dimension rows (SigLIP 2 B/16 size), top 200,
+on the owner's PC (rayon, all cores): 12 ms.

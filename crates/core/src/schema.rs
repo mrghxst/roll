@@ -1,6 +1,6 @@
 //! Database migrations. Append only: never edit a shipped migration.
 
-pub const MIGRATIONS: &[&str] = &[M1, M2, M3, M4];
+pub const MIGRATIONS: &[&str] = &[M1, M2, M3, M4, M5];
 
 const M1: &str = r#"
 CREATE TABLE settings (
@@ -310,5 +310,26 @@ const M4: &str = r#"
 CREATE VIRTUAL TABLE fts USING fts5(
   name, folder, tags, place, body,
   tokenize = 'unicode61 remove_diacritics 2'
+);
+"#;
+
+/// M4: image embeddings (f16, one row per item and model) and OCR text.
+const M5: &str = r#"
+CREATE TABLE embeddings (
+  asset_id INTEGER NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
+  model TEXT NOT NULL,
+  dim INTEGER NOT NULL,
+  vec BLOB NOT NULL,
+  at INTEGER NOT NULL,
+  PRIMARY KEY (asset_id, model)
+);
+CREATE INDEX embeddings_model ON embeddings(model);
+CREATE TABLE ocr (
+  asset_id INTEGER PRIMARY KEY REFERENCES assets(id) ON DELETE CASCADE,
+  model TEXT NOT NULL,
+  text TEXT NOT NULL,
+  -- Share of the image covered by text boxes, 0–1.
+  area REAL NOT NULL DEFAULT 0,
+  at INTEGER NOT NULL
 );
 "#;

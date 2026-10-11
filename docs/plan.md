@@ -92,6 +92,10 @@ Milestones from PROMPT.md section 10. `[x]` done, `[~]` partly done,
       Private with a reason that never repeats the number; the owner's own
       "not private" wins; Organize holds Private items until reviewed.
       Runs on descriptions now and on OCR text once the reader is in
+- [x] Embedding store (f16 in SQLite), in-memory brute-force index
+      (100k × 768 in 12 ms), hybrid ranking: FTS5 BM25 plus image
+      similarity fused with RRF, filters applied to both; OCR text table
+      feeding the search index
 - [ ] SigLIP 2 embeddings (GPU and CPU), semantic search with RRF,
       zero-shot and learned classifiers, Teach, embedding clusters in
       Discover, smart time offset, OCR and the Private guard
@@ -103,5 +107,5 @@ Milestones from PROMPT.md section 10. `[x]` done, `[~]` partly done,
 
 M4 models: waiting for the owner's go-ahead to download SigLIP 2 (1.4 GB),
 PP-OCRv6 small (30 MB) and GeoNames (13 MB) through the pack manager, and
-ONNX Runtime with the `ort` crate. Meanwhile: the embedding store and
-search ranking (RRF) that the model will feed.
+ONNX Runtime with the `ort` crate. The store and ranking they feed are
+ready.
