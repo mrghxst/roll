@@ -55,6 +55,9 @@ interface MockAsset {
   trashed: boolean;
   /** Changed in the library but not yet saved to the file. */
   dirty: boolean;
+  /** 1 proposed, 2 auto-accepted, 3 decided by the owner. */
+  review: number;
+  conf: number;
 }
 
 let CATS: [string, string][] = [
@@ -104,6 +107,8 @@ function makeAssets(n: number): MockAsset[] {
       tags: [],
       trashed: false,
       dirty: false,
+      review: r() > 0.6 ? 1 : 2,
+      conf: 0.5 + r() * 0.5,
     });
   }
   out.sort((a, b) => (a.local < b.local ? 1 : a.local > b.local ? -1 : b.id - a.id));
@@ -198,7 +203,7 @@ function change(kind: string, label: string, ids: number[], fn: (a: MockAsset) =
   for (const id of ids) {
     const a = byId(id);
     if (!a) continue;
-    const snap = { category: a.category, flags: a.flags, rating: a.rating, tags: [...a.tags], trashed: a.trashed, dirty: a.dirty, aspect: a.aspect, local: a.local, utc: a.utc, lat: a.lat, lon: a.lon };
+    const snap = { category: a.category, flags: a.flags, rating: a.rating, tags: [...a.tags], trashed: a.trashed, dirty: a.dirty, aspect: a.aspect, local: a.local, utc: a.utc, lat: a.lat, lon: a.lon, review: a.review };
     if (fn(a)) {
       before.set(id, snap);
       if (dirty) a.dirty = true;
@@ -227,6 +232,7 @@ const PLACES: PlaceHit[] = [
 let placesInstalled = setup;
 let tracks: TrackInfo[] = [];
 const dismissed = new Set<string>();
+let dupePairs: number[][] | null = null;
 
 const fmtLocal = (ms: number) => new Date(ms).toISOString().slice(0, 19);
 const parseLocal = (s: string) => Date.parse(`${s}Z`);
@@ -524,11 +530,11 @@ export const mockApi: Api = {
   counts: async () => ({
     total: assets.length,
     inbox: 0,
-    review: Math.min(48, assets.length),
+    review: assets.filter((a) => !a.trashed && a.review === 1).length,
     date_issues: 12,
     no_location: assets.filter((a) => a.lat == null).length,
     trash: assets.filter((a) => a.trashed).length,
-    duplicates: 0,
+    duplicates: 20,
   }),
   facets: async (q) => {
     const list = filter(q);
@@ -576,8 +582,15 @@ export const mockApi: Api = {
       case 'category':
         return change('edit', action.key ? `Move ${items} to ${name(action.key)}` : `Mark ${items} as unsorted`, ids, (a) => {
           const k = action.key ?? 'unsorted';
-          if (a.category === k) return false;
+          if (a.category === k && a.review === 3) return false;
           a.category = k;
+          a.review = k === 'unsorted' ? 0 : 3;
+          return true;
+        });
+      case 'accept':
+        return change('edit', `Accept ${items}`, ids, (a) => {
+          if (a.review === 3) return false;
+          a.review = 3;
           return true;
         });
       case 'add_tag':
@@ -874,6 +887,49 @@ export const mockApi: Api = {
       flags: Uint16Array.from(list.map((a) => a.flags & (Flag.VIDEO | Flag.FAVORITE))),
     };
   },
+  reviewSummary: async () => {
+    const live = assets.filter((a) => !a.trashed);
+    const proposed = live.filter((a) => a.review === 1);
+    const tabs = CATS.map(([key, name]) => ({ key, name, count: proposed.filter((a) => a.category === key).length })).filter((t) => t.count > 0);
+    tabs.sort((a, b) => b.count - a.count);
+    return {
+      reviewed: live.filter((a) => a.review === 3).length,
+      auto_accepted: live.filter((a) => a.review === 2).length,
+      left: proposed.length,
+      tabs,
+      precision: null,
+      margin: null,
+      audited: 0,
+    };
+  },
+  reviewItems: async (key, limit) =>
+    assets
+      .filter((a) => !a.trashed && a.review === 1 && a.category === key)
+      .sort((a, b) => a.conf - b.conf)
+      .slice(0, limit)
+      .map((a) => ({ id: a.id, conf: a.conf, why: `${CATS.find((c) => c[0] === a.category)?.[1]}, because of camera data in the file.`, thumb_v: 1 })),
+  acceptAbove: async (key, min) =>
+    change('edit', 'Accept proposals', assets.filter((a) => a.review === 1 && a.category === key && a.conf >= min).map((a) => a.id), (a) => {
+      a.review = 3;
+      return true;
+    }),
+  dupeGroups: async () => {
+    // Fixed pairs, chosen once, so merging one group leaves the others.
+    if (!dupePairs) {
+      const photos = assets.filter((a) => !a.trashed && a.category === 'photos');
+      dupePairs = [];
+      for (let i = 0; i + 1 < Math.min(photos.length, 40); i += 4) dupePairs.push([photos[i]!.id, photos[i + 1]!.id]);
+    }
+    return dupePairs
+      .filter((ids) => ids.every((id) => !byId(id)?.trashed))
+      .map((ids, i) => ({ key: `exact:${ids.join(',')}`, kind: i % 2 === 0 ? 'exact' : 'copy', ids, why: i % 2 === 0 ? 'Identical; the first one found.' : 'The original camera file.' }))
+      .filter((g) => !dismissed.has(g.key));
+  },
+  mergeDupes: async (keep, others) =>
+    change('edit', `Merge ${plural(others.length)}`, others.filter((o) => o !== keep), (a) => {
+      a.trashed = true;
+      return true;
+    }),
   on(event, cb) {
     listeners[event].add(cb as never);
     return () => listeners[event].delete(cb as never);

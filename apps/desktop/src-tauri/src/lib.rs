@@ -122,6 +122,11 @@ pub fn run() {
             commands::set_location,
             commands::apply_zone,
             commands::map_points,
+            commands::dupe_groups,
+            commands::merge_dupes,
+            commands::review_summary,
+            commands::review_items,
+            commands::accept_above,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Roll");

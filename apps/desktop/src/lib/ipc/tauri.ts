@@ -69,6 +69,11 @@ export const tauriApi: Api = {
     invoke('set_location', { ids, lat: place?.lat ?? null, lon: place?.lon ?? null, accuracyM: place?.accuracy_m ?? null, name: place?.name ?? null }),
   applyZone: (ids, offsetMin, zone) => invoke('apply_zone', { ids, offsetMin, zone }),
   mapPoints: async (query) => decodeMapPoints(await invoke<ArrayBuffer>('map_points', { query })),
+  reviewSummary: () => invoke('review_summary'),
+  reviewItems: (key, limit) => invoke('review_items', { key, limit }),
+  acceptAbove: (key, min) => invoke('accept_above', { key, min }),
+  dupeGroups: () => invoke('dupe_groups'),
+  mergeDupes: (keep, others) => invoke('merge_dupes', { keep, others }),
   on<K extends keyof Events>(event: K, cb: Events[K]) {
     const un = listen(event, (e) => (cb as (p: unknown) => void)(e.payload));
     return () => void un.then((f) => f());

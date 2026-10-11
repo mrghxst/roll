@@ -8,6 +8,9 @@ import type { Candidate } from './bindings/Candidate';
 import type { DateFix } from './bindings/DateFix';
 import type { DatePreview } from './bindings/DatePreview';
 import type { DateSet } from './bindings/DateSet';
+import type { DupeGroup } from './bindings/DupeGroup';
+import type { ReviewItem } from './bindings/ReviewItem';
+import type { ReviewSummary } from './bindings/ReviewSummary';
 import type { LocationResult } from './bindings/LocationResult';
 import type { PlaceGroup } from './bindings/PlaceGroup';
 import type { PlaceHit } from './bindings/PlaceHit';
@@ -95,8 +98,8 @@ export interface Api {
   /** Returns how many items changed. */
   dateApply(fix: DateFix): Promise<number>;
   dateCandidates(ids: number[]): Promise<Candidate[]>;
-  /** Hide a place suggestion ("place") or a date set ("date"). */
-  dismiss(kind: 'place' | 'date', key: string): Promise<void>;
+  /** Hide a place suggestion, a date set or a duplicate group. */
+  dismiss(kind: 'place' | 'date' | 'dupe', key: string): Promise<void>;
   placesInfo(): Promise<PlacesInfo>;
   /** Asks for the folder with GeoNames files; null when cancelled. */
   installPlaces(): Promise<PlacesInfo | null>;
@@ -112,6 +115,13 @@ export interface Api {
   setLocation(ids: number[], place: { lat: number; lon: number; accuracy_m: number; name: string | null } | null): Promise<LocationResult>;
   applyZone(ids: number[], offsetMin: number, zone: string): Promise<number>;
   mapPoints(query: Query): Promise<MapPoints>;
+  reviewSummary(): Promise<ReviewSummary>;
+  /** A category key or "audit"; most doubtful first. */
+  reviewItems(key: string, limit: number): Promise<ReviewItem[]>;
+  acceptAbove(key: string, min: number): Promise<number>;
+  dupeGroups(): Promise<DupeGroup[]>;
+  /** Keep one, move the others to Roll's trash. */
+  mergeDupes(keep: number, others: number[]): Promise<number>;
   on<K extends keyof Events>(event: K, cb: Events[K]): () => void;
   thumbUrl(id: number, v: number): string;
   previewUrl(id: number, v: number): string;

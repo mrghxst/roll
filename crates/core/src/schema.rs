@@ -1,6 +1,6 @@
 //! Database migrations. Append only: never edit a shipped migration.
 
-pub const MIGRATIONS: &[&str] = &[M1, M2];
+pub const MIGRATIONS: &[&str] = &[M1, M2, M3];
 
 const M1: &str = r#"
 CREATE TABLE settings (
@@ -292,4 +292,15 @@ CREATE TABLE dismissed (
   PRIMARY KEY (kind, key)
 );
 CREATE INDEX assets_camera ON assets(make, model, serial);
+"#;
+
+/// M4: audits of auto-accepted decisions, for the precision estimate.
+const M3: &str = r#"
+CREATE TABLE audits (
+  asset_id INTEGER PRIMARY KEY REFERENCES assets(id) ON DELETE CASCADE,
+  -- The category Roll decided, and whether the owner agreed.
+  category_key TEXT NOT NULL,
+  ok INTEGER,
+  at INTEGER NOT NULL
+);
 "#;

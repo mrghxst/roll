@@ -24,6 +24,8 @@
       { group: 'Go to', title: 'Timeline', run: () => app.go('timeline', ALL) },
       { group: 'Go to', title: 'Folders', run: () => app.go('folders') },
       { group: 'Go to', title: 'Map', run: () => app.go('map') },
+      { group: 'Go to', title: 'Review', run: () => app.go('review') },
+      { group: 'Go to', title: 'Duplicates', run: () => app.go('duplicates') },
       { group: 'Go to', title: 'Fix dates', run: () => app.go('dates') },
       { group: 'Go to', title: 'Fix places', run: () => app.go('places') },
       { group: 'Go to', title: 'Organize', run: () => app.go('organize') },

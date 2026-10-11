@@ -8,6 +8,8 @@
   import Folders from '../views/Folders.svelte';
   import History from '../views/History.svelte';
   import Dates from '../views/Dates.svelte';
+  import Duplicates from '../views/Duplicates.svelte';
+  import Review from '../views/Review.svelte';
   import MapPage from '../views/MapPage.svelte';
   import Places from '../views/Places.svelte';
   import Organize from '../views/Organize.svelte';
@@ -117,6 +119,10 @@
           <MapPage />
         {:else if app.view === 'dates'}
           <Dates />
+        {:else if app.view === 'review'}
+          <Review />
+        {:else if app.view === 'duplicates'}
+          <Duplicates />
         {:else if app.view === 'places'}
           <Places />
         {/if}

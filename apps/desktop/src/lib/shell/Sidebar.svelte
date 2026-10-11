@@ -3,6 +3,8 @@
     Activity,
     AtSign,
     CalendarClock,
+    Copy,
+    ListChecks,
     Ban,
     CircleDashed,
     FileText,
@@ -78,6 +80,8 @@
     {@render item('Map', Map, app.view === 'map', () => goView('map'), undefined, 'nav-map')}
 
     {#if !collapsed}<div class="section">Fix</div>{:else}<hr />{/if}
+    {@render item('Review', ListChecks, app.view === 'review', () => goView('review'), app.counts.review, 'nav-review')}
+    {@render item('Duplicates', Copy, app.view === 'duplicates', () => goView('duplicates'), app.counts.duplicates, 'nav-duplicates')}
     {@render item('Dates', CalendarClock, app.view === 'dates', () => goView('dates'), app.counts.date_issues, 'nav-dates')}
     {@render item('Places', MapPin, app.view === 'places', () => goView('places'), app.counts.no_location, 'nav-places')}
 

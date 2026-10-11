@@ -7,10 +7,12 @@ use roll_core::Library;
 use roll_core::actions::EditAction;
 use roll_core::categories::CategoryPatch;
 use roll_core::datefix::{Candidate, DateFix, DatePreview, DateSet};
+use roll_core::dupes::DupeGroup;
 use roll_core::library::PlacesInfo;
 use roll_core::model::*;
 use roll_core::places::{LocationResult, PlaceGroup, PlaceHit, TrackInfo};
 use roll_core::planner::{PlanOptions, PlanSummary};
+use roll_core::review::{ReviewItem, ReviewSummary};
 use roll_core::rules::Rule;
 use roll_core::settings::Settings;
 use tauri::State;
@@ -450,4 +452,38 @@ pub async fn apply_zone(state: State<'_, AppState>, ids: Vec<i64>, offset_min: i
 pub async fn map_points(state: State<'_, AppState>, query: Query) -> Res<Response> {
     let lib = state.lib.clone();
     blocking(move || lib.map_points(&query)).await.map(Response::new)
+}
+
+// Duplicates
+
+#[tauri::command]
+pub async fn dupe_groups(state: State<'_, AppState>) -> Res<Vec<DupeGroup>> {
+    let lib = state.lib.clone();
+    blocking(move || lib.dupe_groups()).await
+}
+
+#[tauri::command]
+pub async fn merge_dupes(state: State<'_, AppState>, keep: i64, others: Vec<i64>) -> Res<usize> {
+    let lib = state.lib.clone();
+    blocking(move || lib.merge_dupes(keep, &others)).await
+}
+
+// Review
+
+#[tauri::command]
+pub async fn review_summary(state: State<'_, AppState>) -> Res<ReviewSummary> {
+    let lib = state.lib.clone();
+    blocking(move || lib.review_summary()).await
+}
+
+#[tauri::command]
+pub async fn review_items(state: State<'_, AppState>, key: String, limit: i64) -> Res<Vec<ReviewItem>> {
+    let lib = state.lib.clone();
+    blocking(move || lib.review_items(&key, limit)).await
+}
+
+#[tauri::command]
+pub async fn accept_above(state: State<'_, AppState>, key: String, min: f32) -> Res<usize> {
+    let lib = state.lib.clone();
+    blocking(move || lib.accept_above(&key, min)).await
 }

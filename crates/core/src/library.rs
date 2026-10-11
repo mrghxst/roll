@@ -55,6 +55,8 @@ pub struct Library {
     gazetteer: Mutex<Option<Option<Arc<Gazetteer>>>>,
     /// The last computed place suggestions, by group key.
     place_cache: Mutex<crate::places::ByGroup>,
+    /// Items in duplicate groups, from the last time they were computed.
+    dupe_count: std::sync::atomic::AtomicI64,
 }
 
 /// Whether the offline place names are installed.
@@ -93,6 +95,7 @@ impl Library {
             watcher: Mutex::new(None),
             gazetteer: Mutex::new(None),
             place_cache: Mutex::new(Default::default()),
+            dupe_count: std::sync::atomic::AtomicI64::new(-1),
         }))
     }
 
@@ -157,6 +160,7 @@ impl Library {
                 self.emit(LibEvent::Scanned(report));
                 self.emit(LibEvent::Changed("assets"));
                 self.jobs.enqueue(JobSpec::Thumbs)?;
+                self.jobs.enqueue(JobSpec::Hash)?;
                 Ok(())
             }
             JobSpec::Thumbs => {
@@ -218,7 +222,11 @@ impl Library {
         let todo: Vec<(i64, PathBuf)> = {
             let c = self.db.read();
             let mut st = c.prepare(
-                "SELECT a.id, r.path, a.rel_path FROM assets a JOIN roots r ON r.id = a.root_id WHERE a.blake3 IS NULL AND a.missing = 0",
+                // Exact copies share size and quick hash: only those need a
+                // full read.
+                "SELECT a.id, r.path, a.rel_path FROM assets a JOIN roots r ON r.id = a.root_id
+                 WHERE a.blake3 IS NULL AND a.missing = 0
+                   AND EXISTS (SELECT 1 FROM assets b WHERE b.size = a.size AND b.quick_hash = a.quick_hash AND b.id != a.id AND b.missing = 0)",
             )?;
             st.query_map([], |r| Ok((r.get(0)?, join_rel(Path::new(&r.get::<_, String>(1)?), &r.get::<_, String>(2)?))))?
                 .collect::<Result<_, _>>()?
@@ -499,9 +507,12 @@ impl Library {
                 "SELECT count(*) FROM assets WHERE {live} AND lat IS NULL AND (category_id IS NULL OR category_id = (SELECT id FROM categories WHERE key = 'photos'))"
             ))?,
             trash: one("SELECT count(*) FROM assets WHERE trashed_at IS NOT NULL AND missing = 0")?,
-            duplicates: one(&format!(
-                "SELECT count(*) FROM assets WHERE {live} AND blake3 IS NOT NULL AND blake3 IN (SELECT blake3 FROM assets WHERE missing = 0 AND trashed_at IS NULL AND blake3 IS NOT NULL GROUP BY blake3 HAVING count(*) > 1)"
-            ))?,
+            duplicates: match self.dupe_count.load(std::sync::atomic::Ordering::Relaxed) {
+                n if n >= 0 => n as i32,
+                _ => one(&format!(
+                    "SELECT count(*) FROM assets WHERE {live} AND blake3 IS NOT NULL AND blake3 IN (SELECT blake3 FROM assets WHERE missing = 0 AND trashed_at IS NULL AND blake3 IS NOT NULL GROUP BY blake3 HAVING count(*) > 1)"
+                ))?,
+            },
         })
     }
 
@@ -671,7 +682,13 @@ impl Library {
     // Edits, plans and history
 
     pub fn edit(&self, ids: &[i64], action: &EditAction) -> anyhow::Result<usize> {
-        let (_, n) = self.db.tx(|tx| actions::apply(tx, ids, action))?;
+        let (_, n) = self.db.tx(|tx| {
+            let out = actions::apply(tx, ids, action)?;
+            if matches!(action, EditAction::Category { .. } | EditAction::Accept) {
+                crate::review::record_audits(tx, ids)?;
+            }
+            Ok(out)
+        })?;
         if matches!(action, EditAction::Rotate { .. }) && n > 0 {
             self.jobs.enqueue(JobSpec::Thumbs)?;
         }
@@ -907,6 +924,40 @@ impl Library {
             }
             Ok(n)
         })?;
+        self.emit(LibEvent::Changed("assets"));
+        self.emit(LibEvent::Changed("history"));
+        Ok(n)
+    }
+
+    // Review
+
+    pub fn review_summary(&self) -> anyhow::Result<crate::review::ReviewSummary> {
+        Ok(crate::review::summary(&self.db.write())?)
+    }
+
+    pub fn review_items(&self, key: &str, limit: i64) -> anyhow::Result<Vec<crate::review::ReviewItem>> {
+        Ok(crate::review::items(&self.db.read(), key, limit)?)
+    }
+
+    pub fn accept_above(&self, key: &str, min: f32) -> anyhow::Result<usize> {
+        let n = self.db.tx(|tx| crate::review::accept_above(tx, key, min))?;
+        self.emit(LibEvent::Changed("assets"));
+        self.emit(LibEvent::Changed("history"));
+        Ok(n)
+    }
+
+    // Duplicates
+
+    pub fn dupe_groups(&self) -> anyhow::Result<Vec<crate::dupes::DupeGroup>> {
+        let g = crate::dupes::groups(&self.db.read())?;
+        let n: usize = g.iter().map(|g| g.ids.len()).sum();
+        self.dupe_count.store(n as i64, std::sync::atomic::Ordering::Relaxed);
+        Ok(g)
+    }
+
+    /// Keep one item, send the others to Roll's trash. Returns how many.
+    pub fn merge_dupes(&self, keep: i64, others: &[i64]) -> anyhow::Result<usize> {
+        let (_, n) = self.db.tx(|tx| crate::dupes::merge(tx, keep, others))?;
         self.emit(LibEvent::Changed("assets"));
         self.emit(LibEvent::Changed("history"));
         Ok(n)
