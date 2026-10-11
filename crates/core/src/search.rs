@@ -18,6 +18,9 @@ pub fn fts_match(text: &str) -> Option<String> {
     (!words.is_empty()).then(|| words.join(" "))
 }
 
+/// id, name, folder, lat, lon, description, camera, tags.
+type IndexRow = (i64, String, String, Option<f64>, Option<f64>, String, String, Option<String>);
+
 /// Rebuild the index rows of `ids`, or of every item.
 pub fn reindex(c: &Connection, ids: Option<&[i64]>, place: &dyn Fn(f64, f64) -> Option<String>) -> rusqlite::Result<usize> {
     let filter = match ids {
@@ -39,7 +42,7 @@ pub fn reindex(c: &Connection, ids: Option<&[i64]>, place: &dyn Fn(f64, f64) -> 
                 (SELECT group_concat(t.path, ' ') FROM asset_tags at JOIN tags t ON t.id = at.tag_id WHERE at.asset_id = a.id)
          FROM assets a {filter}"
     ))?;
-    let rows: Vec<(i64, String, String, Option<f64>, Option<f64>, String, String, Option<String>)> = st
+    let rows: Vec<IndexRow> = st
         .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?, r.get(6)?, r.get(7)?)))?
         .collect::<Result<_, _>>()?;
     let mut ins = c.prepare("INSERT INTO fts (rowid, name, folder, tags, place, body) VALUES (?1, ?2, ?3, ?4, ?5, ?6)")?;
