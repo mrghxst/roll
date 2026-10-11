@@ -25,3 +25,4 @@ tracing-subscriber = { version = "0.3.23", features = ["fmt"] }
 tauri = { version = "2.12.3", features = [] }
 tauri-plugin-dialog = "2.8.2"
 tauri-plugin-opener = "2.7.1"
+roll-geo.workspace = true

@@ -41,17 +41,30 @@
         <p class="muted">No date</p>
       {/if}
       {#each why('date') as w (w.text)}<p class="why">{w.text}</p>{/each}
+      <div class="links"><button onclick={() => detail && (app.dating = [detail.id])}>Change date…</button></div>
     </section>
 
     <section>
       <h3>Place</h3>
       {#if detail.lat != null && detail.lon != null}
+        {#if detail.place}<p>{detail.place}</p>{/if}
         <p class="mono">{coords(detail.lat, detail.lon)}</p>
         {#if detail.loc_acc}<p class="muted mono">{accuracy(detail.loc_acc)}</p>{/if}
       {:else}
         <p class="muted">No location</p>
       {/if}
       {#each why('location') as w (w.text)}<p class="why">{w.text}</p>{/each}
+      <div class="links">
+        <button onclick={() => detail && (app.locating = [detail.id])}>{detail.lat != null ? 'Change' : 'Set location…'}</button>
+        {#if detail.lat != null && detail.lon != null}
+          <button
+            onclick={() => {
+              if (detail?.lat != null && detail.lon != null)
+                app.copiedPlace = { lat: detail.lat, lon: detail.lon, accuracy_m: detail.loc_acc ?? 10, label: detail.place ?? coords(detail.lat, detail.lon) };
+            }}>Copy</button
+          >
+        {/if}
+      </div>
     </section>
 
     {#if camera || detail.lens}
@@ -202,6 +215,24 @@
     height: 22px;
     padding: 0 4px;
     font-size: var(--t12);
+  }
+  .links {
+    display: flex;
+    gap: 10px;
+    margin-top: 4px;
+  }
+  .links button {
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--muted);
+    font-size: var(--t12);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    cursor: pointer;
+  }
+  .links button:hover {
+    color: var(--fg);
   }
   .rating {
     margin-top: 4px;

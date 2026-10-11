@@ -112,6 +112,38 @@ pub fn delete_track(c: &Connection, id: i64) -> rusqlite::Result<()> {
     Ok(())
 }
 
+/// A search result for "Set location…".
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct PlaceHit {
+    pub label: String,
+    pub name: String,
+    /// "city", "region" or "country"; pasted coordinates are "city".
+    pub kind: String,
+    pub lat: f64,
+    pub lon: f64,
+    pub accuracy_m: f64,
+}
+
+impl From<roll_geo::gazetteer::Hit> for PlaceHit {
+    fn from(h: roll_geo::gazetteer::Hit) -> Self {
+        let kind = match h.kind {
+            roll_geo::gazetteer::Kind::City => "city",
+            roll_geo::gazetteer::Kind::Region => "region",
+            roll_geo::gazetteer::Kind::Country => "country",
+        };
+        PlaceHit { label: h.label, name: h.name, kind: kind.into(), lat: h.lat, lon: h.lon, accuracy_m: h.accuracy_m }
+    }
+}
+
+/// What setting places did, and the time zones to offer next.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct LocationResult {
+    pub count: i32,
+    pub zones: Vec<ZoneProposal>,
+}
+
 /// A group of items that get the same kind of suggestion.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]

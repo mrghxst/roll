@@ -8,6 +8,7 @@
 //! ExifTool (`ROLL_EXIFTOOL`, `PATH`, or the Windows per-user install).
 
 mod exifblock;
+mod geonames;
 mod heif;
 mod library;
 mod manifest;
@@ -61,6 +62,7 @@ fn main() -> Result<()> {
         let mut g = library::Gen::new(out.clone(), ffmpeg, &exiftool)?;
         library::generate(&mut g)?;
         let manifest = g.finish()?;
+        geonames::write(&out.join("geonames"))?;
         std::fs::write(out.join("manifest.json"), serde_json::to_string_pretty(&manifest)?)?;
         println!("Wrote {} files to {} in {:.1} s", manifest.items.len(), out.display(), started.elapsed().as_secs_f32());
     }

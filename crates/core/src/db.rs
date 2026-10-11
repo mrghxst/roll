@@ -91,6 +91,15 @@ impl Db {
         self.readers[start % self.readers.len()].lock()
     }
 
+    /// Like [`Db::tx`] for work that fails with other errors too.
+    pub fn tx_any<T>(&self, f: impl FnOnce(&rusqlite::Transaction) -> anyhow::Result<T>) -> anyhow::Result<T> {
+        let mut c = self.write();
+        let tx = c.transaction()?;
+        let out = f(&tx)?;
+        tx.commit()?;
+        Ok(out)
+    }
+
     /// Run `f` in a write transaction.
     pub fn tx<T>(&self, f: impl FnOnce(&rusqlite::Transaction) -> DbResult<T>) -> DbResult<T> {
         let mut c = self.write();

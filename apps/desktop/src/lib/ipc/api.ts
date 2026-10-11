@@ -4,6 +4,16 @@
 import type { AppInfo } from './bindings/AppInfo';
 import type { AssetDetail } from './bindings/AssetDetail';
 import type { BatchInfo } from './bindings/BatchInfo';
+import type { Candidate } from './bindings/Candidate';
+import type { DateFix } from './bindings/DateFix';
+import type { DatePreview } from './bindings/DatePreview';
+import type { DateSet } from './bindings/DateSet';
+import type { LocationResult } from './bindings/LocationResult';
+import type { PlaceGroup } from './bindings/PlaceGroup';
+import type { PlaceHit } from './bindings/PlaceHit';
+import type { PlacesInfo } from './bindings/PlacesInfo';
+import type { TrackInfo } from './bindings/TrackInfo';
+import type { MapPoints } from './mappoints';
 import type { Category } from './bindings/Category';
 import type { CategoryPatch } from './bindings/CategoryPatch';
 import type { Counts } from './bindings/Counts';
@@ -80,6 +90,28 @@ export interface Api {
   rules(): Promise<Rule[]>;
   saveRule(rule: Rule): Promise<number>;
   deleteRule(id: number): Promise<void>;
+  dateSets(): Promise<DateSet[]>;
+  datePreview(fix: DateFix): Promise<DatePreview>;
+  /** Returns how many items changed. */
+  dateApply(fix: DateFix): Promise<number>;
+  dateCandidates(ids: number[]): Promise<Candidate[]>;
+  /** Hide a place suggestion ("place") or a date set ("date"). */
+  dismiss(kind: 'place' | 'date', key: string): Promise<void>;
+  placesInfo(): Promise<PlacesInfo>;
+  /** Asks for the folder with GeoNames files; null when cancelled. */
+  installPlaces(): Promise<PlacesInfo | null>;
+  placeSearch(query: string): Promise<PlaceHit[]>;
+  placeName(lat: number, lon: number): Promise<string | null>;
+  tracks(): Promise<TrackInfo[]>;
+  /** Asks for files to import; empty when cancelled. */
+  importTracks(): Promise<TrackInfo[]>;
+  deleteTrack(id: number): Promise<void>;
+  placeGroups(): Promise<PlaceGroup[]>;
+  acceptPlaces(key: string): Promise<LocationResult>;
+  /** A place for the items, or null to clear it. */
+  setLocation(ids: number[], place: { lat: number; lon: number; accuracy_m: number; name: string | null } | null): Promise<LocationResult>;
+  applyZone(ids: number[], offsetMin: number, zone: string): Promise<number>;
+  mapPoints(query: Query): Promise<MapPoints>;
   on<K extends keyof Events>(event: K, cb: Events[K]): () => void;
   thumbUrl(id: number, v: number): string;
   previewUrl(id: number, v: number): string;

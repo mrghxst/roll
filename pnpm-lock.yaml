@@ -220,6 +220,9 @@ importers:
       '@types/topojson-client':
         specifier: 3.1.5
         version: 3.1.5
+      '@types/topojson-specification':
+        specifier: 1.0.5
+        version: 1.0.5
       svelte:
         specifier: 5.57.2
         version: 5.57.2

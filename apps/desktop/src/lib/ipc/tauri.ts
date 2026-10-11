@@ -2,6 +2,7 @@ import { convertFileSrc, invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import type { Api, Events } from './api';
+import { decodeMapPoints } from './mappoints';
 import { decodeTimeline } from './timeline';
 
 const url = (path: string) => convertFileSrc(path, 'roll');
@@ -50,6 +51,24 @@ export const tauriApi: Api = {
   rules: () => invoke('rules'),
   saveRule: (rule) => invoke('save_rule', { rule }),
   deleteRule: (id) => invoke('delete_rule', { id }),
+  dateSets: () => invoke('date_sets'),
+  datePreview: (fix) => invoke('date_preview', { fix }),
+  dateApply: (fix) => invoke('date_apply', { fix }),
+  dateCandidates: (ids) => invoke('date_candidates', { ids }),
+  dismiss: (kind, key) => invoke('dismiss', { kind, key }),
+  placesInfo: () => invoke('places_info'),
+  installPlaces: () => invoke('install_places'),
+  placeSearch: (query) => invoke('place_search', { query }),
+  placeName: (lat, lon) => invoke('place_name', { lat, lon }),
+  tracks: () => invoke('tracks'),
+  importTracks: () => invoke('import_tracks'),
+  deleteTrack: (id) => invoke('delete_track', { id }),
+  placeGroups: () => invoke('place_groups'),
+  acceptPlaces: (key) => invoke('accept_places', { key }),
+  setLocation: (ids, place) =>
+    invoke('set_location', { ids, lat: place?.lat ?? null, lon: place?.lon ?? null, accuracyM: place?.accuracy_m ?? null, name: place?.name ?? null }),
+  applyZone: (ids, offsetMin, zone) => invoke('apply_zone', { ids, offsetMin, zone }),
+  mapPoints: async (query) => decodeMapPoints(await invoke<ArrayBuffer>('map_points', { query })),
   on<K extends keyof Events>(event: K, cb: Events[K]) {
     const un = listen(event, (e) => (cb as (p: unknown) => void)(e.payload));
     return () => void un.then((f) => f());

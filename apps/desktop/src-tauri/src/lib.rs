@@ -105,6 +105,23 @@ pub fn run() {
             commands::rules,
             commands::save_rule,
             commands::delete_rule,
+            commands::date_sets,
+            commands::date_preview,
+            commands::date_apply,
+            commands::date_candidates,
+            commands::dismiss,
+            commands::places_info,
+            commands::install_places,
+            commands::place_search,
+            commands::place_name,
+            commands::tracks,
+            commands::import_tracks,
+            commands::delete_track,
+            commands::place_groups,
+            commands::accept_places,
+            commands::set_location,
+            commands::apply_zone,
+            commands::map_points,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Roll");

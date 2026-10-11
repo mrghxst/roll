@@ -2,6 +2,7 @@
   import {
     Activity,
     AtSign,
+    CalendarClock,
     Ban,
     CircleDashed,
     FileText,
@@ -10,6 +11,8 @@
     History,
     Image,
     Images,
+    Map,
+    MapPin,
     PanelLeftClose,
     PanelLeftOpen,
     Settings,
@@ -72,6 +75,11 @@
   <div class="scroll">
     {@render item('Timeline', Images, isScope('all'), () => goScope(ALL), undefined, 'nav-timeline')}
     {@render item('Folders', Folder, app.view === 'folders', () => goView('folders'), undefined, 'nav-folders')}
+    {@render item('Map', Map, app.view === 'map', () => goView('map'), undefined, 'nav-map')}
+
+    {#if !collapsed}<div class="section">Fix</div>{:else}<hr />{/if}
+    {@render item('Dates', CalendarClock, app.view === 'dates', () => goView('dates'), app.counts.date_issues, 'nav-dates')}
+    {@render item('Places', MapPin, app.view === 'places', () => goView('places'), app.counts.no_location, 'nav-places')}
 
     {#if !collapsed}<div class="section">Library</div>{:else}<hr />{/if}
     {#each topCategories as c (c.id)}

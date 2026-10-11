@@ -17,5 +17,7 @@ export const SHORTCUTS: [string, string][] = [
   ['Del', 'Move to the trash'],
   ['F', 'Favorite or unfavorite'],
   ['T', 'Add a tag'],
+  ['L', 'Set location'],
+  ['D', 'Change date'],
   ['0–5', 'Rating, in the viewer'],
 ];

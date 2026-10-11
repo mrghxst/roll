@@ -14,16 +14,20 @@ use roll_meta::exiftool::ExifToolPool;
 use rusqlite::{OptionalExtension, params, params_from_iter};
 
 use crate::actions::EditAction;
+use crate::datefix::{DateFix, DatePreview, DateSet};
 use crate::dates::SystemTz;
 use crate::db::Db;
 use crate::jobs::{JobCtx, JobSpec, Jobs};
 use crate::model::*;
 use crate::paths::{app_data_dir, join_rel};
+use crate::places::{PlaceGroup, TrackInfo, ZoneProposal};
 use crate::planner::{PlanOptions, PlanSummary};
 use crate::query;
 use crate::settings::Settings;
 use crate::thumbs::{self, ThumbStore};
 use crate::{actions, categories, classify, groups, journal, planner, scan, tags, watch, why};
+use roll_geo::Place;
+use roll_geo::gazetteer::{Gazetteer, Hit};
 use roll_meta::write::WriteMode;
 
 #[derive(Debug, Clone)]
@@ -47,6 +51,18 @@ pub struct Library {
     sink: EventSink,
     pool: rayon::ThreadPool,
     watcher: Mutex<Option<watch::RootWatcher>>,
+    /// Loaded on first use from `geodata/places.tsv`.
+    gazetteer: Mutex<Option<Option<Arc<Gazetteer>>>>,
+    /// The last computed place suggestions, by group key.
+    place_cache: Mutex<crate::places::ByGroup>,
+}
+
+/// Whether the offline place names are installed.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, ts_rs::TS)]
+#[ts(export)]
+pub struct PlacesInfo {
+    pub installed: bool,
+    pub count: i32,
 }
 
 impl Library {
@@ -75,6 +91,8 @@ impl Library {
             sink,
             pool,
             watcher: Mutex::new(None),
+            gazetteer: Mutex::new(None),
+            place_cache: Mutex::new(Default::default()),
         }))
     }
 
@@ -409,6 +427,11 @@ impl Library {
         let mut st = c.prepare("SELECT rel_path FROM sidecars WHERE asset_id = ?1")?;
         d.sidecars = st.query_map([id], |r| r.get(0))?.collect::<Result<_, _>>()?;
         d.why = why::explain(&c, id, d.date_source.as_deref(), d.loc_source.as_deref(), cat_source.as_deref(), d.category_name.as_deref())?;
+        drop(st);
+        drop(c);
+        if let (Some(lat), Some(lon)) = (d.lat, d.lon) {
+            d.place = self.place_name(lat, lon);
+        }
         Ok(Some(d))
     }
 
@@ -719,6 +742,180 @@ impl Library {
         Ok(())
     }
 
+    // Dates
+
+    pub fn date_sets(&self) -> anyhow::Result<Vec<DateSet>> {
+        Ok(crate::datefix::sets(&self.db.read(), crate::db::now_ms())?)
+    }
+
+    pub fn date_preview(&self, fix: &DateFix) -> anyhow::Result<DatePreview> {
+        crate::datefix::preview(&self.db.read(), fix, &self.tz)
+    }
+
+    /// Apply a date fix. Returns how many items changed.
+    pub fn date_apply(&self, fix: &DateFix) -> anyhow::Result<usize> {
+        let (_, n) = self.db.tx_any(|tx| crate::datefix::apply(tx, fix, &self.tz))?;
+        self.emit(LibEvent::Changed("assets"));
+        self.emit(LibEvent::Changed("history"));
+        Ok(n)
+    }
+
+    pub fn date_candidates(&self, ids: &[i64]) -> anyhow::Result<Vec<crate::datefix::Candidate>> {
+        Ok(crate::datefix::candidates(&self.db.read(), ids)?)
+    }
+
+    /// Hide a suggestion ("place") or a date set ("date").
+    pub fn dismiss(&self, kind: &str, key: &str) -> anyhow::Result<()> {
+        crate::places::dismiss(&self.db.write(), kind, key)?;
+        Ok(())
+    }
+
+    // Places
+
+    fn gaz(&self) -> Option<Arc<Gazetteer>> {
+        let mut g = self.gazetteer.lock();
+        if g.is_none() {
+            let path = self.data_dir.join("geodata").join("places.tsv");
+            *g = Some(Gazetteer::load(&path).ok().map(Arc::new));
+        }
+        g.clone().flatten()
+    }
+
+    pub fn places_info(&self) -> PlacesInfo {
+        match self.gaz() {
+            Some(g) => PlacesInfo { installed: true, count: g.len() as i32 },
+            None => PlacesInfo { installed: false, count: 0 },
+        }
+    }
+
+    /// Build the place names from GeoNames files in `dir` (`cities500.txt`,
+    /// `admin1CodesASCII.txt`, `countryInfo.txt`).
+    pub fn install_places(&self, dir: &Path) -> anyhow::Result<PlacesInfo> {
+        let open = |n: &str| -> anyhow::Result<std::io::BufReader<std::fs::File>> {
+            Ok(std::io::BufReader::new(std::fs::File::open(dir.join(n)).map_err(|e| anyhow::anyhow!("{n}: {e}"))?))
+        };
+        let g = roll_geo::gazetteer::build(open("cities500.txt")?, open("admin1CodesASCII.txt")?, open("countryInfo.txt")?)?;
+        let out = self.data_dir.join("geodata");
+        std::fs::create_dir_all(&out)?;
+        g.save(&out.join("places.tsv"))?;
+        let n = g.len();
+        *self.gazetteer.lock() = Some(Some(Arc::new(g)));
+        self.emit(LibEvent::Changed("places"));
+        Ok(PlacesInfo { installed: true, count: n as i32 })
+    }
+
+    pub fn place_search(&self, q: &str) -> Vec<Hit> {
+        let mut out = Vec::new();
+        if let Some((lat, lon)) = roll_geo::coords::parse(q) {
+            let label = self.gaz().and_then(|g| g.reverse(lat, lon).map(|e| e.label())).unwrap_or_else(|| format!("{lat:.5}, {lon:.5}"));
+            out.push(Hit {
+                label,
+                name: format!("{lat:.5}, {lon:.5}"),
+                kind: roll_geo::gazetteer::Kind::City,
+                lat,
+                lon,
+                accuracy_m: 10.0,
+                cc: String::new(),
+            });
+        }
+        if let Some(g) = self.gaz() {
+            out.extend(g.search(q, 12));
+        }
+        out
+    }
+
+    /// The place name at a point, if the gazetteer knows one.
+    pub fn place_name(&self, lat: f64, lon: f64) -> Option<String> {
+        self.gaz().and_then(|g| g.reverse(lat, lon).map(|e| e.label()))
+    }
+
+    pub fn tracks(&self) -> anyhow::Result<Vec<TrackInfo>> {
+        Ok(crate::places::tracks(&self.db.read())?)
+    }
+
+    pub fn import_track(&self, path: &Path) -> anyhow::Result<TrackInfo> {
+        let t = crate::places::import_track(&self.db.write(), path)?;
+        self.emit(LibEvent::Changed("places"));
+        Ok(t)
+    }
+
+    pub fn delete_track(&self, id: i64) -> anyhow::Result<()> {
+        crate::places::delete_track(&self.db.write(), id)?;
+        self.emit(LibEvent::Changed("places"));
+        Ok(())
+    }
+
+    pub fn place_groups(&self) -> anyhow::Result<Vec<PlaceGroup>> {
+        let window = self.settings().interpolation_minutes as i64;
+        let gaz = self.gaz();
+        let (groups, by_key) = crate::places::suggest(&self.db.read(), gaz.as_deref(), window)?;
+        *self.place_cache.lock() = by_key;
+        Ok(groups)
+    }
+
+    /// Accept a suggestion group. Returns how many items got a place and the
+    /// time zones to offer for those without one.
+    pub fn accept_places(&self, key: &str) -> anyhow::Result<(usize, Vec<ZoneProposal>)> {
+        let items = self
+            .place_cache
+            .lock()
+            .get(key)
+            .cloned()
+            .ok_or_else(|| anyhow::anyhow!("This suggestion is out of date. Refresh the list."))?;
+        let ids: Vec<i64> = items.iter().map(|s| s.id).collect();
+        let source = match items.first().map(|s| s.source) {
+            Some("track") => "from location history",
+            Some("neighbors") => "from your photos",
+            _ => "from the folder name",
+        };
+        let label = format!("Set the location of {} {source}", plural(items.len()));
+        self.db.tx(|tx| crate::places::accept(tx, &items, &label))?;
+        self.place_cache.lock().remove(key);
+        let zones = crate::places::zone_proposals(&self.db.read(), &ids)?;
+        self.emit(LibEvent::Changed("assets"));
+        self.emit(LibEvent::Changed("history"));
+        Ok((ids.len(), zones))
+    }
+
+    /// Set a place by hand on a selection; `None` clears it.
+    pub fn set_location(&self, ids: &[i64], place: Option<Place>, name: Option<&str>) -> anyhow::Result<(usize, Vec<ZoneProposal>)> {
+        let items = plural(ids.len());
+        let label = match (&place, name) {
+            (None, _) => format!("Clear the location of {items}"),
+            (Some(_), Some(n)) => format!("Set the location of {items} to {n}"),
+            (Some(p), None) => format!("Set the location of {items} to {:.4}, {:.4}", p.lat, p.lon),
+        };
+        let why = name.map(|n| format!("{n}, set by you."));
+        let (_, n) = self.db.tx(|tx| crate::places::set_location(tx, ids, place, &label, why.clone()))?;
+        let zones = if place.is_some() { crate::places::zone_proposals(&self.db.read(), ids)? } else { Vec::new() };
+        self.emit(LibEvent::Changed("assets"));
+        self.emit(LibEvent::Changed("history"));
+        Ok((n, zones))
+    }
+
+    /// State a time zone offset for items that had none.
+    pub fn apply_zone(&self, ids: &[i64], offset_min: i32, zone: &str) -> anyhow::Result<usize> {
+        let label = format!("Set the time zone of {} to {zone}", plural(ids.len()));
+        let why = format!("Time zone {zone} ({}) from the place.", crate::places::offset_label(offset_min));
+        let n = self.db.tx(|tx| {
+            let batch = crate::edits::begin_batch(tx, "edit", &label)?;
+            let mut n = 0;
+            for id in ids {
+                if crate::places::set_offset(tx, batch, *id, offset_min, &why)? {
+                    n += 1;
+                }
+            }
+            Ok(n)
+        })?;
+        self.emit(LibEvent::Changed("assets"));
+        self.emit(LibEvent::Changed("history"));
+        Ok(n)
+    }
+
+    pub fn map_points(&self, q: &Query) -> anyhow::Result<Vec<u8>> {
+        Ok(query::map_points(&self.db.read(), q)?)
+    }
+
     /// Undo the most recent applied batch. Returns its label.
     pub fn undo_last(&self) -> anyhow::Result<Option<String>> {
         let last: Option<(i64, String)> = self
@@ -875,6 +1072,10 @@ pub fn folder_tree(root_id: i32, root_path: &str, counts: &[(String, i32)]) -> F
     }
     let name = Path::new(root_path).file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| root_path.to_string());
     build(root_id, String::new(), name, top)
+}
+
+fn plural(n: usize) -> String {
+    if n == 1 { "1 item".into() } else { format!("{n} items") }
 }
 
 #[cfg(test)]

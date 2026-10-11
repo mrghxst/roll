@@ -5,6 +5,12 @@
 import type { Api, Events } from './api';
 import type { AssetDetail } from './bindings/AssetDetail';
 import type { BatchInfo } from './bindings/BatchInfo';
+import type { DateFix } from './bindings/DateFix';
+import type { DateSet } from './bindings/DateSet';
+import type { PlaceGroup } from './bindings/PlaceGroup';
+import type { PlaceHit } from './bindings/PlaceHit';
+import type { TrackInfo } from './bindings/TrackInfo';
+import { emptyMapPoints, type MapPoints } from './mappoints';
 import type { Category } from './bindings/Category';
 import type { FolderNode } from './bindings/FolderNode';
 import type { JobInfo } from './bindings/JobInfo';
@@ -17,6 +23,8 @@ import { Flag, type Timeline } from './timeline';
 
 const params = new URLSearchParams(typeof location !== 'undefined' ? location.search : '');
 const N = Number(params.get('mock') ?? 2400);
+/** `?geo=1`: every item has a place, spread over Europe (map stress tests). */
+const GEO = params.get('geo') === '1';
 
 function rng(seed: number) {
   let s = seed >>> 0 || 1;
@@ -89,8 +97,8 @@ function makeAssets(n: number): MockAsset[] {
       dir: `${local.slice(0, 4)}`,
       category: cat,
       camera: cat === 'photos' ? 'iPhone 12' : null,
-      lat: r() > 0.7 ? 45 + r() * 3 : null,
-      lon: r() > 0.7 ? 8 + r() * 4 : null,
+      lat: GEO ? 36 + r() * 24 : r() > 0.7 ? 45 + r() * 3 : null,
+      lon: GEO ? -9 + r() * 38 : r() > 0.7 ? 8 + r() * 4 : null,
       duration: video ? Math.floor(r() * 60_000) + 2000 : null,
       rating: 0,
       tags: [],
@@ -190,7 +198,7 @@ function change(kind: string, label: string, ids: number[], fn: (a: MockAsset) =
   for (const id of ids) {
     const a = byId(id);
     if (!a) continue;
-    const snap = { category: a.category, flags: a.flags, rating: a.rating, tags: [...a.tags], trashed: a.trashed, dirty: a.dirty, aspect: a.aspect };
+    const snap = { category: a.category, flags: a.flags, rating: a.rating, tags: [...a.tags], trashed: a.trashed, dirty: a.dirty, aspect: a.aspect, local: a.local, utc: a.utc, lat: a.lat, lon: a.lon };
     if (fn(a)) {
       before.set(id, snap);
       if (dirty) a.dirty = true;
@@ -206,6 +214,91 @@ function change(kind: string, label: string, ids: number[], fn: (a: MockAsset) =
     emit('changed', 'history');
   }
   return n;
+}
+
+const PLACES: PlaceHit[] = [
+  { label: 'Rome, Latium, Italy', name: 'Rome', kind: 'city', lat: 41.8919, lon: 12.5113, accuracy_m: 5000 },
+  { label: 'Riva del Garda, Trentino-Alto Adige, Italy', name: 'Riva del Garda', kind: 'city', lat: 45.8858, lon: 10.841, accuracy_m: 5000 },
+  { label: 'Zürich, Zurich, Switzerland', name: 'Zürich', kind: 'city', lat: 47.3667, lon: 8.55, accuracy_m: 5000 },
+  { label: 'Lisbon, Lisbon, Portugal', name: 'Lisbon', kind: 'city', lat: 38.7167, lon: -9.1333, accuracy_m: 5000 },
+  { label: 'New York City, New York, United States', name: 'New York City', kind: 'city', lat: 40.7143, lon: -74.006, accuracy_m: 5000 },
+  { label: 'Italy', name: 'Italy', kind: 'country', lat: 43.0, lon: 12.0, accuracy_m: 200000 },
+];
+let placesInstalled = setup;
+let tracks: TrackInfo[] = [];
+const dismissed = new Set<string>();
+
+const fmtLocal = (ms: number) => new Date(ms).toISOString().slice(0, 19);
+const parseLocal = (s: string) => Date.parse(`${s}Z`);
+
+/** A camera set for the Fix dates view: two dozen photos a year off. */
+function mockCameraSet(): MockAsset[] {
+  return assets.filter((a) => !a.trashed && a.category === 'photos' && a.local.startsWith('2020-0')).slice(0, 24);
+}
+
+function nearest(lat: number, lon: number) {
+  let best = PLACES[0]!;
+  let d = Infinity;
+  for (const p of PLACES) {
+    const e = (p.lat - lat) ** 2 + (p.lon - lon) ** 2;
+    if (e < d && p.kind === 'city') {
+      d = e;
+      best = p;
+    }
+  }
+  return best;
+}
+
+function mockGroups(): PlaceGroup[] {
+  const none = assets.filter((a) => !a.trashed && a.lat == null).sort((a, b) => (a.local < b.local ? -1 : 1));
+  const byMonth = new Map<string, MockAsset[]>();
+  for (const a of none) {
+    const k = a.local.slice(0, 7);
+    byMonth.set(k, [...(byMonth.get(k) ?? []), a]);
+  }
+  return [...byMonth.entries()]
+    .sort((a, b) => b[1].length - a[1].length)
+    .slice(0, 4)
+    .map(([month, list], i) => {
+      const p = PLACES[i % 5]!;
+      return {
+        key: `neighbors::${month}`,
+        source: i === 0 ? 'track' : 'neighbors',
+        evidence: i === 0 ? 'lake-garda-2019.gpx' : 'your geotagged photos taken around the same time',
+        place: p.label,
+        count: list.length,
+        from_local: list[0]!.local,
+        to_local: list[list.length - 1]!.local,
+        lat: p.lat,
+        lon: p.lon,
+        accuracy_m: i === 0 ? 40 : 1200,
+        ids: list.map((a) => a.id),
+      };
+    })
+    .filter((g) => !dismissed.has(g.key));
+}
+
+function shifted(fix: DateFix, a: MockAsset): string | null {
+  const ref = fix.reference ? byId(fix.reference.asset_id) : undefined;
+  switch (fix.mode) {
+    case 'shift': {
+      if (!ref || !fix.reference) return null;
+      return fmtLocal(parseLocal(a.local) + parseLocal(fix.reference.local) - parseLocal(ref.local));
+    }
+    case 'amount': {
+      const m = fix.amount;
+      if (!m) return null;
+      const d = new Date(parseLocal(a.local));
+      d.setUTCFullYear(d.getUTCFullYear() + m.years);
+      return fmtLocal(d.getTime() + (((m.days * 24 + m.hours) * 60 + m.minutes) * 60 + m.seconds) * 1000);
+    }
+    case 'exact':
+      return fix.exact?.local ?? null;
+    case 'zone':
+      return a.local;
+    default:
+      return null;
+  }
 }
 
 function targetDir(a: MockAsset) {
@@ -654,6 +747,132 @@ export const mockApi: Api = {
   deleteRule: async (id) => {
     if (rules.find((r) => r.id === id)?.builtin) throw new Error('Built-in rules can be turned off but not deleted.');
     rules = rules.filter((r) => r.id !== id);
+  },
+  dateSets: async (): Promise<DateSet[]> => {
+    const set = mockCameraSet();
+    if (!set.length || dismissed.has('camera:NIKON D750')) return [];
+    const sorted = [...set].sort((a, b) => (a.local < b.local ? -1 : 1));
+    const off = sorted[0]!.local.startsWith('2020');
+    return [
+      {
+        key: 'camera:NIKON D750',
+        kind: 'camera',
+        label: 'NIKON D750',
+        count: set.length,
+        from_local: sorted[0]!.local,
+        to_local: sorted[sorted.length - 1]!.local,
+        reasons: off ? ['The folder says 2019, but the photos are dated 2020.'] : [],
+        has_offset: false,
+        ids: set.map((a) => a.id),
+      },
+    ];
+  },
+  datePreview: async (fix) => {
+    const list = fix.ids.map((id) => byId(id)).filter((a): a is MockAsset => !!a);
+    const pairs = list.map((a) => [a, a.local, shifted(fix, a)] as const).filter((p) => p[2] != null) as [MockAsset, string, string][];
+    const before = pairs.map((p) => p[1]).sort();
+    const after = pairs.map((p) => p[2]).sort();
+    const ref = fix.reference ? byId(fix.reference.asset_id) : undefined;
+    const deltaH = ref && fix.reference ? Math.round((parseLocal(fix.reference.local) - parseLocal(ref.local)) / 3_600_000) : 0;
+    return {
+      count: pairs.length,
+      label: fix.mode === 'shift' ? `${deltaH < 0 ? '−' : '+'}${Math.abs(deltaH)} h` : fix.mode === 'zone' ? 'time zone' : 'set',
+      before_from: before[0] ?? '',
+      before_to: before[before.length - 1] ?? '',
+      after_from: after[0] ?? '',
+      after_to: after[after.length - 1] ?? '',
+      year_changes: pairs.filter((p) => p[1].slice(0, 4) !== p[2].slice(0, 4)).length,
+      folder_changes: pairs.filter((p) => p[1].slice(0, 4) !== p[2].slice(0, 4) && p[0].category !== 'unsorted').length,
+      samples: pairs.slice(0, 8).map(([a, b, c]) => ({ id: a.id, before: b, after: c })),
+    };
+  },
+  dateApply: async (fix) => {
+    const list = fix.ids.map((id) => byId(id)).filter((a): a is MockAsset => !!a);
+    const n = change('edit', `Shift ${plural(list.length)}`, fix.ids, (a) => {
+      const next = shifted(fix, a);
+      if (!next || next === a.local) return false;
+      a.utc += parseLocal(next) - parseLocal(a.local);
+      a.local = next;
+      return true;
+    });
+    if (n) dismissed.add('camera:NIKON D750');
+    assets.sort((a, b) => (a.local < b.local ? 1 : a.local > b.local ? -1 : b.id - a.id));
+    return n;
+  },
+  dateCandidates: async (ids) => ids.map((id) => ({ id, local: byId(id)?.local ?? '2020-01-01T12:00:00', source: 'filename', conf: 0.7, why: 'The file name contains the date.' })),
+  dismiss: async (_kind, key) => {
+    dismissed.add(key);
+    emit('changed', 'places');
+  },
+  placesInfo: async () => ({ installed: placesInstalled, count: placesInstalled ? PLACES.length : 0 }),
+  installPlaces: async () => {
+    placesInstalled = true;
+    emit('changed', 'places');
+    return { installed: true, count: PLACES.length };
+  },
+  placeSearch: async (q) => {
+    const m = q.match(/^\s*(-?\d+(?:\.\d+)?)\s*[, ]\s*(-?\d+(?:\.\d+)?)\s*$/);
+    const out: PlaceHit[] = [];
+    if (m) {
+      const lat = Number(m[1]);
+      const lon = Number(m[2]);
+      out.push({ label: nearest(lat, lon).label, name: `${lat.toFixed(5)}, ${lon.toFixed(5)}`, kind: 'city', lat, lon, accuracy_m: 10 });
+    }
+    const t = q.trim().toLowerCase();
+    if (t && placesInstalled) out.push(...PLACES.filter((p) => p.label.toLowerCase().includes(t)));
+    return out;
+  },
+  placeName: async (lat, lon) => (placesInstalled ? nearest(lat, lon).label : null),
+  tracks: async () => tracks,
+  importTracks: async () => {
+    const t: TrackInfo = { id: tracks.length + 1, name: 'lake-garda-2019.gpx', format: 'GPX', count: 2161, start_utc: Date.UTC(2019, 7, 3, 6), end_utc: Date.UTC(2019, 7, 9, 18), imported_at: Date.now() };
+    tracks = [...tracks, t];
+    emit('changed', 'places');
+    return [t];
+  },
+  deleteTrack: async (id) => {
+    tracks = tracks.filter((t) => t.id !== id);
+    emit('changed', 'places');
+  },
+  placeGroups: async () => mockGroups(),
+  acceptPlaces: async (key) => {
+    const g = mockGroups().find((x) => x.key === key);
+    if (!g) throw new Error('This suggestion is out of date. Refresh the list.');
+    change('edit', `Set the location of ${plural(g.ids.length)}`, g.ids, (a) => {
+      a.lat = g.lat + (Math.random() - 0.5) * 0.01;
+      a.lon = g.lon + (Math.random() - 0.5) * 0.01;
+      return true;
+    });
+    return { count: g.ids.length, zones: [{ zone: 'Europe/Rome', offset_min: 120, count: Math.ceil(g.ids.length / 3), ids: g.ids.slice(0, Math.ceil(g.ids.length / 3)) }] };
+  },
+  setLocation: async (ids, place) => {
+    const n = change('edit', place ? `Set the location of ${plural(ids.length)}` : `Clear the location of ${plural(ids.length)}`, ids, (a) => {
+      if (!place) {
+        if (a.lat == null) return false;
+        a.lat = null;
+        a.lon = null;
+        return true;
+      }
+      a.lat = place.lat;
+      a.lon = place.lon;
+      return true;
+    });
+    return { count: n, zones: [] };
+  },
+  applyZone: async (ids) => ids.length,
+  mapPoints: async (q): Promise<MapPoints> => {
+    const list = filter(q).filter((a) => a.lat != null && a.lon != null);
+    if (!list.length) return emptyMapPoints();
+    list.sort((a, b) => (a.local < b.local ? -1 : 1));
+    return {
+      count: list.length,
+      ids: Uint32Array.from(list.map((a) => a.id)),
+      days: Uint32Array.from(list.map((a) => Number(a.local.slice(0, 10).replaceAll('-', '')))),
+      lats: Float32Array.from(list.map((a) => a.lat!)),
+      lons: Float32Array.from(list.map((a) => a.lon!)),
+      accs: Float32Array.from(list.map((a) => (a.id % 7 === 0 ? 5000 : 10))),
+      flags: Uint16Array.from(list.map((a) => a.flags & (Flag.VIDEO | Flag.FAVORITE))),
+    };
   },
   on(event, cb) {
     listeners[event].add(cb as never);

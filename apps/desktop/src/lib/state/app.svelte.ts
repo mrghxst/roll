@@ -7,6 +7,7 @@ import type { Query } from '../ipc/bindings/Query';
 import type { RootInfo } from '../ipc/bindings/RootInfo';
 import type { Settings } from '../ipc/bindings/Settings';
 import type { TagCount } from '../ipc/bindings/TagCount';
+import type { ZoneProposal } from '../ipc/bindings/ZoneProposal';
 
 export type View =
   | 'timeline'
@@ -58,6 +59,14 @@ class AppState {
   tagging = $state<number[] | null>(null);
   /** Trashed items waiting for confirmation to go to the Recycle Bin. */
   recycling = $state<number[] | 'all' | null>(null);
+  /** Time zones to offer after places were set. */
+  zones = $state<ZoneProposal[] | null>(null);
+  /** Items the "Set location…" sheet is open for. */
+  locating = $state<number[] | null>(null);
+  /** Items the "Change date…" sheet is open for. */
+  dating = $state<number[] | null>(null);
+  /** A place copied from one item, to give to others. */
+  copiedPlace = $state<{ lat: number; lon: number; accuracy_m: number; label: string } | null>(null);
   /** Items with changes not yet saved to their files. */
   unsaved = $state(0);
   /** Bumped when the library changes, so views reload. */

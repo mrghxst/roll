@@ -49,6 +49,26 @@ Milestones from PROMPT.md section 10. `[x]` done, `[~]` partly done,
       (about 1 run in 15, not reproduced in isolation); under investigation
 
 ## M3 Dates, places, map
+
+- [x] Geo crate: time zones (tzf-rs), importers for GPX, KML, GeoJSON and
+      the three Google formats, interpolation with accuracy, coordinate and
+      map link parsing, a GeoNames gazetteer
+- [x] Fix dates: camera sets with reasons, shift to a reference (or a
+      photo from another device), time zone, drift, shift by an amount,
+      exact and suggested dates, whole-camera ranges, previews with year and
+      folder side effects
+- [x] Fix places: suggestions from tracks, own photos and folder names,
+      accept, adjust, reject, the time zone follow-up, "Set location…" with
+      search, pasted coordinates and links, copy and clear
+- [x] Map: time slider (month and week histogram, range handles, wheel
+      zoom, year chips, play), clusters with thumbnail pins, dashed rings,
+      heatmap, rectangle and lasso selection, side grid, tray with drag
+      and drop, offline Natural Earth basemap
+- [x] Acceptance: the +1 y 2 h camera set fixed with one reference (4
+      actions in the UI test), 500 photos placed from one GPX in one
+      accepted suggestion, 100k points at 60 fps on the owner's GPU
+- [ ] Opt-in online detail tiles (OpenFreeMap), place names download with
+      consent (with the M4 pack manager), event centroids (M6)
 ## M4 Local AI
 ## M5 Decision models and cost
 ## M6 Events, Immich, polish
@@ -56,5 +76,5 @@ Milestones from PROMPT.md section 10. `[x]` done, `[~]` partly done,
 
 ## Next
 
-Pin down the rare crash, then M3: fix dates, fix places, the map with the
-time slider, offline gazetteer and time zones.
+M4: the pack manager, SigLIP 2 embeddings, search, classifiers, Review,
+Teach and Discover, duplicates, OCR and the Private guard.

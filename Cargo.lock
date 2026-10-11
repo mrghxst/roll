@@ -3612,6 +3612,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "roll-core",
+ "roll-geo",
  "serde",
  "serde_json",
  "tauri",

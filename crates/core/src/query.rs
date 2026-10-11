@@ -252,6 +252,59 @@ pub fn timeline(c: &Connection, q: &Query) -> rusqlite::Result<Vec<u8>> {
     Ok(out)
 }
 
+/// Map payload: magic "MAPP", version, count, then arrays, each 4-byte
+/// aligned: ids u32, days u32 (yyyymmdd), lat f32, lon f32, accuracy f32
+/// (metres, 0 when unknown), flags u16 (padded to 4 bytes). Only items with
+/// a location; oldest first.
+pub const MAP_MAGIC: u32 = 0x5050_414D; // "MAPP"
+
+pub fn map_points(c: &Connection, q: &Query) -> rusqlite::Result<Vec<u8>> {
+    let sql = where_clause(q);
+    let stmt = format!(
+        "SELECT a.id, a.taken_local, a.lat, a.lon, a.loc_acc, a.kind, a.favorite FROM assets a
+         WHERE a.lat IS NOT NULL AND {} ORDER BY a.taken_local, a.id",
+        sql.clause
+    );
+    let mut st = c.prepare(&stmt)?;
+    let (mut ids, mut days, mut lats, mut lons, mut accs, mut flags) =
+        (Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new());
+    let mut rows = st.query(params_from_iter(sql.params.iter()))?;
+    while let Some(r) = rows.next()? {
+        ids.push(r.get::<_, i64>(0)? as u32);
+        let local: Option<String> = r.get(1)?;
+        days.push(local.as_deref().and_then(|l| l.get(0..10)).map(|d| d.replace('-', "")).and_then(|d| d.parse::<u32>().ok()).unwrap_or(0));
+        lats.push(r.get::<_, f64>(2)? as f32);
+        lons.push(r.get::<_, f64>(3)? as f32);
+        accs.push(r.get::<_, Option<f64>>(4)?.unwrap_or(0.0) as f32);
+        let mut f = 0u16;
+        if r.get::<_, i64>(5)? == 1 {
+            f |= tile::VIDEO;
+        }
+        if r.get::<_, i64>(6)? != 0 {
+            f |= tile::FAVORITE;
+        }
+        flags.push(f);
+    }
+    let n = ids.len();
+    let mut out = Vec::with_capacity(12 + n * 24);
+    out.extend_from_slice(&MAP_MAGIC.to_le_bytes());
+    out.extend_from_slice(&1u32.to_le_bytes());
+    out.extend_from_slice(&(n as u32).to_le_bytes());
+    for v in ids.iter().chain(&days) {
+        out.extend_from_slice(&v.to_le_bytes());
+    }
+    for v in lats.iter().chain(&lons).chain(&accs) {
+        out.extend_from_slice(&v.to_le_bytes());
+    }
+    for v in &flags {
+        out.extend_from_slice(&v.to_le_bytes());
+    }
+    if n % 2 == 1 {
+        out.extend_from_slice(&[0, 0]);
+    }
+    Ok(out)
+}
+
 pub fn count(c: &Connection, q: &Query) -> rusqlite::Result<i64> {
     let sql = where_clause(q);
     c.query_row(&format!("SELECT count(*) FROM assets a WHERE {}", sql.clause), params_from_iter(sql.params.iter()), |r| r.get(0))

@@ -72,6 +72,33 @@ questions. One line of reason each. Newest at the bottom of each section.
 - **Per-category "send to Immich" is stored but not shown** until Immich
   sync exists (M6), so the UI has no setting that does nothing.
 
+## Places and dates
+
+- **The offline basemap is Natural Earth country outlines** (the
+  `world-atlas` package, public domain, 0.7 MB) instead of a Protomaps
+  PMTiles world file. Getting the PMTiles extract means downloading from a
+  build server, which needs the owner's go-ahead; the outlines need nothing
+  and match the monochrome style. Detailed online tiles are still to come
+  as an opt-in.
+- **Place names install from GeoNames files the owner picks** (Settings
+  has no download yet): `cities500.txt`, `admin1CodesASCII.txt` and
+  `countryInfo.txt`. A download with consent comes with the pack manager
+  (M4). The fixtures ship a small gazetteer in the same format.
+- **Items without a stated UTC offset are matched to tracks on local time.**
+  Their wall-clock time is what the camera showed; their UTC is a guess
+  from the computer's zone, which is wrong when travelling. Track points are
+  converted to local time with the zone at each point.
+- **Date fixes shift by a fixed duration**, not a calendar amount: a clock
+  that runs 366 days and 2 hours ahead is 366 days and 2 hours ahead for
+  every photo. "Shift by an amount" uses calendar years because that is
+  what the owner types.
+- **Camera sets list every dedicated camera**, flagged or not; phones are
+  listed only when something looks wrong. Visual pairing with phone photos
+  (the smart offset) needs embeddings and lands in M4.
+- **MapLibre's worker is bundled by Vite** and set with `setWorkerUrl`.
+  MapLibre otherwise looks for it next to its own module, which bundling
+  moves, and finds nothing on `tauri://` (macOS).
+
 ## Fixtures
 
 - **HEIC fixtures are built by the generator itself.** FFmpeg has no HEIF

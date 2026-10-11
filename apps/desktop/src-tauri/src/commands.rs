@@ -6,7 +6,10 @@ use std::sync::Arc;
 use roll_core::Library;
 use roll_core::actions::EditAction;
 use roll_core::categories::CategoryPatch;
+use roll_core::datefix::{Candidate, DateFix, DatePreview, DateSet};
+use roll_core::library::PlacesInfo;
 use roll_core::model::*;
+use roll_core::places::{LocationResult, PlaceGroup, PlaceHit, TrackInfo};
 use roll_core::planner::{PlanOptions, PlanSummary};
 use roll_core::rules::Rule;
 use roll_core::settings::Settings;
@@ -306,4 +309,145 @@ pub fn save_rule(state: State<AppState>, rule: Rule) -> Res<i64> {
 #[tauri::command]
 pub fn delete_rule(state: State<AppState>, id: i64) -> Res<()> {
     state.lib.delete_rule(id).map_err(e)
+}
+
+// Dates
+
+#[tauri::command]
+pub async fn date_sets(state: State<'_, AppState>) -> Res<Vec<DateSet>> {
+    let lib = state.lib.clone();
+    blocking(move || lib.date_sets()).await
+}
+
+#[tauri::command]
+pub async fn date_preview(state: State<'_, AppState>, fix: DateFix) -> Res<DatePreview> {
+    let lib = state.lib.clone();
+    blocking(move || lib.date_preview(&fix)).await
+}
+
+#[tauri::command]
+pub async fn date_apply(state: State<'_, AppState>, fix: DateFix) -> Res<usize> {
+    let lib = state.lib.clone();
+    blocking(move || lib.date_apply(&fix)).await
+}
+
+#[tauri::command]
+pub async fn date_candidates(state: State<'_, AppState>, ids: Vec<i64>) -> Res<Vec<Candidate>> {
+    let lib = state.lib.clone();
+    blocking(move || lib.date_candidates(&ids)).await
+}
+
+#[tauri::command]
+pub fn dismiss(state: State<AppState>, kind: String, key: String) -> Res<()> {
+    state.lib.dismiss(&kind, &key).map_err(e)
+}
+
+// Places
+
+#[tauri::command]
+pub async fn places_info(state: State<'_, AppState>) -> Res<PlacesInfo> {
+    let lib = state.lib.clone();
+    blocking(move || Ok(lib.places_info())).await
+}
+
+/// Ask for the folder with GeoNames files and build the place names.
+#[tauri::command]
+pub async fn install_places(state: State<'_, AppState>, app: tauri::AppHandle) -> Res<Option<PlacesInfo>> {
+    let lib = state.lib.clone();
+    blocking(move || {
+        let Some(dir) = app.dialog().file().set_title("Choose the folder with the GeoNames files").blocking_pick_folder() else {
+            return Ok(None);
+        };
+        let dir = dir.into_path().map_err(|e| anyhow::anyhow!("{e}"))?;
+        lib.install_places(&dir).map(Some)
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn place_search(state: State<'_, AppState>, query: String) -> Res<Vec<PlaceHit>> {
+    let lib = state.lib.clone();
+    blocking(move || Ok(lib.place_search(&query).into_iter().map(PlaceHit::from).collect())).await
+}
+
+#[tauri::command]
+pub async fn place_name(state: State<'_, AppState>, lat: f64, lon: f64) -> Res<Option<String>> {
+    let lib = state.lib.clone();
+    blocking(move || Ok(lib.place_name(lat, lon))).await
+}
+
+#[tauri::command]
+pub async fn tracks(state: State<'_, AppState>) -> Res<Vec<TrackInfo>> {
+    let lib = state.lib.clone();
+    blocking(move || lib.tracks()).await
+}
+
+/// Ask for location history files and import them.
+#[tauri::command]
+pub async fn import_tracks(state: State<'_, AppState>, app: tauri::AppHandle) -> Res<Vec<TrackInfo>> {
+    let lib = state.lib.clone();
+    blocking(move || {
+        let Some(files) = app
+            .dialog()
+            .file()
+            .set_title("Import location history")
+            .add_filter("Location history", &["gpx", "kml", "geojson", "json"])
+            .blocking_pick_files()
+        else {
+            return Ok(Vec::new());
+        };
+        let mut out = Vec::new();
+        for f in files {
+            let p = f.into_path().map_err(|e| anyhow::anyhow!("{e}"))?;
+            out.push(lib.import_track(&p)?);
+        }
+        Ok(out)
+    })
+    .await
+}
+
+#[tauri::command]
+pub fn delete_track(state: State<AppState>, id: i64) -> Res<()> {
+    state.lib.delete_track(id).map_err(e)
+}
+
+#[tauri::command]
+pub async fn place_groups(state: State<'_, AppState>) -> Res<Vec<PlaceGroup>> {
+    let lib = state.lib.clone();
+    blocking(move || lib.place_groups()).await
+}
+
+#[tauri::command]
+pub async fn accept_places(state: State<'_, AppState>, key: String) -> Res<LocationResult> {
+    let lib = state.lib.clone();
+    blocking(move || lib.accept_places(&key).map(|(n, zones)| LocationResult { count: n as i32, zones })).await
+}
+
+#[tauri::command]
+pub async fn set_location(
+    state: State<'_, AppState>,
+    ids: Vec<i64>,
+    lat: Option<f64>,
+    lon: Option<f64>,
+    accuracy_m: Option<f64>,
+    name: Option<String>,
+) -> Res<LocationResult> {
+    let lib = state.lib.clone();
+    blocking(move || {
+        let place = lat.zip(lon).map(|(lat, lon)| roll_geo::Place { lat, lon, accuracy_m: accuracy_m.unwrap_or(10.0) });
+        lib.set_location(&ids, place, name.as_deref()).map(|(n, zones)| LocationResult { count: n as i32, zones })
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn apply_zone(state: State<'_, AppState>, ids: Vec<i64>, offset_min: i32, zone: String) -> Res<usize> {
+    let lib = state.lib.clone();
+    blocking(move || lib.apply_zone(&ids, offset_min, &zone)).await
+}
+
+#[tauri::command]
+pub async fn map_points(state: State<'_, AppState>, query: Query) -> Res<Response> {
+    let lib = state.lib.clone();
+    blocking(move || lib.map_points(&query)).await.map(Response::new)
 }

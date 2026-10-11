@@ -46,5 +46,20 @@ FFmpeg): scan 0.1 s, all thumbnails 3.6 s, HEVC playback proxy 0.5 s.
 ## Estimates for real photos
 
 A 12 MP JPEG decodes in about 60 ms on one core; with 14 worker threads
-100,000 photos take about 7 minutes, well inside 30 minutes. Embeddings,
-the map and warm start are measured when those milestones land.
+100,000 photos take about 7 minutes, well inside 30 minutes. Embeddings
+and warm start are measured when those milestones land.
+
+## Map (M3), 2026-10-11
+
+100,000 placed items (mock backend, `?mock=100000&geo=1`), clustered
+MapLibre source, panning and zooming one step per frame
+(`e2e/perf.spec.ts`), 1440×900:
+
+| Renderer | Median frame | 95th percentile |
+|---|---|---|
+| Owner's GPU (RTX 2080 Ti, Direct3D 11) | 16.6 ms | 17.6 ms |
+| Headless software WebGL (SwiftShader, CI) | 24.7 ms | 37.1 ms |
+
+The budget (60 fps) holds on the owner's PC. Thumbnail pins are DOM nodes
+and are rebuilt only once the map rests; rebuilding them every frame cost
+about 17 ms. The CI test asserts a looser 34 ms because CI has no GPU.

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { ArchiveRestore, ExternalLink, FolderInput, FolderOpen, Heart, RotateCcw, RotateCw, Star, Tag, Trash2 } from '@lucide/svelte';
+  import { ArchiveRestore, CalendarClock, ExternalLink, FolderInput, FolderOpen, Heart, MapPin, RotateCcw, RotateCw, Star, Tag, Trash2 } from '@lucide/svelte';
   import { api } from '../ipc/api';
   import { app } from '../state/app.svelte';
   import { rate, restore, rotate, setCategory, toggleFavorite, trash } from '../state/edits';
@@ -45,6 +45,8 @@
     {/snippet}
   </Menu>
   <IconButton label="Add a tag (T)" onclick={() => (app.tagging = ids)} data-testid="add-tag"><Tag size={16} strokeWidth={1.5} /></IconButton>
+  <IconButton label="Set location (L)" onclick={() => (app.locating = ids)} data-testid="set-location"><MapPin size={16} strokeWidth={1.5} /></IconButton>
+  <IconButton label="Change date (D)" onclick={() => (app.dating = ids)} data-testid="change-date"><CalendarClock size={16} strokeWidth={1.5} /></IconButton>
   <IconButton label="Favorite (F)" onclick={() => void toggleFavorite(ids)} data-testid="favorite"><Heart size={16} strokeWidth={1.5} /></IconButton>
   <Menu label="Rating" items={ratingItems}>
     {#snippet trigger({ open, toggle })}

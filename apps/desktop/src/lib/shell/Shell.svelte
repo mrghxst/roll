@@ -7,6 +7,9 @@
   import Activity from '../views/Activity.svelte';
   import Folders from '../views/Folders.svelte';
   import History from '../views/History.svelte';
+  import Dates from '../views/Dates.svelte';
+  import MapPage from '../views/MapPage.svelte';
+  import Places from '../views/Places.svelte';
   import Organize from '../views/Organize.svelte';
   import SettingsView from '../views/Settings.svelte';
   import TimelineView from '../views/Timeline.svelte';
@@ -19,6 +22,9 @@
   import SelectionActions from './SelectionActions.svelte';
   import Sidebar from './Sidebar.svelte';
   import TagSheet from './TagSheet.svelte';
+  import ZoneSheet from './ZoneSheet.svelte';
+  import DateSheet from './DateSheet.svelte';
+  import LocationSheet from './LocationSheet.svelte';
   import TopBar from './TopBar.svelte';
 
   let topbar: ReturnType<typeof TopBar> | undefined = $state();
@@ -35,7 +41,7 @@
       app.paletteOpen = !app.paletteOpen;
       return;
     }
-    if (typing(e) || viewer.ids || app.paletteOpen || app.tagging || app.recycling) return;
+    if (typing(e) || viewer.ids || app.paletteOpen || app.tagging || app.recycling || app.locating || app.dating) return;
     if (document.querySelector('dialog[open]')) return;
     const key = e.key.toLowerCase();
     if (mod && key === 'z' && !e.shiftKey) {
@@ -63,6 +69,12 @@
     } else if (key === 't' && ids.length && grid) {
       e.preventDefault();
       app.tagging = ids;
+    } else if (key === 'l' && ids.length && grid) {
+      e.preventDefault();
+      app.locating = ids;
+    } else if (key === 'd' && ids.length && grid) {
+      e.preventDefault();
+      app.dating = ids;
     }
   }
 
@@ -101,6 +113,12 @@
           <History />
         {:else if app.view === 'trash'}
           <Trash />
+        {:else if app.view === 'map'}
+          <MapPage />
+        {:else if app.view === 'dates'}
+          <Dates />
+        {:else if app.view === 'places'}
+          <Places />
         {/if}
       </section>
       {#if app.infoOpen}
@@ -116,6 +134,9 @@
 <CommandPalette onsearch={() => topbar?.focusSearch()} />
 <TagSheet />
 <RecycleSheet />
+<ZoneSheet />
+<LocationSheet />
+<DateSheet />
 <Toasts />
 
 <style>
