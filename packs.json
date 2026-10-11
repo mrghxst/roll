@@ -1,0 +1,119 @@
+{
+  "version": 1,
+  "packs": [
+    {
+      "id": "places",
+      "title": "Place names",
+      "purpose": "Names for places on the map, place search, \"Near …\" in search, and place suggestions from folder names. About 230,000 towns and cities.",
+      "license": "CC BY 4.0",
+      "source": "GeoNames",
+      "attribution": "Place names from GeoNames (geonames.org), CC BY 4.0",
+      "dir": "geodata/geonames",
+      "after": "places",
+      "files": [
+        {
+          "path": "cities500.zip",
+          "url": "https://download.geonames.org/export/dump/cities500.zip",
+          "size": 13872264,
+          "sha256": null
+        },
+        {
+          "path": "admin1CodesASCII.txt",
+          "url": "https://download.geonames.org/export/dump/admin1CodesASCII.txt",
+          "size": 151583,
+          "sha256": null
+        },
+        {
+          "path": "countryInfo.txt",
+          "url": "https://download.geonames.org/export/dump/countryInfo.txt",
+          "size": 31680,
+          "sha256": null
+        }
+      ]
+    },
+    {
+      "id": "image-model",
+      "title": "Image understanding",
+      "purpose": "Search by what is in a photo, sorting suggestions, Teach, look-alike duplicates and Discover groups. SigLIP 2 ViT-B/16, multilingual; runs on this computer.",
+      "license": "Apache-2.0",
+      "source": "Hugging Face (immich-app/ViT-B-16-SigLIP2__webli)",
+      "attribution": "SigLIP 2 by Google, Apache-2.0; ONNX export by the Immich project",
+      "dir": "models/siglip2-b16",
+      "after": null,
+      "files": [
+        {
+          "path": "config.json",
+          "url": "https://huggingface.co/immich-app/ViT-B-16-SigLIP2__webli/resolve/5f3fc29104ebcf51e9d893af57604badd51a3ea6/config.json",
+          "size": 547,
+          "sha256": "a33af509278a65855fd6b4fd8a17ed1b1e3482ff5d438c3fc43b07d4999e01b5"
+        },
+        {
+          "path": "visual/preprocess_cfg.json",
+          "url": "https://huggingface.co/immich-app/ViT-B-16-SigLIP2__webli/resolve/5f3fc29104ebcf51e9d893af57604badd51a3ea6/visual/preprocess_cfg.json",
+          "size": 154,
+          "sha256": "d78a80d49dca4e62d17f802a685d67d821f7102844cb89f65a0bb1a5d0601f43"
+        },
+        {
+          "path": "visual/model.onnx",
+          "url": "https://huggingface.co/immich-app/ViT-B-16-SigLIP2__webli/resolve/5f3fc29104ebcf51e9d893af57604badd51a3ea6/visual/model.onnx",
+          "size": 371674292,
+          "sha256": "fee10c729875dd203d94f396ac3d664e301d39c977ef6d92e7f467a2a716f0b0"
+        },
+        {
+          "path": "textual/model.onnx",
+          "url": "https://huggingface.co/immich-app/ViT-B-16-SigLIP2__webli/resolve/5f3fc29104ebcf51e9d893af57604badd51a3ea6/textual/model.onnx",
+          "size": 1129435819,
+          "sha256": "fc9991b415d7d0fac7ed540e875fd08a647c8a1abba99f12542531b004c4b68f"
+        },
+        {
+          "path": "textual/tokenizer.json",
+          "url": "https://huggingface.co/immich-app/ViT-B-16-SigLIP2__webli/resolve/5f3fc29104ebcf51e9d893af57604badd51a3ea6/textual/tokenizer.json",
+          "size": 34362885,
+          "sha256": "220c63d496e0c14e63eb656c91e0215e926202e4c74b1f089e09f1920d779b04"
+        },
+        {
+          "path": "textual/tokenizer_config.json",
+          "url": "https://huggingface.co/immich-app/ViT-B-16-SigLIP2__webli/resolve/5f3fc29104ebcf51e9d893af57604badd51a3ea6/textual/tokenizer_config.json",
+          "size": 46386,
+          "sha256": "958146aa289a0a39e4fcb20087a78facb157d29c7ef017374ac3ccab0549aae4"
+        },
+        {
+          "path": "textual/special_tokens_map.json",
+          "url": "https://huggingface.co/immich-app/ViT-B-16-SigLIP2__webli/resolve/5f3fc29104ebcf51e9d893af57604badd51a3ea6/textual/special_tokens_map.json",
+          "size": 555,
+          "sha256": "db82f8bd9b25d14f9c788e6bde64de84d42f1c2538f1c245ba6cb3e872d14b18"
+        }
+      ]
+    },
+    {
+      "id": "text-reader",
+      "title": "Text in photos",
+      "purpose": "Reads text in screenshots, documents and memes for search, sorting and the private guard. PP-OCRv6 small; runs on this computer.",
+      "license": "Apache-2.0",
+      "source": "GitHub (GreatV/oar-ocr release v0.7.0)",
+      "attribution": "PP-OCRv6 by PaddlePaddle (PaddleOCR), Apache-2.0; ONNX files from the oar-ocr project",
+      "dir": "models/ppocr-v6-small",
+      "after": null,
+      "files": [
+        {
+          "path": "det.onnx",
+          "url": "https://github.com/GreatV/oar-ocr/releases/download/v0.7.0/pp-ocrv6_small_det.onnx",
+          "size": 9880512,
+          "sha256": "d73e0058b7a8086bbd57f3d10b8bcd4ff95363f67e06e2762b5e814fe9c9410e"
+        },
+        {
+          "path": "rec.onnx",
+          "url": "https://github.com/GreatV/oar-ocr/releases/download/v0.7.0/pp-ocrv6_small_rec.onnx",
+          "size": 21159378,
+          "sha256": "5435fd747c9e0efe15a96d0b378d5bd157e9492ed8fd80edf08f30d02fa24634"
+        },
+        {
+          "path": "dict.txt",
+          "url": "https://github.com/GreatV/oar-ocr/releases/download/v0.7.0/ppocrv6_dict.txt",
+          "size": 74947,
+          "sha256": "b5f2bfe2bdd9448429e3e82b51c789775d9b42f2403d082b00662eb77e401c5d"
+        }
+      ]
+    }
+  ]
+}

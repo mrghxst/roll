@@ -10,7 +10,7 @@
   import Button from '../ui/Button.svelte';
   import EmptyState from '../ui/EmptyState.svelte';
   import IconButton from '../ui/IconButton.svelte';
-  import { n } from '../util/format';
+  import { bytes, n } from '../util/format';
 
   let groups = $state<PlaceGroup[]>([]);
   let tracks = $state<TrackInfo[]>([]);
@@ -106,10 +106,16 @@
       <div class="notice" role="note">
         <MapPin size={16} strokeWidth={1.5} />
         <span>
-          Place names are not installed, so places show as coordinates and folder names are not read. Install them from the GeoNames files
-          <span class="mono">cities500.txt</span>, <span class="mono">admin1CodesASCII.txt</span> and <span class="mono">countryInfo.txt</span>.
+          Place names are not installed, so places show as coordinates and folder names are not read. Download them from GeoNames
+          ({bytes(app.pack('places')?.size ?? 0)}), or choose a folder with <span class="mono">cities500.txt</span>,
+          <span class="mono">admin1CodesASCII.txt</span> and <span class="mono">countryInfo.txt</span>.
         </span>
-        <Button onclick={installPlaces}>Choose folder…</Button>
+        {#if app.pack('places')?.state === 'downloading' || app.pack('places')?.state === 'installing'}
+          <span class="muted mono">{app.pack('places')?.state === 'installing' ? 'Installing…' : `${bytes(app.pack('places')?.done ?? 0)} downloaded`}</span>
+        {:else}
+          <Button variant="primary" onclick={() => (app.packAsk = 'places')} data-testid="download-places">Download…</Button>
+          <Button variant="ghost" onclick={installPlaces}>Choose folder…</Button>
+        {/if}
       </div>
     {/if}
   </header>

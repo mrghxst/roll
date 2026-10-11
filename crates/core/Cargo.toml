@@ -29,6 +29,9 @@ tracing.workspace = true
 ts-rs.workspace = true
 walkdir.workspace = true
 trash = "5.2.9"
+ureq = { version = "3.4.2", default-features = false, features = ["rustls"] }
+sha2 = "0.11.0"
+zip = { version = "8.6.0", default-features = false, features = ["deflate"] }
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_Storage_FileSystem"] }
@@ -40,6 +43,7 @@ libc = "0.2.190"
 memory-stats = "1.2.0"
 roll-media.workspace = true
 tempfile.workspace = true
+zip = { version = "8.6.0", default-features = false, features = ["deflate"] }
 
 [target.'cfg(windows)'.dev-dependencies]
 windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_System_Diagnostics_Debug", "Win32_System_Kernel"] }

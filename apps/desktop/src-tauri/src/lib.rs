@@ -166,6 +166,10 @@ pub fn run() {
             commands::discover,
             commands::discover_ignore,
             commands::parse_search,
+            commands::packs,
+            commands::download_pack,
+            commands::cancel_pack,
+            commands::remove_pack,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Roll");

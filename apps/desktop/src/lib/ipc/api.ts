@@ -28,6 +28,7 @@ import type { FolderNode } from './bindings/FolderNode';
 import type { JobInfo } from './bindings/JobInfo';
 import type { PlanOptions } from './bindings/PlanOptions';
 import type { PlanSummary } from './bindings/PlanSummary';
+import type { PackStatus } from './bindings/PackStatus';
 import type { Query } from './bindings/Query';
 import type { RootInfo } from './bindings/RootInfo';
 import type { Rule } from './bindings/Rule';
@@ -106,6 +107,13 @@ export interface Api {
   /** Asks for the folder with GeoNames files; null when cancelled. */
   installPlaces(): Promise<PlacesInfo | null>;
   placeSearch(query: string): Promise<PlaceHit[]>;
+  /** Downloadable place names and models, with their state. */
+  packs(): Promise<PackStatus[]>;
+  /** Starts a download the owner has confirmed. */
+  downloadPack(id: string): Promise<void>;
+  /** Stops a download (the part on disk is kept) or clears a failure. */
+  cancelPack(id: string): Promise<void>;
+  removePack(id: string): Promise<void>;
   placeName(lat: number, lon: number): Promise<string | null>;
   tracks(): Promise<TrackInfo[]>;
   /** Asks for files to import; empty when cancelled. */

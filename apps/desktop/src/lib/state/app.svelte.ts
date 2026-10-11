@@ -3,6 +3,7 @@ import type { AppInfo } from '../ipc/bindings/AppInfo';
 import type { Category } from '../ipc/bindings/Category';
 import type { Counts } from '../ipc/bindings/Counts';
 import type { JobInfo } from '../ipc/bindings/JobInfo';
+import type { PackStatus } from '../ipc/bindings/PackStatus';
 import type { Query } from '../ipc/bindings/Query';
 import type { RootInfo } from '../ipc/bindings/RootInfo';
 import type { Settings } from '../ipc/bindings/Settings';
@@ -47,6 +48,10 @@ class AppState {
   categories = $state<Category[]>([]);
   tags = $state<TagCount[]>([]);
   jobs = $state<JobInfo[]>([]);
+  /** Downloadable packs; refreshed as downloads progress. */
+  packs = $state<PackStatus[]>([]);
+  /** The pack the download confirmation is open for. */
+  packAsk = $state<string | null>(null);
   view = $state<View>('timeline');
   scope = $state<Scope>(ALL);
   /** Filters from the search field and the filter panel. */
@@ -87,6 +92,7 @@ class AppState {
       applyTheme(settings.theme);
       await this.refresh();
       this.jobs = await api.jobs();
+      await this.loadPacks();
     } catch (e) {
       this.error = String(e);
     }
@@ -95,6 +101,7 @@ class AppState {
       if (what === 'thumbs') this.thumbsRevision++;
       else if (what === 'settings') void api.getSettings().then((s) => (this.settings = s));
       else if (what === 'history') this.historyRevision++;
+      else if (what === 'packs') void this.loadPacks();
       else void this.refresh();
     });
     this.ready = true;
@@ -117,12 +124,20 @@ class AppState {
     this.historyRevision++;
   }
 
+  async loadPacks() {
+    this.packs = await api.packs();
+  }
+
+  pack(id: string): PackStatus | undefined {
+    return this.packs.find((p) => p.id === id);
+  }
+
   async saveSettings(patch: Partial<Settings>) {
     if (!this.settings) return;
     const next = { ...this.settings, ...patch };
     this.settings = next;
     if (patch.theme) applyTheme(patch.theme);
-    await api.saveSettings(next);
+    await api.saveSettings($state.snapshot(next));
   }
 
   go(view: View, scope?: Scope) {

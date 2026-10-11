@@ -57,6 +57,7 @@ pub struct Library {
     place_cache: Mutex<crate::places::ByGroup>,
     /// Items in duplicate groups, from the last time they were computed.
     dupe_count: std::sync::atomic::AtomicI64,
+    pub packs: crate::packs::Packs,
 }
 
 /// Whether the offline place names are installed.
@@ -80,6 +81,12 @@ impl Library {
         let settings = Settings::load(&db);
         let s2 = sink.clone();
         let jobs = Jobs::new(db.clone(), Arc::new(move |list| s2(LibEvent::Jobs(list))));
+        let s3 = sink.clone();
+        let packs = crate::packs::Packs::new(
+            data_dir.to_path_buf(),
+            crate::packs::Catalog::bundled(),
+            Arc::new(move || s3(LibEvent::Changed("packs"))),
+        );
         let pool =
             rayon::ThreadPoolBuilder::new().num_threads(settings.thread_count()).thread_name(|i| format!("roll-work-{i}")).build()?;
         Ok(Arc::new(Self {
@@ -96,6 +103,7 @@ impl Library {
             gazetteer: Mutex::new(None),
             place_cache: Mutex::new(Default::default()),
             dupe_count: std::sync::atomic::AtomicI64::new(-1),
+            packs,
         }))
     }
 
@@ -856,20 +864,71 @@ impl Library {
         }
     }
 
-    /// Build the place names from GeoNames files in `dir` (`cities500.txt`,
-    /// `admin1CodesASCII.txt`, `countryInfo.txt`).
+    /// Build the place names from GeoNames files in `dir` (`cities500.txt`
+    /// or `cities500.zip`, `admin1CodesASCII.txt`, `countryInfo.txt`).
     pub fn install_places(&self, dir: &Path) -> anyhow::Result<PlacesInfo> {
-        let open = |n: &str| -> anyhow::Result<std::io::BufReader<std::fs::File>> {
-            Ok(std::io::BufReader::new(std::fs::File::open(dir.join(n)).map_err(|e| anyhow::anyhow!("{n}: {e}"))?))
+        use std::io::{BufReader, Read};
+        let open = |n: &str| -> anyhow::Result<BufReader<std::fs::File>> {
+            Ok(BufReader::new(std::fs::File::open(dir.join(n)).map_err(|e| anyhow::anyhow!("{n}: {e}"))?))
         };
-        let g = roll_geo::gazetteer::build(open("cities500.txt")?, open("admin1CodesASCII.txt")?, open("countryInfo.txt")?)?;
+        let cities: Box<dyn std::io::BufRead> = if dir.join("cities500.txt").exists() {
+            Box::new(open("cities500.txt")?)
+        } else {
+            let mut zip = zip::ZipArchive::new(open("cities500.zip")?).map_err(|e| anyhow::anyhow!("cities500.zip: {e}"))?;
+            let mut text = Vec::new();
+            zip.by_name("cities500.txt").map_err(|e| anyhow::anyhow!("cities500.zip: {e}"))?.read_to_end(&mut text)?;
+            Box::new(std::io::Cursor::new(text))
+        };
+        let g = roll_geo::gazetteer::build(cities, open("admin1CodesASCII.txt")?, open("countryInfo.txt")?)?;
+        anyhow::ensure!(!g.is_empty(), "These files hold no places; expected the GeoNames cities500 list");
         let out = self.data_dir.join("geodata");
         std::fs::create_dir_all(&out)?;
         g.save(&out.join("places.tsv"))?;
         let n = g.len();
         *self.gazetteer.lock() = Some(Some(Arc::new(g)));
+        self.place_cache.lock().clear();
         self.emit(LibEvent::Changed("places"));
+        // Place names are part of the search index.
+        let _ = self.jobs.enqueue(JobSpec::Index);
         Ok(PlacesInfo { installed: true, count: n as i32 })
+    }
+
+    pub fn packs(&self) -> Vec<crate::packs::PackStatus> {
+        self.packs.list()
+    }
+
+    /// Download a pack. The owner has confirmed it in the UI; downloads must
+    /// also be on in Settings › Network.
+    pub fn download_pack(self: &Arc<Self>, id: &str) -> anyhow::Result<()> {
+        anyhow::ensure!(self.settings().network.downloads, "Downloads are off. Turn them on in Settings › Network.");
+        let def = self.packs.catalog().get(id).ok_or_else(|| anyhow::anyhow!("Unknown pack {id}"))?;
+        let after: Option<crate::packs::AfterStep> = match def.after.as_deref() {
+            Some("places") => {
+                let me = Arc::downgrade(self);
+                Some(Box::new(move |dir: &Path| match me.upgrade() {
+                    Some(lib) => lib.install_places(dir).map(|_| ()),
+                    None => Ok(()),
+                }))
+            }
+            _ => None,
+        };
+        self.packs.download(id, after)
+    }
+
+    pub fn cancel_pack(&self, id: &str) {
+        self.packs.cancel(id);
+    }
+
+    pub fn remove_pack(&self, id: &str) -> anyhow::Result<()> {
+        self.packs.remove(id)?;
+        if self.packs.catalog().get(id).and_then(|d| d.after.as_deref()) == Some("places") {
+            let _ = std::fs::remove_file(self.data_dir.join("geodata").join("places.tsv"));
+            *self.gazetteer.lock() = Some(None);
+            self.place_cache.lock().clear();
+            self.emit(LibEvent::Changed("places"));
+            let _ = self.jobs.enqueue(JobSpec::Index);
+        }
+        Ok(())
     }
 
     pub fn place_search(&self, q: &str) -> Vec<Hit> {

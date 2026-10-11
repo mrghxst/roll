@@ -82,8 +82,11 @@ Milestones from PROMPT.md section 10. `[x]` done, `[~]` partly done,
       cluster); assign, new category, split by folder, ignore
 - [x] Search: FTS5 index and the deterministic parser, chips on Enter,
       under 300 ms on 100k
-- [ ] Pack manager (consent, size, SHA-256) and downloads: needs the
-      owner's go-ahead to download model files
+- [x] Pack manager: `packs.json` with URL, size, SHA-256 and license;
+      consent sheet with size, hosts and license; resume after stop;
+      checksum check; Settings › Models and data; place names download
+      from the Places page (tested against a local server)
+- [ ] First real downloads: waiting for the owner's go-ahead
 - [ ] SigLIP 2 embeddings (GPU and CPU), semantic search with RRF,
       zero-shot and learned classifiers, Teach, embedding clusters in
       Discover, smart time offset, OCR and the Private guard
@@ -93,6 +96,7 @@ Milestones from PROMPT.md section 10. `[x]` done, `[~]` partly done,
 
 ## Next
 
-M4 models: waiting for the owner's go-ahead to download SigLIP 2, OCR
-models and ONNX Runtime. Meanwhile: the pack manager and the Private
-guard's text patterns (card numbers, IBANs, passport lines).
+M4 models: waiting for the owner's go-ahead to download SigLIP 2 (1.4 GB),
+PP-OCRv6 small (30 MB) and GeoNames (13 MB) through the pack manager, and
+ONNX Runtime with the `ort` crate. Meanwhile: the Private guard's text
+patterns (card numbers, IBANs, passport lines) and the embedding store.

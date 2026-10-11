@@ -15,6 +15,7 @@ import { emptyMapPoints, type MapPoints } from './mappoints';
 import type { Category } from './bindings/Category';
 import type { FolderNode } from './bindings/FolderNode';
 import type { JobInfo } from './bindings/JobInfo';
+import type { PackStatus } from './bindings/PackStatus';
 import type { PlanSummary } from './bindings/PlanSummary';
 import type { Query } from './bindings/Query';
 import type { RootInfo } from './bindings/RootInfo';
@@ -230,7 +231,27 @@ const PLACES: PlaceHit[] = [
   { label: 'New York City, New York, United States', name: 'New York City', kind: 'city', lat: 40.7143, lon: -74.006, accuracy_m: 5000 },
   { label: 'Italy', name: 'Italy', kind: 'country', lat: 43.0, lon: 12.0, accuracy_m: 200000 },
 ];
-let placesInstalled = setup;
+let placesInstalled = setup && params.get('places') !== '0';
+const pack = (id: string, title: string, size: number, host: string, license: string, verified = true): PackStatus => ({
+  id,
+  title,
+  purpose: `What ${title.toLowerCase()} is for.`,
+  license,
+  source: host,
+  attribution: `${title}, ${license}`,
+  hosts: [host],
+  size,
+  done: 0,
+  state: 'available',
+  error: null,
+  verified,
+});
+const packs: PackStatus[] = [
+  pack('places', 'Place names', 14_055_527, 'download.geonames.org', 'CC BY 4.0', false),
+  pack('image-model', 'Image understanding', 1_535_520_638, 'huggingface.co', 'Apache-2.0'),
+  pack('text-reader', 'Text in photos', 31_114_837, 'github.com', 'Apache-2.0'),
+];
+const packTimers = new Map<string, ReturnType<typeof setInterval>>();
 let tracks: TrackInfo[] = [];
 const dismissed = new Set<string>();
 let dupePairs: number[][] | null = null;
@@ -825,6 +846,52 @@ export const mockApi: Api = {
     placesInstalled = true;
     emit('changed', 'places');
     return { installed: true, count: PLACES.length };
+  },
+  packs: async () => packs.map((p) => ({ ...p })),
+  downloadPack: async (id) => {
+    if (!settings.network.downloads) throw new Error('Downloads are off. Turn them on in Settings › Network.');
+    const p = packs.find((x) => x.id === id);
+    if (!p || packTimers.has(id)) return;
+    p.state = 'downloading';
+    p.error = null;
+    emit('changed', 'packs');
+    packTimers.set(
+      id,
+      setInterval(() => {
+        p.done = Math.min(p.size, p.done + Math.ceil(p.size / 25));
+        if (p.done >= p.size) {
+          clearInterval(packTimers.get(id));
+          packTimers.delete(id);
+          p.state = 'installed';
+          if (id === 'places') {
+            placesInstalled = true;
+            emit('changed', 'places');
+          }
+        }
+        emit('changed', 'packs');
+      }, 80),
+    );
+  },
+  cancelPack: async (id) => {
+    const p = packs.find((x) => x.id === id);
+    clearInterval(packTimers.get(id));
+    packTimers.delete(id);
+    if (p && p.state !== 'installed') {
+      p.state = 'available';
+      p.error = null;
+    }
+    emit('changed', 'packs');
+  },
+  removePack: async (id) => {
+    const p = packs.find((x) => x.id === id);
+    if (!p) return;
+    p.state = 'available';
+    p.done = 0;
+    if (id === 'places') {
+      placesInstalled = false;
+      emit('changed', 'places');
+    }
+    emit('changed', 'packs');
   },
   placeSearch: async (q) => {
     const m = q.match(/^\s*(-?\d+(?:\.\d+)?)\s*[, ]\s*(-?\d+(?:\.\d+)?)\s*$/);

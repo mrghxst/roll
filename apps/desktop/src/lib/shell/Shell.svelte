@@ -22,6 +22,7 @@
   import FilterPanel from './FilterPanel.svelte';
   import InfoPanel from './InfoPanel.svelte';
   import RecycleSheet from './RecycleSheet.svelte';
+  import PackSheet from './PackSheet.svelte';
   import SelectionActions from './SelectionActions.svelte';
   import Sidebar from './Sidebar.svelte';
   import TagSheet from './TagSheet.svelte';
@@ -146,6 +147,7 @@
 <ZoneSheet />
 <LocationSheet />
 <DateSheet />
+<PackSheet />
 <Toasts />
 
 <style>

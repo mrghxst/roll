@@ -11,6 +11,7 @@ use roll_core::discover::Cluster;
 use roll_core::dupes::DupeGroup;
 use roll_core::library::PlacesInfo;
 use roll_core::model::*;
+use roll_core::packs::PackStatus;
 use roll_core::places::{LocationResult, PlaceGroup, PlaceHit, TrackInfo};
 use roll_core::planner::{PlanOptions, PlanSummary};
 use roll_core::review::{ReviewItem, ReviewSummary};
@@ -507,4 +508,33 @@ pub fn discover_ignore(state: State<AppState>, key: String) -> Res<()> {
 pub async fn parse_search(state: State<'_, AppState>, text: String) -> Res<ParsedSearch> {
     let lib = state.lib.clone();
     blocking(move || Ok(lib.parse_search(&text))).await
+}
+
+#[tauri::command]
+pub async fn packs(state: State<'_, AppState>) -> Res<Vec<PackStatus>> {
+    let lib = state.lib.clone();
+    blocking(move || Ok(lib.packs())).await
+}
+
+/// The UI asks the owner first (size, source, license).
+#[tauri::command]
+pub async fn download_pack(state: State<'_, AppState>, id: String) -> Res<()> {
+    let lib = state.lib.clone();
+    blocking(move || lib.download_pack(&id)).await
+}
+
+#[tauri::command]
+pub async fn cancel_pack(state: State<'_, AppState>, id: String) -> Res<()> {
+    let lib = state.lib.clone();
+    blocking(move || {
+        lib.cancel_pack(&id);
+        Ok(())
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn remove_pack(state: State<'_, AppState>, id: String) -> Res<()> {
+    let lib = state.lib.clone();
+    blocking(move || lib.remove_pack(&id)).await
 }

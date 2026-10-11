@@ -122,3 +122,34 @@ questions. One line of reason each. Newest at the bottom of each section.
   Photos on macOS and Windows Explorer). Enter opens, Space is quick look.
 - **Short days share a row**, each with its own small header. Sparse
   libraries otherwise waste most of the width under day headers.
+
+## Packs and models
+
+- **PP-OCRv6 small instead of PP-OCRv5 mobile.** PaddleOCR released
+  PP-OCRv6 in June 2026 and `oar-ocr` (0.7+) has a preset for it. The small
+  pair (det 9.4 MiB, rec 20.2 MiB, 18,708-character dictionary) is the
+  closest to v5 mobile in size, from the oar-ocr v0.7.0 release, whose
+  GitHub asset digests are the SHA-256 values in `packs.json`.
+- **GeoNames files carry no checksum.** GeoNames regenerates its dumps
+  daily and keeps no dated copies, so a fixed SHA-256 would fail the next
+  day. The place-names pack caps each file at four times its listed size,
+  restarts instead of resuming, and the gazetteer build refuses files with
+  no places. The SHA-256 of what was downloaded is still recorded in the
+  pack's `pack.json`. A pinned alternative would be a processed
+  `places.tsv` attached to a Roll release, which needs the owner's go-ahead
+  for releases.
+- **Downloads run on their own thread, not in the job queue.** Jobs run one
+  at a time; a 1.4 GB model must not hold up scans and thumbnails. Packs
+  report progress through a `packs` change event and show in Settings ›
+  Models and data.
+- **`packs.json` is compiled into the app.** The catalog and its checksums
+  ship with each version, so a compromised server cannot change what Roll
+  accepts. A pack is installed once its `pack.json` is written, after every
+  file matched and the install step (the gazetteer build) succeeded.
+- **The SigLIP 2 export is pinned to a commit** of
+  `immich-app/ViT-B-16-SigLIP2__webli` (5f3fc29). The text model is 1.1 GB
+  in fp32 because of the 256k-token Gemma vocabulary.
+- **The Windows crash report uses an unhandled-exception filter**, not a
+  vectored handler: vectored handlers also see first-chance exceptions that
+  libraries catch on purpose. The report is written synchronously because
+  the log writer's thread may not run again.

@@ -16,6 +16,7 @@ pub mod jobs;
 pub mod journal;
 pub mod library;
 pub mod model;
+pub mod packs;
 pub mod paths;
 pub mod places;
 pub mod planner;

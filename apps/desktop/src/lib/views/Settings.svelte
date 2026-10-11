@@ -14,6 +14,7 @@
   import { SHORTCUTS } from '../util/shortcuts';
   import Categories from '../settings/Categories.svelte';
   import Rules from '../settings/Rules.svelte';
+  import Packs from '../settings/Packs.svelte';
 
   const SECTIONS = [
     ['library', 'Library'],
@@ -23,6 +24,7 @@
     ['appearance', 'Appearance'],
     ['ai', 'AI'],
     ['immich', 'Immich'],
+    ['packs', 'Models and data'],
     ['network', 'Network'],
     ['performance', 'Performance'],
     ['shortcuts', 'Shortcuts'],
@@ -222,6 +224,13 @@
           {#if hasKey.immich}<Button variant="ghost" onclick={() => removeKey('immich')}>Remove</Button>{/if}
         </div>
       </label>
+    {:else if section === 'packs'}
+      <h1>Models and data</h1>
+      <p class="lead">
+        Place names and the models Roll runs on this computer. Nothing downloads until you choose to; each download shows its size, source and license
+        first.
+      </p>
+      <Packs />
     {:else if section === 'network'}
       <h1>Network</h1>
       <p class="lead">Everything that can reach the internet. All of it is off unless you turned it on.</p>
@@ -290,6 +299,11 @@
         Roll is MIT licensed. It uses ExifTool by Phil Harvey (Perl Artistic License), FFmpeg (LGPL), SQLite (public domain), the Geist fonts (OFL),
         Lucide icons (ISC), and map data from OpenStreetMap contributors (ODbL).
       </p>
+      {#if app.packs.some((p) => p.state === 'installed')}
+        <p class="note">
+          {#each app.packs.filter((p) => p.state === 'installed') as p (p.id)}{p.attribution}.<br />{/each}
+        </p>
+      {/if}
     {/if}
   </div>
 </div>
