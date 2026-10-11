@@ -25,11 +25,47 @@ fn init_logs(dir: &std::path::Path) -> Option<tracing_appender::non_blocking::Wo
     Some(guard)
 }
 
+/// A native crash (a decoder or driver fault) would otherwise leave nothing
+/// behind. Writes the faulting thread's backtrace to `logs/crash-<ms>.txt`
+/// synchronously, since the log writer's thread may not get to run again.
+#[cfg(windows)]
+fn install_crash_report(dir: &std::path::Path) {
+    use windows_sys::Win32::System::Diagnostics::Debug::{EXCEPTION_POINTERS, SetUnhandledExceptionFilter};
+
+    /// Where the report goes; set once before the filter is installed.
+    static CRASH_DIR: std::sync::OnceLock<std::path::PathBuf> = std::sync::OnceLock::new();
+
+    unsafe extern "system" fn on_crash(info: *const EXCEPTION_POINTERS) -> i32 {
+        let (code, addr) = unsafe { ((*(*info).ExceptionRecord).ExceptionCode, (*(*info).ExceptionRecord).ExceptionAddress) };
+        if let Some(dir) = CRASH_DIR.get() {
+            let ms = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis()).unwrap_or(0);
+            let report = format!(
+                "Roll {} crashed: exception {code:#010x} at {addr:?} on thread {:?}
+
+{}
+",
+                env!("CARGO_PKG_VERSION"),
+                std::thread::current().name(),
+                std::backtrace::Backtrace::force_capture()
+            );
+            let _ = std::fs::write(dir.join(format!("crash-{ms}.txt")), report);
+        }
+        0 // EXCEPTION_CONTINUE_SEARCH: Windows still reports the crash.
+    }
+
+    let _ = CRASH_DIR.set(dir.to_path_buf());
+    unsafe { SetUnhandledExceptionFilter(Some(on_crash)) };
+}
+
+#[cfg(not(windows))]
+fn install_crash_report(_dir: &std::path::Path) {}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let data_dir = roll_core::paths::app_data_dir();
     let log_dir = data_dir.join("logs");
     let _guard = init_logs(&log_dir);
+    install_crash_report(&log_dir);
 
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
