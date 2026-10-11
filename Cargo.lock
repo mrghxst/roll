@@ -3608,6 +3608,7 @@ dependencies = [
  "blake3",
  "fast_image_resize",
  "image",
+ "rayon",
  "serde",
  "serde_json",
  "tempfile",

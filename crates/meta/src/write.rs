@@ -152,6 +152,7 @@ fn file_plan(edit: &MetaEdit, kind: MediaKind, format: &str) -> Plan {
                     None => p.clear(tag),
                 }
             }
+            xmp_date(&mut p, t);
         }
     }
     if let Some(g) = &edit.gps {
@@ -198,6 +199,7 @@ fn file_plan(edit: &MetaEdit, kind: MediaKind, format: &str) -> Plan {
                     }
                 }
             }
+            xmp_gps(&mut p, g.as_ref());
         }
     }
     if let Some(list) = &edit.tags {
@@ -240,6 +242,50 @@ fn file_plan(edit: &MetaEdit, kind: MediaKind, format: &str) -> Plan {
     p
 }
 
+/// The XMP date fields. Written in sidecars, and in photos too: editors
+/// often leave an XMP date in the file, and it must not contradict EXIF.
+/// Explorer also takes "Date taken" for PNG from here.
+fn xmp_date(p: &mut Plan, t: &Taken) {
+    let v = with_offset(t);
+    p.set("XMP-exif:DateTimeOriginal", &v);
+    p.set("XMP-photoshop:DateCreated", &v);
+    p.set("XMP-xmp:CreateDate", &v);
+}
+
+fn xmp_gps(p: &mut Plan, g: Option<&Gps>) {
+    match g {
+        Some(g) => {
+            p.set_num("XMP-exif:GPSLatitude", g.lat);
+            p.set_num("XMP-exif:GPSLongitude", g.lon);
+            match g.alt {
+                Some(a) => {
+                    p.set_num("XMP-exif:GPSAltitude", a.abs());
+                    p.set_num("XMP-exif:GPSAltitudeRef", u8::from(a < 0.0));
+                }
+                None => {
+                    p.clear("XMP-exif:GPSAltitude");
+                    p.clear("XMP-exif:GPSAltitudeRef");
+                }
+            }
+            match g.accuracy_m {
+                Some(a) => p.set_num("XMP-exif:GPSHPositioningError", a),
+                None => p.clear("XMP-exif:GPSHPositioningError"),
+            }
+        }
+        None => {
+            for tag in [
+                "XMP-exif:GPSLatitude",
+                "XMP-exif:GPSLongitude",
+                "XMP-exif:GPSAltitude",
+                "XMP-exif:GPSAltitudeRef",
+                "XMP-exif:GPSHPositioningError",
+            ] {
+                p.clear(tag);
+            }
+        }
+    }
+}
+
 fn sidecar_plan(edit: &MetaEdit) -> Plan {
     let mut p = Plan::new();
     if let Some(list) = &edit.tags {
@@ -249,43 +295,10 @@ fn sidecar_plan(edit: &MetaEdit) -> Plan {
         p.list("XMP-dc:Subject", &f.subjects);
     }
     if let Some(t) = &edit.taken {
-        let v = with_offset(t);
-        p.set("XMP-exif:DateTimeOriginal", &v);
-        p.set("XMP-photoshop:DateCreated", &v);
-        p.set("XMP-xmp:CreateDate", &v);
+        xmp_date(&mut p, t);
     }
     if let Some(g) = &edit.gps {
-        match g {
-            Some(g) => {
-                p.set_num("XMP-exif:GPSLatitude", g.lat);
-                p.set_num("XMP-exif:GPSLongitude", g.lon);
-                match g.alt {
-                    Some(a) => {
-                        p.set_num("XMP-exif:GPSAltitude", a.abs());
-                        p.set_num("XMP-exif:GPSAltitudeRef", u8::from(a < 0.0));
-                    }
-                    None => {
-                        p.clear("XMP-exif:GPSAltitude");
-                        p.clear("XMP-exif:GPSAltitudeRef");
-                    }
-                }
-                match g.accuracy_m {
-                    Some(a) => p.set_num("XMP-exif:GPSHPositioningError", a),
-                    None => p.clear("XMP-exif:GPSHPositioningError"),
-                }
-            }
-            None => {
-                for tag in [
-                    "XMP-exif:GPSLatitude",
-                    "XMP-exif:GPSLongitude",
-                    "XMP-exif:GPSAltitude",
-                    "XMP-exif:GPSAltitudeRef",
-                    "XMP-exif:GPSHPositioningError",
-                ] {
-                    p.clear(tag);
-                }
-            }
-        }
+        xmp_gps(&mut p, g.as_ref());
     }
     if let Some(d) = &edit.description {
         match d {

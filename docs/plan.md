@@ -37,10 +37,16 @@ Milestones from PROMPT.md section 10. `[x]` done, `[~]` partly done,
       tested with a hash manifest
 - [x] Trash and Recycle Bin, ExifTool writes with snapshots (round trip on
       JPEG, HEIC, PNG, MOV, MP4), long paths, case-only conflicts
-- [ ] Tauri commands and UI: Organize preview, History with Ctrl+Z, batch
-      edit actions, Trash view, Settings for categories and rules
-- [ ] Acceptance run on the fixture library; Explorer check by hand;
-      Immich round trip (needs Docker)
+- [x] Tauri commands and UI: Organize preview, History with Ctrl+Z, batch
+      edit actions (category, tag, favorite, rating, rotate, trash), Trash
+      view, Settings for categories and rules, Playwright tests
+- [x] Acceptance run on a copy of the fixture library, with a real process
+      kill during apply (`crates/core/tests/organize_acceptance.rs`)
+- [x] Explorer check through the Windows property system (docs/checks.md)
+- [ ] Photos app check by hand (docs/checks.md has the steps)
+- [ ] Immich round trip (needs Docker; moved to M6 with the Immich work)
+- [ ] Rare access violation in the acceptance test during thumbnailing
+      (about 1 run in 15, not reproduced in isolation); under investigation
 
 ## M3 Dates, places, map
 ## M4 Local AI
@@ -50,5 +56,5 @@ Milestones from PROMPT.md section 10. `[x]` done, `[~]` partly done,
 
 ## Next
 
-Finish M2: expose the new core APIs as commands, build the Organize,
-History and Trash views, then run the acceptance checks.
+Pin down the rare crash, then M3: fix dates, fix places, the map with the
+time slider, offline gazetteer and time zones.

@@ -198,8 +198,11 @@ pub fn apple_maker_note(content_id: Option<&str>, burst_id: Option<&str>) -> Vec
         .filter_map(|(t, v)| v.map(|v| (t, [v.as_bytes(), b"\0"].concat())))
         .collect();
     let mut note = b"Apple iOS\0\0\x01MM".to_vec();
-    note.extend_from_slice(&(entries.len() as u16).to_be_bytes());
-    let mut data_off = 16 + entries.len() * 12 + 4;
+    // Real notes always start with MakerNoteVersion (int32s); ExifTool
+    // refuses to rewrite files whose maker note directory is empty.
+    note.extend_from_slice(&(entries.len() as u16 + 1).to_be_bytes());
+    note.extend_from_slice(&[0x00, 0x01, 0x00, 0x09, 0, 0, 0, 1, 0, 0, 0, 14]);
+    let mut data_off = 16 + (entries.len() + 1) * 12 + 4;
     let mut data = Vec::new();
     for (tag, bytes) in &entries {
         note.extend_from_slice(&tag.to_be_bytes());

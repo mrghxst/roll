@@ -1221,6 +1221,9 @@ fn duplicates_and_paths(g: &mut Gen) -> Result<()> {
             file_local: None,
             has_gps: false,
             camera: None,
+            // The category follows from the camera original (duplicates),
+            // not from a rule: the WhatsApp name only sets the source.
+            rule_decidable: false,
             flags: vec!["whatsapp_copy", "no_metadata"],
             ..(*it).clone()
         });

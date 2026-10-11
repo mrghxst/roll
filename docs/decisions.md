@@ -45,6 +45,32 @@ questions. One line of reason each. Newest at the bottom of each section.
 - **In-file writes cover JPEG, HEIC, AVIF, PNG, TIFF, WebP, MOV, MP4 and
   3GP.** RAW, GIF, BMP and other video containers get sidecars only, which
   is safer for formats ExifTool rewrites less often.
+- **Undo of a metadata write restores values, not bytes.** ExifTool puts
+  the previous values back and the image data is unchanged (checked with
+  `ImageDataHash`), but GPS degrees are re-encoded as DMS rationals and can
+  differ from the original in the 11th decimal (well under a millimetre).
+  Undo of moves, by contrast, is byte-identical.
+- **Rotation writes EXIF orientation for JPEG, PNG, WebP and TIFF only.**
+  HEIF rotation lives in the container (`irot`) and video rotation in the
+  track matrix; Explorer and most viewers ignore EXIF orientation there,
+  so rotating those would look wrong elsewhere. They are left alone, and
+  the UI says so.
+
+## Organize
+
+- **Edits change the database first; files change only when a plan is
+  applied.** Each edit records provenance and marks the item unsaved; the
+  Organize view shows how many items have unsaved changes and writes them
+  together with the moves, in one undoable batch.
+- **The owner's rules run before the built-in ones** (priority 5, built-in
+  rules start at 10), so a rule the owner writes can override a default.
+  Rule patterns are checked when saved; an invalid pattern is refused with
+  the regex error instead of silently never matching.
+- **Copy to a new library folder is not offered yet.** Move in place is
+  implemented and tested; copy mode needs its own root handling and is
+  planned for M6 with the import work. The UI does not show the option.
+- **Per-category "send to Immich" is stored but not shown** until Immich
+  sync exists (M6), so the UI has no setting that does nothing.
 
 ## Fixtures
 
@@ -56,6 +82,12 @@ questions. One line of reason each. Newest at the bottom of each section.
 - **Basic EXIF in fixtures is written by a small TIFF encoder**, ExifTool
   writes XMP, QuickTime keys and RAW stand-ins. This keeps generation under
   two minutes and makes the 100k stress library possible.
+- **Synthetic Apple maker notes always carry `MakerNoteVersion`.** An empty
+  maker note directory makes ExifTool refuse to rewrite the file, which no
+  real iPhone file triggers.
+- **WhatsApp copies of camera photos are not rule-decidable.** Their name
+  only sets `Source/WhatsApp`; the category follows from the camera
+  original through duplicate detection (M4).
 
 ## UI
 
