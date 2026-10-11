@@ -109,6 +109,10 @@ questions. One line of reason each. Newest at the bottom of each section.
 - **Basic EXIF in fixtures is written by a small TIFF encoder**, ExifTool
   writes XMP, QuickTime keys and RAW stand-ins. This keeps generation under
   two minutes and makes the 100k stress library possible.
+- **HEIC fixtures come from a raw HEVC stream, not an MP4.** FFmpeg 9's
+  MP4 muxer (Homebrew build on macOS) stopped accepting libx265's single
+  frame ("not yet implemented"). The generator now asks FFmpeg for Annex B
+  output and builds `hvcC` from the VPS, SPS and PPS itself.
 - **Synthetic Apple maker notes always carry `MakerNoteVersion`.** An empty
   maker note directory makes ExifTool refuse to rewrite the file, which no
   real iPhone file triggers.
