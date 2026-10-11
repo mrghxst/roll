@@ -19,14 +19,19 @@
     "@tauri-apps/api": "2.12.3",
     "@tauri-apps/plugin-dialog": "2.8.2",
     "@tauri-apps/plugin-opener": "2.7.1",
-    "thumbhash": "0.1.1"
+    "maplibre-gl": "6.11.2",
+    "thumbhash": "0.1.1",
+    "topojson-client": "3.1.0",
+    "world-atlas": "2.0.2"
   },
   "devDependencies": {
     "@playwright/test": "1.64.0",
     "@sveltejs/vite-plugin-svelte": "7.3.1",
     "@tauri-apps/cli": "2.12.1",
     "@tsconfig/svelte": "5.0.8",
+    "@types/geojson": "7946.0.16",
     "@types/node": "26.6.5",
+    "@types/topojson-client": "3.1.5",
     "svelte": "5.57.2",
     "svelte-check": "4.7.6",
     "typescript": "6.0.3",

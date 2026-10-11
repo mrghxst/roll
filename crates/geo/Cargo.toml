@@ -8,10 +8,15 @@ license.workspace = true
 [dependencies]
 anyhow.workspace = true
 chrono.workspace = true
+chrono-tz.workspace = true
+deunicode = "1.6.2"
+quick-xml.workspace = true
+regex.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
+tzf-rs = { version = "2.1.3", default-features = false, features = ["bundled"] }
 
 [dev-dependencies]
 tempfile.workspace = true
