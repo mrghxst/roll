@@ -4,6 +4,7 @@
 pub mod actions;
 pub mod categories;
 pub mod classify;
+pub mod datefix;
 pub mod dates;
 pub mod db;
 pub mod edits;
@@ -14,6 +15,7 @@ pub mod journal;
 pub mod library;
 pub mod model;
 pub mod paths;
+pub mod places;
 pub mod planner;
 pub mod query;
 pub mod rules;

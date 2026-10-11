@@ -1,6 +1,6 @@
 //! Database migrations. Append only: never edit a shipped migration.
 
-pub const MIGRATIONS: &[&str] = &[M1];
+pub const MIGRATIONS: &[&str] = &[M1, M2];
 
 const M1: &str = r#"
 CREATE TABLE settings (
@@ -269,4 +269,27 @@ INSERT INTO categories (key, name, definition, folder_template, immich_default, 
  ('documents', 'Documents', 'Photos or scans of paper, receipts, tickets, IDs, whiteboards, notes and labels, or a screen photographed for its text.', '{year}/Documents', 0, 6, 1),
  ('junk', 'Junk', 'Accidental, black or very blurry shots, pocket shots, test shots, broken files.', '{year}/Junk', 0, 7, 1),
  ('unsorted', 'Unsorted', 'Not decided yet.', NULL, 0, 8, 1);
+"#;
+
+/// M3: imported location history and dismissed suggestions.
+const M2: &str = r#"
+-- Points are packed: i64 UTC ms, f64 latitude, f64 longitude, f32 accuracy.
+CREATE TABLE tracks (
+  id INTEGER PRIMARY KEY,
+  name TEXT NOT NULL,
+  format TEXT NOT NULL,
+  points BLOB NOT NULL,
+  count INTEGER NOT NULL,
+  start_utc INTEGER,
+  end_utc INTEGER,
+  imported_at INTEGER NOT NULL
+);
+-- Suggestions the owner rejected or sets they dismissed, by kind and key.
+CREATE TABLE dismissed (
+  kind TEXT NOT NULL,
+  key TEXT NOT NULL,
+  at INTEGER NOT NULL,
+  PRIMARY KEY (kind, key)
+);
+CREATE INDEX assets_camera ON assets(make, model, serial);
 "#;
