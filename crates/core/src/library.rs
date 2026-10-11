@@ -113,6 +113,15 @@ impl Library {
             let _ = self.jobs.enqueue(JobSpec::Scan { root_id: r.id as i64 });
         }
         let _ = self.jobs.enqueue(JobSpec::Thumbs);
+        // Build the search index once (after an upgrade, or a lost index).
+        let (assets, indexed): (i64, i64) = self
+            .db
+            .read()
+            .query_row("SELECT (SELECT count(*) FROM assets), (SELECT count(*) FROM fts)", [], |r| Ok((r.get(0)?, r.get(1)?)))
+            .unwrap_or((0, 0));
+        if assets != indexed {
+            let _ = self.jobs.enqueue(JobSpec::Index);
+        }
     }
 
     pub fn tools(&self) -> journal::Tools<'_> {
@@ -157,6 +166,7 @@ impl Library {
                 let (report, touched) = scan::scan_root(&self.db, *root_id, &root, &self.tz, !first, &progress)?;
                 groups::rebuild(&self.db, *root_id)?;
                 classify::run(&self.db.write(), Some(&touched))?;
+                self.reindex(&touched);
                 self.emit(LibEvent::Scanned(report));
                 self.emit(LibEvent::Changed("assets"));
                 self.jobs.enqueue(JobSpec::Thumbs)?;
@@ -186,6 +196,12 @@ impl Library {
                 Ok(())
             }
             JobSpec::Hash => self.run_hash(ctx),
+            JobSpec::Index => {
+                let gaz = self.gaz();
+                let place = |la: f64, lo: f64| gaz.as_ref().and_then(|g| g.reverse(la, lo).map(|e| e.label()));
+                self.db.tx(|tx| crate::search::reindex(tx, None, &place))?;
+                Ok(())
+            }
             JobSpec::Recover => {
                 if journal::recover(&self.db, &self.tools())? > 0 {
                     self.emit(LibEvent::Changed("assets"));
@@ -325,12 +341,44 @@ impl Library {
 
     // Browsing
 
+    /// The query with the words the search parser understands turned into
+    /// filters.
+    fn expand(&self, q: &Query) -> Query {
+        if q.text.as_deref().is_none_or(|t| t.trim().is_empty()) {
+            return q.clone();
+        }
+        let gaz = self.gaz();
+        crate::search::expand(&self.db.read(), q, gaz.as_deref(), chrono::Local::now().date_naive())
+    }
+
+    pub fn parse_search(&self, text: &str) -> crate::search::ParsedSearch {
+        let gaz = self.gaz();
+        crate::search::parse(&self.db.read(), text, gaz.as_deref(), chrono::Local::now().date_naive())
+    }
+
+    /// Refresh the search index rows of items that changed.
+    fn reindex(&self, ids: &[i64]) {
+        // Big changes (a first scan) are cheaper as one rebuild in the background.
+        if ids.len() > 2000 {
+            let _ = self.jobs.enqueue(JobSpec::Index);
+            return;
+        }
+        let gaz = self.gaz();
+        let place = |la: f64, lo: f64| gaz.as_ref().and_then(|g| g.reverse(la, lo).map(|e| e.label()));
+        let all = crate::trash::with_groups(&self.db.read(), ids).unwrap_or_else(|_| ids.to_vec());
+        if let Err(e) = crate::search::reindex(&self.db.write(), Some(&all), &place) {
+            tracing::warn!("search index: {e}");
+        }
+    }
+
     pub fn timeline(&self, q: &Query) -> anyhow::Result<Vec<u8>> {
-        Ok(query::timeline(&self.db.read(), q)?)
+        let q = self.expand(q);
+        Ok(query::timeline(&self.db.read(), &q)?)
     }
 
     pub fn ids(&self, q: &Query) -> anyhow::Result<Vec<i64>> {
-        Ok(query::ids(&self.db.read(), q)?)
+        let q = self.expand(q);
+        Ok(query::ids(&self.db.read(), &q)?)
     }
 
     pub fn tiles(&self, ids: &[i64]) -> anyhow::Result<Vec<TileInfo>> {
@@ -517,6 +565,7 @@ impl Library {
     }
 
     pub fn facets(&self, q: &Query) -> anyhow::Result<Facets> {
+        let q = &self.expand(q);
         let c = self.db.read();
         let sql = query::where_clause(q);
         let facet = |select: &str, group: &str, limit: usize| -> rusqlite::Result<Vec<Facet>> {
@@ -689,6 +738,7 @@ impl Library {
             }
             Ok(out)
         })?;
+        self.reindex(ids);
         if matches!(action, EditAction::Rotate { .. }) && n > 0 {
             self.jobs.enqueue(JobSpec::Thumbs)?;
         }
@@ -772,6 +822,7 @@ impl Library {
     /// Apply a date fix. Returns how many items changed.
     pub fn date_apply(&self, fix: &DateFix) -> anyhow::Result<usize> {
         let (_, n) = self.db.tx_any(|tx| crate::datefix::apply(tx, fix, &self.tz))?;
+        self.reindex(&fix.ids);
         self.emit(LibEvent::Changed("assets"));
         self.emit(LibEvent::Changed("history"));
         Ok(n)
@@ -888,6 +939,7 @@ impl Library {
         let label = format!("Set the location of {} {source}", plural(items.len()));
         self.db.tx(|tx| crate::places::accept(tx, &items, &label))?;
         self.place_cache.lock().remove(key);
+        self.reindex(&ids);
         let zones = crate::places::zone_proposals(&self.db.read(), &ids)?;
         self.emit(LibEvent::Changed("assets"));
         self.emit(LibEvent::Changed("history"));
@@ -904,6 +956,7 @@ impl Library {
         };
         let why = name.map(|n| format!("{n}, set by you."));
         let (_, n) = self.db.tx(|tx| crate::places::set_location(tx, ids, place, &label, why.clone()))?;
+        self.reindex(ids);
         let zones = if place.is_some() { crate::places::zone_proposals(&self.db.read(), ids)? } else { Vec::new() };
         self.emit(LibEvent::Changed("assets"));
         self.emit(LibEvent::Changed("history"));
@@ -969,13 +1022,15 @@ impl Library {
     /// Keep one item, send the others to Roll's trash. Returns how many.
     pub fn merge_dupes(&self, keep: i64, others: &[i64]) -> anyhow::Result<usize> {
         let (_, n) = self.db.tx(|tx| crate::dupes::merge(tx, keep, others))?;
+        self.reindex(&[keep]);
         self.emit(LibEvent::Changed("assets"));
         self.emit(LibEvent::Changed("history"));
         Ok(n)
     }
 
     pub fn map_points(&self, q: &Query) -> anyhow::Result<Vec<u8>> {
-        Ok(query::map_points(&self.db.read(), q)?)
+        let q = self.expand(q);
+        Ok(query::map_points(&self.db.read(), &q)?)
     }
 
     /// Undo the most recent applied batch. Returns its label.

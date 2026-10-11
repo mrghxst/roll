@@ -74,6 +74,7 @@ export const tauriApi: Api = {
   acceptAbove: (key, min) => invoke('accept_above', { key, min }),
   discover: (split) => invoke('discover', { split }),
   discoverIgnore: (key) => invoke('discover_ignore', { key }),
+  parseSearch: (text) => invoke('parse_search', { text }),
   dupeGroups: () => invoke('dupe_groups'),
   mergeDupes: (keep, others) => invoke('merge_dupes', { keep, others }),
   on<K extends keyof Events>(event: K, cb: Events[K]) {

@@ -1,6 +1,6 @@
 //! Database migrations. Append only: never edit a shipped migration.
 
-pub const MIGRATIONS: &[&str] = &[M1, M2, M3];
+pub const MIGRATIONS: &[&str] = &[M1, M2, M3, M4];
 
 const M1: &str = r#"
 CREATE TABLE settings (
@@ -302,5 +302,13 @@ CREATE TABLE audits (
   category_key TEXT NOT NULL,
   ok INTEGER,
   at INTEGER NOT NULL
+);
+"#;
+
+/// M4: full-text search over names, folders, tags, places and text.
+const M4: &str = r#"
+CREATE VIRTUAL TABLE fts USING fts5(
+  name, folder, tags, place, body,
+  tokenize = 'unicode61 remove_diacritics 2'
 );
 "#;

@@ -5,6 +5,11 @@
  */
 export type Query = { text: string | null, from_utc: number | null, to_utc: number | null, 
 /**
+ * Local wall-clock bounds, "YYYY-MM-DDTHH:MM:SS": from inclusive, to
+ * exclusive. Years, months and seasons in search use these.
+ */
+from_local: string | null, to_local: string | null, 
+/**
  * "photo" or "video", plus "live", "burst", "raw".
  */
 media: Array<string>, categories: Array<string>, exclude_categories: Array<string>, tags: Array<string>, event_id: number | null, cameras: Array<string>, lenses: Array<string>, formats: Array<string>, 

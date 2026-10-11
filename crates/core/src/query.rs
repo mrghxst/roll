@@ -47,6 +47,12 @@ pub fn where_clause(q: &Query) -> Sql {
     if let Some(t) = q.to_utc {
         w.push(format!("a.taken_utc < {}", push(&mut p, Value::Integer(t))));
     }
+    if let Some(f) = &q.from_local {
+        w.push(format!("a.taken_local >= {}", push(&mut p, Value::Text(f.clone()))));
+    }
+    if let Some(t) = &q.to_local {
+        w.push(format!("a.taken_local < {}", push(&mut p, Value::Text(t.clone()))));
+    }
     if !q.media.is_empty() {
         let parts: Vec<&str> = q
             .media
@@ -159,12 +165,9 @@ pub fn where_clause(q: &Query) -> Sql {
     if let Some(v) = q.inbox {
         w.push(if v { "a.inbox > 0".into() } else { "a.inbox = 0".into() });
     }
-    if let Some(t) = q.text.as_deref().map(str::trim).filter(|t| !t.is_empty()) {
-        let like = push(&mut p, Value::Text(format!("%{}%", t.replace('%', ""))));
-        w.push(format!(
-            "(a.name LIKE {like} OR a.dir LIKE {like} OR a.description LIKE {like} OR coalesce(a.model, '') LIKE {like}
-              OR EXISTS (SELECT 1 FROM asset_tags at JOIN tags t ON t.id = at.tag_id WHERE at.asset_id = a.id AND t.path LIKE {like}))"
-        ));
+    if let Some(m) = q.text.as_deref().and_then(crate::search::fts_match) {
+        let m = push(&mut p, Value::Text(m));
+        w.push(format!("a.id IN (SELECT rowid FROM fts WHERE fts MATCH {m})"));
     }
     Sql { clause: w.join(" AND "), params: p }
 }
@@ -346,6 +349,7 @@ mod tests {
         assert_eq!(q(Query { categories: vec!["memes".into()], ..Default::default() }), vec![x]);
         assert_eq!(q(Query { exclude_categories: vec!["memes".into()], ..Default::default() }).len(), 2);
         assert_eq!(q(Query { bbox: Some(vec![44.0, 9.0, 46.0, 11.0]), ..Default::default() }), vec![a]);
+        crate::search::reindex(&c, None, &|_, _| None).unwrap();
         assert_eq!(q(Query { text: Some("sub".into()), ..Default::default() }), vec![b]);
 
         let bytes = timeline(&c, &Query::default()).unwrap();

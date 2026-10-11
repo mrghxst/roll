@@ -236,6 +236,10 @@ pub struct Query {
     pub from_utc: Option<i64>,
     #[ts(type = "number | null")]
     pub to_utc: Option<i64>,
+    /// Local wall-clock bounds, "YYYY-MM-DDTHH:MM:SS": from inclusive, to
+    /// exclusive. Years, months and seasons in search use these.
+    pub from_local: Option<String>,
+    pub to_local: Option<String>,
     /// "photo" or "video", plus "live", "burst", "raw".
     pub media: Vec<String>,
     pub categories: Vec<String>,

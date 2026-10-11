@@ -10,6 +10,7 @@ import type { DatePreview } from './bindings/DatePreview';
 import type { DateSet } from './bindings/DateSet';
 import type { Cluster } from './bindings/Cluster';
 import type { DupeGroup } from './bindings/DupeGroup';
+import type { ParsedSearch } from './bindings/ParsedSearch';
 import type { ReviewItem } from './bindings/ReviewItem';
 import type { ReviewSummary } from './bindings/ReviewSummary';
 import type { LocationResult } from './bindings/LocationResult';
@@ -123,6 +124,8 @@ export interface Api {
   /** Clusters of undecided items; `split` breaks one up by folder. */
   discover(split: string | null): Promise<Cluster[]>;
   discoverIgnore(key: string): Promise<void>;
+  /** What the search parser understands in the text. */
+  parseSearch(text: string): Promise<ParsedSearch>;
   dupeGroups(): Promise<DupeGroup[]>;
   /** Keep one, move the others to Roll's trash. */
   mergeDupes(keep: number, others: number[]): Promise<number>;
@@ -135,37 +138,7 @@ export interface Api {
   setWindowTheme(theme: 'light' | 'dark' | null): Promise<void>;
 }
 
-export function emptyQuery(): Query {
-  return {
-    text: null,
-    from_utc: null,
-    to_utc: null,
-    media: [],
-    categories: [],
-    exclude_categories: [],
-    tags: [],
-    event_id: null,
-    cameras: [],
-    lenses: [],
-    formats: [],
-    location: null,
-    bbox: null,
-    root_id: null,
-    folder: null,
-    recursive: false,
-    min_rating: null,
-    favorite: null,
-    problems: null,
-    review: [],
-    immich: null,
-    orientation: null,
-    private: null,
-    inbox: null,
-    trashed: false,
-    missing: false,
-    ids: null,
-  };
-}
+export { emptyQuery } from './query';
 
 const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 

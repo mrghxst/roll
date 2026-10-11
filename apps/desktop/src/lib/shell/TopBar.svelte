@@ -1,6 +1,8 @@
 <script lang="ts">
   import { Command, Info, ListFilter, Search, X } from '@lucide/svelte';
   import type { Snippet } from 'svelte';
+  import { api, emptyQuery } from '../ipc/api';
+  import type { Query } from '../ipc/bindings/Query';
   import { app } from '../state/app.svelte';
   import { selection } from '../state/selection.svelte';
   import IconButton from '../ui/IconButton.svelte';
@@ -25,12 +27,41 @@
     }, 180);
   }
 
+  /** Enter: words the parser understands become chips; the rest stays. */
+  async function understand() {
+    const t = text.trim();
+    if (!t) return;
+    clearTimeout(timer);
+    const p = await api.parseSearch(t);
+    if (!p.understood.length) {
+      app.filters = { ...app.filters, text: t };
+      return;
+    }
+    const empty = emptyQuery();
+    const next: Partial<Query> = { ...app.filters };
+    for (const [k, v] of Object.entries(p.query) as [keyof Query, unknown][]) {
+      const base = empty[k] as unknown;
+      if (Array.isArray(v)) {
+        if (v.length) (next[k] as unknown) = [...new Set([...((app.filters[k] as unknown[]) ?? []), ...v])];
+      } else if (v != null && v !== base) (next[k] as unknown) = v;
+    }
+    const labels = { ...app.filterLabels };
+    const near = p.understood.find((u) => u.startsWith('Near '));
+    if (p.query.bbox && near) labels.bbox = near;
+    const dated = p.understood.find((u) => /\d{4}|year|month/i.test(u));
+    if (p.query.from_local && dated) labels.local = dated;
+    text = p.rest;
+    next.text = p.rest || null;
+    app.filterLabels = labels;
+    app.filters = next;
+  }
+
   export function focusSearch() {
     input?.focus();
     input?.select();
   }
 
-  const active = $derived(chips(app.filters));
+  const active = $derived(chips(app.filters, app.filterLabels));
   const showGridOptions = $derived(app.view === 'timeline' || app.view === 'folders');
 </script>
 
@@ -48,7 +79,10 @@
       bind:value={text}
       {oninput}
       onkeydown={(e) => {
-        if (e.key === 'Escape') {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          void understand();
+        } else if (e.key === 'Escape') {
           text = '';
           app.filters = { ...app.filters, text: null };
           input?.blur();
@@ -56,7 +90,7 @@
           app.filters = removeChip(app.filters, active[active.length - 1]!.key);
         }
       }}
-      placeholder="Search photos, places, text…"
+      placeholder="Search: “videos summer 2019 Italy”, a file name, a tag…"
       aria-label="Search"
       spellcheck="false"
       data-testid="search"

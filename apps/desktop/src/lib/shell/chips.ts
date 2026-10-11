@@ -14,13 +14,29 @@ const PROBLEMS: Record<number, string> = { 1: 'No date', 2: 'Suspicious date', 3
 
 const day = (ms: number) => shortDate(new Date(ms).toISOString());
 
-export function chips(f: Partial<Query>): Chip[] {
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/** "2019", "Aug 2019", "Jun – Aug 2019" for local bounds on month starts. */
+export function localRange(from: string | null | undefined, to: string | null | undefined): string {
+  if (!from || !to) return from ? `From ${from.slice(0, 10)}` : `Until ${to?.slice(0, 10)}`;
+  const [fy, fm] = [Number(from.slice(0, 4)), Number(from.slice(5, 7))];
+  const end = new Date(Date.UTC(Number(to.slice(0, 4)), Number(to.slice(5, 7)) - 1, Number(to.slice(8, 10))) - 86_400_000);
+  const [ty, tm] = [end.getUTCFullYear(), end.getUTCMonth() + 1];
+  if (fy === ty && fm === 1 && tm === 12) return String(fy);
+  if (fy === ty && fm === tm) return `${MONTHS[fm - 1]} ${fy}`;
+  if (fy === ty) return `${MONTHS[fm - 1]} – ${MONTHS[tm - 1]} ${fy}`;
+  return `${MONTHS[fm - 1]} ${fy} – ${MONTHS[tm - 1]} ${ty}`;
+}
+
+/** `labels` names chips the search parser made ("Near Italy"). */
+export function chips(f: Partial<Query>, labels: Record<string, string> = {}): Chip[] {
   const out: Chip[] = [];
   if (f.from_utc != null || f.to_utc != null) {
     const from = f.from_utc != null ? day(f.from_utc) : '…';
     const to = f.to_utc != null ? day(f.to_utc - 1) : '…';
     out.push({ key: 'date', label: from === to ? from : `${from} – ${to}` });
   }
+  if (f.from_local || f.to_local) out.push({ key: 'local', label: labels.local ?? localRange(f.from_local, f.to_local) });
   for (const m of f.media ?? []) out.push({ key: `media:${m}`, label: MEDIA[m] ?? m });
   for (const c of f.categories ?? []) out.push({ key: `cat:${c}`, label: `#${c.replace('_', ' ')}` });
   for (const c of f.exclude_categories ?? []) out.push({ key: `xcat:${c}`, label: `Without ${c.replace('_', ' ')}` });
@@ -29,7 +45,7 @@ export function chips(f: Partial<Query>): Chip[] {
   for (const l of f.lenses ?? []) out.push({ key: `lens:${l}`, label: l });
   for (const fm of f.formats ?? []) out.push({ key: `fmt:${fm}`, label: fm.toUpperCase() });
   if (f.location) out.push({ key: 'location', label: LOCATION[f.location] ?? f.location });
-  if (f.bbox) out.push({ key: 'bbox', label: 'Map area' });
+  if (f.bbox) out.push({ key: 'bbox', label: labels.bbox ?? 'Map area' });
   if (f.min_rating) out.push({ key: 'rating', label: `${f.min_rating}+ stars` });
   if (f.favorite) out.push({ key: 'favorite', label: 'Favorites' });
   if (f.problems) out.push({ key: 'problems', label: PROBLEMS[f.problems] ?? 'Problems' });
@@ -46,6 +62,10 @@ export function removeChip(f: Partial<Query>, key: string): Partial<Query> {
     case 'date':
       next.from_utc = null;
       next.to_utc = null;
+      break;
+    case 'local':
+      next.from_local = null;
+      next.to_local = null;
       break;
     case 'media':
       next.media = drop(f.media);

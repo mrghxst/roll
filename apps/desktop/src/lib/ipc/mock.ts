@@ -3,6 +3,7 @@
 // `?setup=1` to start with a library already added.
 
 import type { Api, Events } from './api';
+import { emptyQuery } from './query';
 import type { AssetDetail } from './bindings/AssetDetail';
 import type { BatchInfo } from './bindings/BatchInfo';
 import type { DateFix } from './bindings/DateFix';
@@ -325,6 +326,8 @@ function filter(q: Query): MockAsset[] {
     }
     if (q.categories.length && !q.categories.includes(a.category)) return false;
     if (q.exclude_categories.includes(a.category)) return false;
+    if (q.from_local != null && a.local < q.from_local) return false;
+    if (q.to_local != null && a.local >= q.to_local) return false;
     if (q.from_utc != null && a.utc < q.from_utc) return false;
     if (q.to_utc != null && a.utc >= q.to_utc) return false;
     if (q.location === 'none' && a.lat != null) return false;
@@ -935,6 +938,26 @@ export const mockApi: Api = {
       }));
   },
   discoverIgnore: async (key) => void dismissed.add(key),
+  parseSearch: async (text) => {
+    const words = text.toLowerCase().split(/\s+/).filter(Boolean);
+    const query = { ...emptyQuery() };
+    const understood: string[] = [];
+    const rest: string[] = [];
+    for (const w of words) {
+      if (/^(19|20)\d\d$/.test(w)) {
+        query.from_local = `${w}-01-01T00:00:00`;
+        query.to_local = `${Number(w) + 1}-01-01T00:00:00`;
+        understood.push(w);
+      } else if (w === 'videos' || w === 'video') {
+        query.media = ['video'];
+        understood.push('Videos');
+      } else if (w === 'memes') {
+        query.categories = ['memes'];
+        understood.push('Memes');
+      } else rest.push(w);
+    }
+    return { query, rest: rest.join(' '), understood };
+  },
   dupeGroups: async () => {
     // Fixed pairs, chosen once, so merging one group leaves the others.
     if (!dupePairs) {

@@ -31,6 +31,8 @@ pub enum JobSpec {
     Thumbs,
     Classify,
     Hash,
+    /// Rebuild the full-text search index.
+    Index,
 }
 
 impl JobSpec {
@@ -43,6 +45,7 @@ impl JobSpec {
             JobSpec::Thumbs => "thumbs",
             JobSpec::Classify => "classify",
             JobSpec::Hash => "hash",
+            JobSpec::Index => "index",
         }
     }
     pub fn priority(&self) -> i64 {
@@ -53,6 +56,7 @@ impl JobSpec {
             JobSpec::Thumbs => 20,
             JobSpec::Classify => 25,
             JobSpec::Hash => 30,
+            JobSpec::Index => 22,
         }
     }
     pub fn label(&self) -> String {
@@ -64,6 +68,7 @@ impl JobSpec {
             JobSpec::Thumbs => "Making thumbnails".into(),
             JobSpec::Classify => "Sorting with rules".into(),
             JobSpec::Hash => "Checking files for duplicates".into(),
+            JobSpec::Index => "Preparing search".into(),
         }
     }
 }

@@ -51,6 +51,8 @@ class AppState {
   scope = $state<Scope>(ALL);
   /** Filters from the search field and the filter panel. */
   filters = $state<Partial<Query>>({});
+  /** Chip labels the search parser chose ("Near Italy", "Summer 2019"). */
+  filterLabels = $state<Record<string, string>>({});
   infoOpen = $state(false);
   sidebarCollapsed = $state(false);
   paletteOpen = $state(false);

@@ -15,6 +15,7 @@ use roll_core::places::{LocationResult, PlaceGroup, PlaceHit, TrackInfo};
 use roll_core::planner::{PlanOptions, PlanSummary};
 use roll_core::review::{ReviewItem, ReviewSummary};
 use roll_core::rules::Rule;
+use roll_core::search::ParsedSearch;
 use roll_core::settings::Settings;
 use tauri::State;
 use tauri::ipc::Response;
@@ -500,4 +501,10 @@ pub async fn discover(state: State<'_, AppState>, split: Option<String>) -> Res<
 #[tauri::command]
 pub fn discover_ignore(state: State<AppState>, key: String) -> Res<()> {
     state.lib.discover_ignore(&key).map_err(e)
+}
+
+#[tauri::command]
+pub async fn parse_search(state: State<'_, AppState>, text: String) -> Res<ParsedSearch> {
+    let lib = state.lib.clone();
+    blocking(move || Ok(lib.parse_search(&text))).await
 }

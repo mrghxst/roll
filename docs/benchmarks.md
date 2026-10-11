@@ -63,3 +63,17 @@ MapLibre source, panning and zooming one step per frame
 The budget (60 fps) holds on the owner's PC. Thumbnail pins are DOM nodes
 and are rebuilt only once the map rests; rebuilding them every frame cost
 about 17 ms. The CI test asserts a looser 34 ms because CI has no GPU.
+
+## Search (M4), 2026-10-11
+
+100,000 stress items, release build, `cargo run --release -p roll-core
+--example bench -- fixtures-out/stress --no-thumbs`:
+
+| What | Measured | Budget |
+|---|---|---|
+| Full search index rebuild (background job) | 0.69 s | |
+| "img", matching all 100,000, to timeline payload | 0.26 s | < 300 ms |
+| Parsed query ("videos summer 2019") to timeline | < 0.01 s | < 300 ms |
+
+The metadata index took 62 s in this run against 10.7 s earlier; the stress
+files were not in the operating system's file cache this time.

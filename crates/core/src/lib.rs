@@ -24,6 +24,7 @@ pub mod review;
 pub mod rules;
 pub mod scan;
 pub mod schema;
+pub mod search;
 pub mod secrets;
 pub mod settings;
 pub mod sidecars;

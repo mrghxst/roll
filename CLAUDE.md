@@ -40,3 +40,10 @@ cd apps/desktop && pnpm tauri dev          # the app; set ROLL_DATA_DIR to keep 
   Windows shim breaks under `cmd`.
 - Timeline payload layout is shared by `crates/core/src/query.rs` and
   `src/lib/ipc/timeline.ts`; change both together.
+- `api.ts` picks its backend with a top-level `await import()`; modules it
+  loads (`mock.ts`) must not import values from `api.ts` (circular import,
+  the page never starts). Shared helpers live in their own modules
+  (`ipc/query.ts`).
+- MapLibre needs `requestAnimationFrame`; the desktop app's browser pane
+  does not run it while hidden, so check the map with Playwright or the
+  real app (WebView2 with `--remote-debugging-port`).

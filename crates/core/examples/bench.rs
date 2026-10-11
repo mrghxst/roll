@@ -58,12 +58,23 @@ fn main() -> anyhow::Result<()> {
         row(&format!("{label}, {} KB", bytes.len() / 1024), t.elapsed(), "scrubber jump < 100 ms");
     }
     let t = Instant::now();
-    let n = query::count(&db.read(), &Query { text: Some("2019".into()), ..Default::default() })?;
-    row(&format!("Text search ({n} hits)"), t.elapsed(), "< 300 ms");
+    let indexed = db.tx(|tx| roll_core::search::reindex(tx, None, &|_, _| None))?;
+    row(&format!("Search index ({indexed} items)"), t.elapsed(), "background job");
+    let today = chrono::Local::now().date_naive();
+    for text in ["img", "videos summer 2019", "dsc 2021 without screenshots"] {
+        let t = Instant::now();
+        let q = roll_core::search::expand(&db.read(), &Query { text: Some(text.into()), ..Default::default() }, None, today);
+        let bytes = query::timeline(&db.read(), &q)?;
+        let hits = u32::from_le_bytes(bytes[8..12].try_into()?);
+        row(&format!("Search “{text}” to timeline ({hits} hits)"), t.elapsed(), "< 300 ms");
+    }
     let t = Instant::now();
     let n = query::count(&db.read(), &Query { cameras: vec!["NIKON D750".into()], location: Some("none".into()), ..Default::default() })?;
     row(&format!("Filtered count ({n})"), t.elapsed(), "< 300 ms");
 
+    if std::env::args().any(|a| a == "--no-thumbs") {
+        return Ok(());
+    }
     let store = ThumbStore::open(&tmp.path().join("thumbs.db"))?;
     let ff = roll_media::ffmpeg::Ffmpeg::locate();
     let pool = rayon::ThreadPoolBuilder::new().build()?;
