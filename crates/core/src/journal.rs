@@ -86,6 +86,7 @@ fn relocate(c: &Connection, op: &OpRow, to: &str, root: &Path) -> rusqlite::Resu
 }
 
 /// The metadata Roll owns for an asset: what was edited, plus tags.
+#[allow(clippy::type_complexity)]
 pub fn meta_edit(c: &Connection, asset: i64) -> rusqlite::Result<(MetaEdit, MediaKind, String)> {
     let edited = |field: &str| -> rusqlite::Result<bool> {
         c.query_row("SELECT EXISTS(SELECT 1 FROM field_history WHERE asset_id = ?1 AND field = ?2)", params![asset, field], |r| r.get(0))
@@ -125,6 +126,10 @@ pub fn meta_edit(c: &Connection, asset: i64) -> rusqlite::Result<(MetaEdit, Medi
     }
     if edited("description")? {
         e.description = Some(description);
+    }
+    if edited("orientation")? {
+        e.orientation =
+            Some(c.query_row("SELECT coalesce(orientation, 1) FROM assets WHERE id = ?1", [asset], |r| r.get::<_, i64>(0))? as u16);
     }
     Ok((e, if kind == 1 { MediaKind::Video } else { MediaKind::Photo }, format))
 }

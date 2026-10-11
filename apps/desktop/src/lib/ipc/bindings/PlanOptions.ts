@@ -4,7 +4,7 @@ export type PlanOptions = { rename: boolean, rename_template: string,
 /**
  * Only these assets (and their groups); all when empty.
  */
-ids: Array<bigint>, 
+ids: Array<number>, 
 /**
  * Write pending metadata changes into files and sidecars.
  */

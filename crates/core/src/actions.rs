@@ -39,6 +39,10 @@ pub enum EditAction {
     Immich {
         mode: String,
     },
+    /// Quarter turns clockwise; negative turns go counterclockwise.
+    Rotate {
+        turns: i32,
+    },
     /// Accept the proposed category of each item as it is.
     Accept,
 }
@@ -68,6 +72,8 @@ pub fn label(c: &Connection, action: &EditAction, n: usize) -> String {
             "local" => format!("Keep {items} local only"),
             _ => format!("Use the default Immich choice for {items}"),
         },
+        EditAction::Rotate { turns } if *turns < 0 => format!("Rotate {items} left"),
+        EditAction::Rotate { .. } => format!("Rotate {items} right"),
         EditAction::Accept => format!("Accept {items}"),
     }
 }
@@ -123,6 +129,14 @@ pub fn apply(c: &Connection, ids: &[i64], action: &EditAction) -> rusqlite::Resu
             EditAction::Description { text } => edits::set(c, Some(batch), id, &manual("description", json!(text)))?,
             EditAction::Private { on } => edits::set(c, Some(batch), id, &manual("private", json!(on)))?,
             EditAction::Immich { mode } => edits::set(c, Some(batch), id, &manual("immich", json!(mode)))?,
+            EditAction::Rotate { turns } => {
+                let format: String = c.query_row("SELECT format FROM assets WHERE id = ?1", [id], |r| r.get(0))?;
+                if !edits::rotatable(&format) {
+                    continue;
+                }
+                let cur = edits::read(c, id, "orientation")?.as_i64().unwrap_or(1);
+                edits::set(c, Some(batch), id, &manual("orientation", json!(edits::rotate_orientation(cur, *turns as i64))))?
+            }
         };
         if did {
             changed += 1;
@@ -158,5 +172,43 @@ mod tests {
         assert_eq!(n, 0);
         edits::undo_batch(&c, batch).unwrap();
         assert!(crate::tags::of_asset(&c, b).unwrap().is_empty());
+    }
+
+    #[test]
+    fn rotate_turns_and_swaps_sides() {
+        let db = Db::memory().unwrap();
+        let c = db.write();
+        let a = insert_asset(&c, "IMG_1.JPG");
+        c.execute("UPDATE assets SET format = 'jpeg', width = 400, height = 300, orientation = 1, thumb = 1 WHERE id = ?1", [a]).unwrap();
+        let (batch, n) = apply(&c, &[a], &EditAction::Rotate { turns: 1 }).unwrap();
+        assert_eq!(n, 1);
+        let row = |c: &Connection| -> (i64, i64, i64, i64) {
+            c.query_row("SELECT orientation, width, height, thumb FROM assets WHERE id = ?1", [a], |r| {
+                Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))
+            })
+            .unwrap()
+        };
+        assert_eq!(row(&c), (6, 300, 400, 0));
+        apply(&c, &[a], &EditAction::Rotate { turns: -1 }).unwrap();
+        assert_eq!(row(&c).0, 1);
+        apply(&c, &[a], &EditAction::Rotate { turns: 1 }).unwrap();
+        apply(&c, &[a], &EditAction::Rotate { turns: 1 }).unwrap();
+        assert_eq!(row(&c).0, 3);
+        edits::undo_batch(&c, batch).unwrap();
+        // Videos and HEIC are left alone.
+        let v = insert_asset(&c, "IMG_2.HEIC");
+        c.execute("UPDATE assets SET format = 'heic' WHERE id = ?1", [v]).unwrap();
+        assert_eq!(apply(&c, &[v], &EditAction::Rotate { turns: 1 }).unwrap().1, 0);
+    }
+
+    #[test]
+    fn orientation_composition() {
+        for o in 1..=8 {
+            assert_eq!(edits::rotate_orientation(edits::rotate_orientation(o, 1), -1), o);
+            assert_eq!(edits::rotate_orientation(o, 4), o);
+        }
+        assert_eq!(edits::rotate_orientation(1, 1), 6);
+        assert_eq!(edits::rotate_orientation(1, -1), 8);
+        assert_eq!(edits::rotate_orientation(2, 1), 7);
     }
 }

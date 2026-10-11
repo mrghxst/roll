@@ -34,6 +34,22 @@ export const tauriApi: Api = {
   setSecret: (name, value) => invoke('set_secret', { name, value }),
   hasSecret: (name) => invoke('has_secret', { name }),
   deleteSecret: (name) => invoke('delete_secret', { name }),
+  edit: (ids, action) => invoke('edit', { ids, action }),
+  setTrashed: (ids, trashed) => invoke('set_trashed', { ids, trashed }),
+  emptyTrash: (ids) => invoke('empty_trash', { ids }),
+  plan: (options) => invoke('plan', { options }),
+  savePlanCsv: (batch) => invoke('save_plan_csv', { batch }),
+  applyPlan: (batch) => invoke('apply_plan', { batch }),
+  undo: (batch) => invoke('undo', { batch }),
+  undoLast: () => invoke('undo_last'),
+  history: (limit) => invoke('history', { limit }),
+  unsaved: () => invoke('unsaved'),
+  addCategory: (name, parent, definition) => invoke('add_category', { name, parent, definition }),
+  updateCategory: (key, patch) => invoke('update_category', { key, patch }),
+  deleteCategory: (key) => invoke('delete_category', { key }),
+  rules: () => invoke('rules'),
+  saveRule: (rule) => invoke('save_rule', { rule }),
+  deleteRule: (id) => invoke('delete_rule', { id }),
   on<K extends keyof Events>(event: K, cb: Events[K]) {
     const un = listen(event, (e) => (cb as (p: unknown) => void)(e.payload));
     return () => void un.then((f) => f());

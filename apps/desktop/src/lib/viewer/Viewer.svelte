@@ -1,9 +1,11 @@
 <script lang="ts">
-  import { ChevronLeft, ChevronRight, CircleDot, ExternalLink, FolderOpen, Info, X } from '@lucide/svelte';
-  import { onMount } from 'svelte';
+  import { ChevronLeft, ChevronRight, CircleDot, ExternalLink, FolderOpen, Heart, Info, RotateCcw, RotateCw, Star, Trash2, X } from '@lucide/svelte';
+  import { onMount, untrack } from 'svelte';
   import { api } from '../ipc/api';
   import type { AssetDetail } from '../ipc/bindings/AssetDetail';
   import InfoPanel from '../shell/InfoPanel.svelte';
+  import { app } from '../state/app.svelte';
+  import { favorite, rate, rotate, trash, undoLast } from '../state/edits';
   import { viewer } from '../state/viewer.svelte';
   import { shortDate, time } from '../util/format';
   import Filmstrip from './Filmstrip.svelte';
@@ -40,6 +42,24 @@
       if (my === seq) detail = d;
     });
   });
+
+  // Edits elsewhere (rating, rotation, tags) refresh the current item.
+  $effect(() => {
+    void app.revision;
+    void app.thumbsRevision;
+    const target = untrack(() => id);
+    if (target == null) return;
+    void api.assetDetail(target).then((d) => {
+      if (d && untrack(() => id) === d.id) detail = d;
+    });
+  });
+
+  async function toTrash() {
+    if (id == null || viewer.quick) return;
+    const target = id;
+    viewer.removeCurrent();
+    await trash([target]);
+  }
 
   // Preload neighbors' previews.
   $effect(() => {
@@ -108,6 +128,38 @@
   }
 
   function onkeydown(e: KeyboardEvent) {
+    if (app.tagging || document.querySelector('dialog[open]')) return;
+    const mod = e.ctrlKey || e.metaKey;
+    if (mod && e.key.toLowerCase() === 'z') {
+      e.preventDefault();
+      e.stopPropagation();
+      void undoLast();
+      return;
+    }
+    if (mod || e.altKey) return;
+    if (id != null && !viewer.quick && detail) {
+      if (/^[0-5]$/.test(e.key)) {
+        e.stopPropagation();
+        void rate([id], Number(e.key));
+        return;
+      }
+      if (e.key === 'f' || e.key === 'F') {
+        e.stopPropagation();
+        void favorite([id], !detail.favorite);
+        return;
+      }
+      if (e.key === 't' || e.key === 'T') {
+        e.preventDefault();
+        e.stopPropagation();
+        app.tagging = [id];
+        return;
+      }
+      if (e.key === 'Delete') {
+        e.stopPropagation();
+        void toTrash();
+        return;
+      }
+    }
     switch (e.key) {
       case 'Escape':
         e.preventDefault();
@@ -169,7 +221,29 @@
           onpointerleave={() => (liveOn = false)}><CircleDot size={18} strokeWidth={1.5} /></button
         >
       {/if}
-      {#if id != null && !viewer.quick}
+      {#if id != null && !viewer.quick && detail}
+        <div class="stars" role="radiogroup" aria-label="Rating">
+          {#each [1, 2, 3, 4, 5] as r (r)}
+            <button
+              class="star"
+              class:lit={detail.rating >= r}
+              role="radio"
+              aria-checked={detail.rating === r}
+              aria-label="{r} of 5 ({r})"
+              title="{r} of 5 ({r}). Press 0 to clear."
+              onclick={() => void rate([id], detail?.rating === r ? 0 : r)}><Star size={16} strokeWidth={1.5} /></button
+            >
+          {/each}
+        </div>
+        <button class="icon" class:on={detail.favorite} aria-label={detail.favorite ? 'Remove from favorites (F)' : 'Favorite (F)'} onclick={() => void favorite([id], !detail?.favorite)}>
+          <Heart size={18} strokeWidth={1.5} fill={detail.favorite ? 'currentColor' : 'none'} />
+        </button>
+        {#if detail.kind === 'photo'}
+          <button class="icon" aria-label="Rotate left" onclick={() => void rotate([id], -1)}><RotateCcw size={18} strokeWidth={1.5} /></button>
+          <button class="icon" aria-label="Rotate right" onclick={() => void rotate([id], 1)}><RotateCw size={18} strokeWidth={1.5} /></button>
+        {/if}
+        <button class="icon" aria-label="Move to the trash (Del)" onclick={() => void toTrash()}><Trash2 size={18} strokeWidth={1.5} /></button>
+        <span class="divider"></span>
         <button class="icon" aria-label="Show in Explorer" onclick={() => void api.showInFolder(id)}><FolderOpen size={18} strokeWidth={1.5} /></button>
         <button class="icon" aria-label="Open with the default app" onclick={() => void api.openWithDefault(id)}><ExternalLink size={18} strokeWidth={1.5} /></button>
       {/if}
@@ -329,6 +403,34 @@
   .icon.on {
     background: #1f1f1f;
     color: #fff;
+  }
+  .stars {
+    display: flex;
+    margin-right: 4px;
+  }
+  .star {
+    display: grid;
+    place-items: center;
+    width: 24px;
+    height: 36px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: #6b6b6b;
+    cursor: pointer;
+  }
+  .star:hover,
+  .star.lit {
+    color: #f5f5f5;
+  }
+  .star.lit :global(svg) {
+    fill: currentColor;
+  }
+  .divider {
+    width: 1px;
+    height: 20px;
+    margin: 0 4px;
+    background: #2a2a2a;
   }
   .row {
     display: flex;

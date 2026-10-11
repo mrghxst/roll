@@ -1,6 +1,7 @@
 <script lang="ts">
   import { api } from '../ipc/api';
   import { ALL, app } from '../state/app.svelte';
+  import { rate, rotate, setCategory, toggleFavorite, trash, undoLast } from '../state/edits';
   import { selection } from '../state/selection.svelte';
   import Kbd from '../ui/Kbd.svelte';
 
@@ -22,6 +23,9 @@
     const list: Cmd[] = [
       { group: 'Go to', title: 'Timeline', run: () => app.go('timeline', ALL) },
       { group: 'Go to', title: 'Folders', run: () => app.go('folders') },
+      { group: 'Go to', title: 'Organize', run: () => app.go('organize') },
+      { group: 'Go to', title: 'History', run: () => app.go('history') },
+      { group: 'Go to', title: 'Trash', run: () => app.go('trash') },
       { group: 'Go to', title: 'Activity', run: () => app.go('activity') },
       { group: 'Go to', title: 'Settings', run: () => app.go('settings') },
       ...app.categories
@@ -39,6 +43,9 @@
       { group: 'Filter', title: 'Favorites', run: () => (app.filters = { ...app.filters, favorite: true }) },
       { group: 'Filter', title: 'No location', run: () => (app.filters = { ...app.filters, location: 'none' }) },
       { group: 'Filter', title: 'Date problems', run: () => (app.filters = { ...app.filters, problems: 3 }) },
+      { group: 'Library', title: 'Undo the last change', keys: 'Ctrl+Z', run: () => void undoLast() },
+      { group: 'Library', title: 'Preview the organize plan', run: () => app.go('organize') },
+      { group: 'Library', title: 'Empty trash…', run: () => app.counts.trash && (app.recycling = 'all') },
       { group: 'Library', title: 'Check folders for changes', run: () => void api.rescan() },
       {
         group: 'Library',
@@ -49,6 +56,31 @@
         },
       },
     ];
+    if (selection.size && (app.view === 'timeline' || app.view === 'folders')) {
+      const ids = selection.list();
+      const edits: Cmd[] = [
+        { group: 'Selection', title: 'Add a tag…', keys: 'T', run: () => (app.tagging = ids) },
+        { group: 'Selection', title: 'Favorite or unfavorite', keys: 'F', run: () => void toggleFavorite(ids) },
+        ...[0, 1, 2, 3, 4, 5].map((r) => ({ group: 'Selection', title: r ? `Rate ${r} of 5` : 'Clear rating', run: () => void rate(ids, r) })),
+        { group: 'Selection', title: 'Rotate left', run: () => void rotate(ids, -1) },
+        { group: 'Selection', title: 'Rotate right', run: () => void rotate(ids, 1) },
+        {
+          group: 'Selection',
+          title: 'Move to the trash',
+          keys: 'Del',
+          run: () => {
+            void trash(ids);
+            selection.clear();
+          },
+        },
+        { group: 'Selection', title: 'Organize the selected items…', run: () => app.go('organize') },
+        ...app.categories
+          .filter((c) => c.key !== 'unsorted')
+          .map((c) => ({ group: 'Selection', title: `Set category: ${c.name}`, run: () => void setCategory(ids, c.key) })),
+        { group: 'Selection', title: 'Set category: Unsorted', run: () => void setCategory(ids, null) },
+      ];
+      list.unshift(...edits);
+    }
     if (selection.size) {
       list.unshift({ group: 'Selection', title: 'Clear selection', keys: 'Esc', run: () => selection.clear() });
       if (selection.size === 1) {

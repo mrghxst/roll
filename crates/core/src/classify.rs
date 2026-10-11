@@ -23,7 +23,7 @@ struct Row {
 
 fn load(c: &Connection, ids: Option<&[i64]>) -> rusqlite::Result<Vec<Row>> {
     let filter = match ids {
-        Some(ids) if ids.is_empty() => return Ok(Vec::new()),
+        Some([]) => return Ok(Vec::new()),
         Some(ids) => format!("AND a.id IN ({})", ids.iter().map(|i| i.to_string()).collect::<Vec<_>>().join(",")),
         None => String::new(),
     };

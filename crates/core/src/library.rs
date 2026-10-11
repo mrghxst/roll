@@ -649,6 +649,9 @@ impl Library {
 
     pub fn edit(&self, ids: &[i64], action: &EditAction) -> anyhow::Result<usize> {
         let (_, n) = self.db.tx(|tx| actions::apply(tx, ids, action))?;
+        if matches!(action, EditAction::Rotate { .. }) && n > 0 {
+            self.jobs.enqueue(JobSpec::Thumbs)?;
+        }
         self.emit(LibEvent::Changed("assets"));
         Ok(n)
     }
@@ -707,6 +710,8 @@ impl Library {
             "empty_trash" => anyhow::bail!("Items sent to the Recycle Bin can be restored from the Recycle Bin."),
             _ => {
                 journal::undo(&self.db, &self.tools(), batch, &|_, _| true)?;
+                // An undone rotation needs its thumbnails again.
+                self.jobs.enqueue(JobSpec::Thumbs)?;
                 self.emit(LibEvent::Changed("assets"));
                 self.emit(LibEvent::Changed("history"));
             }
@@ -793,6 +798,7 @@ impl Library {
     }
 
     pub fn save_rule(&self, rule: &crate::rules::Rule) -> anyhow::Result<i64> {
+        crate::rules::validate(&rule.def)?;
         let def = serde_json::to_string(&rule.def)?;
         let id = {
             let c = self.db.write();
@@ -821,6 +827,7 @@ impl Library {
             anyhow::bail!("Built-in rules can be turned off but not deleted.");
         }
         self.db.write().execute("DELETE FROM rules WHERE id = ?1", [id])?;
+        self.jobs.enqueue(JobSpec::Classify)?;
         Ok(())
     }
 }

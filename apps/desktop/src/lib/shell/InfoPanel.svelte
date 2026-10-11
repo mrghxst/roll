@@ -1,7 +1,9 @@
 <script lang="ts">
+  import { Plus, X } from '@lucide/svelte';
   import { api } from '../ipc/api';
   import type { AssetDetail } from '../ipc/bindings/AssetDetail';
   import { app } from '../state/app.svelte';
+  import { removeTag } from '../state/edits';
   import { selection } from '../state/selection.svelte';
   import { accuracy, bytes, coords, duration, n, offset, shortDate, time } from '../util/format';
 
@@ -67,17 +69,24 @@
         {#if detail.category_conf != null && detail.review < 3}<span class="muted mono"> {Math.round(detail.category_conf * 100)}%</span>{/if}
       </p>
       {#each why('category') as w (w.text)}<p class="why">{w.text}</p>{/each}
+      {#if detail.rating > 0}
+        <p class="rating" aria-label="Rated {detail.rating} of 5">{'★'.repeat(detail.rating)}<span class="muted">{'★'.repeat(5 - detail.rating)}</span></p>
+      {/if}
     </section>
 
-    {#if otherTags.length || sources.length}
-      <section>
-        <h3>Tags</h3>
-        <div class="tags">
-          {#each otherTags as t (t)}<span class="tag">{t}</span>{/each}
-        </div>
-        {#if sources.length}<p class="muted">Source: {sources.join(', ')}</p>{/if}
-      </section>
-    {/if}
+    <section>
+      <h3>Tags</h3>
+      <div class="tags">
+        {#each otherTags as t (t)}
+          <span class="tag">
+            {t}
+            <button aria-label="Remove tag {t}" onclick={() => detail && void removeTag([detail.id], t)}><X size={11} strokeWidth={2} /></button>
+          </span>
+        {/each}
+        <button class="add" onclick={() => detail && (app.tagging = [detail.id])}><Plus size={12} strokeWidth={1.5} /> Add tag</button>
+      </div>
+      {#if sources.length}<p class="muted">Source: {sources.join(', ')}</p>{/if}
+    </section>
 
     {#if detail.description}
       <section>
@@ -160,10 +169,43 @@
     margin-bottom: 4px;
   }
   .tag {
-    padding: 2px 6px;
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    padding: 2px 2px 2px 6px;
     border: 1px solid var(--border);
     border-radius: var(--r-1);
     font-size: var(--t12);
+  }
+  .tag button,
+  .add {
+    display: inline-flex;
+    align-items: center;
+    border: 0;
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+  }
+  .tag button {
+    width: 16px;
+    height: 16px;
+    justify-content: center;
+    padding: 0;
+    border-radius: 3px;
+  }
+  .tag button:hover,
+  .add:hover {
+    color: var(--fg);
+  }
+  .add {
+    gap: 3px;
+    height: 22px;
+    padding: 0 4px;
+    font-size: var(--t12);
+  }
+  .rating {
+    margin-top: 4px;
+    letter-spacing: 2px;
   }
   .name {
     overflow-wrap: anywhere;

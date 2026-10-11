@@ -3,13 +3,19 @@
 
 import type { AppInfo } from './bindings/AppInfo';
 import type { AssetDetail } from './bindings/AssetDetail';
+import type { BatchInfo } from './bindings/BatchInfo';
 import type { Category } from './bindings/Category';
+import type { CategoryPatch } from './bindings/CategoryPatch';
 import type { Counts } from './bindings/Counts';
+import type { EditAction } from './bindings/EditAction';
 import type { Facets } from './bindings/Facets';
 import type { FolderNode } from './bindings/FolderNode';
 import type { JobInfo } from './bindings/JobInfo';
+import type { PlanOptions } from './bindings/PlanOptions';
+import type { PlanSummary } from './bindings/PlanSummary';
 import type { Query } from './bindings/Query';
 import type { RootInfo } from './bindings/RootInfo';
+import type { Rule } from './bindings/Rule';
 import type { ScanReport } from './bindings/ScanReport';
 import type { Settings } from './bindings/Settings';
 import type { TagCount } from './bindings/TagCount';
@@ -53,6 +59,27 @@ export interface Api {
   setSecret(name: 'openrouter' | 'immich', value: string): Promise<void>;
   hasSecret(name: 'openrouter' | 'immich'): Promise<boolean>;
   deleteSecret(name: 'openrouter' | 'immich'): Promise<void>;
+  /** One action on a selection; returns how many items changed. */
+  edit(ids: number[], action: EditAction): Promise<number>;
+  setTrashed(ids: number[], trashed: boolean): Promise<void>;
+  /** Send trashed items to the system Recycle Bin (all when `ids` is null). */
+  emptyTrash(ids: number[] | null): Promise<number>;
+  plan(options: PlanOptions): Promise<PlanSummary>;
+  /** Asks where to save; false when the owner cancelled. */
+  savePlanCsv(batch: number): Promise<boolean>;
+  applyPlan(batch: number): Promise<void>;
+  undo(batch: number): Promise<void>;
+  /** Undo the most recent change; returns its label. */
+  undoLast(): Promise<string | null>;
+  history(limit: number): Promise<BatchInfo[]>;
+  /** Items with changes not yet saved to their files. */
+  unsaved(): Promise<number>;
+  addCategory(name: string, parent: string | null, definition: string): Promise<string>;
+  updateCategory(key: string, patch: Partial<CategoryPatch>): Promise<void>;
+  deleteCategory(key: string): Promise<void>;
+  rules(): Promise<Rule[]>;
+  saveRule(rule: Rule): Promise<number>;
+  deleteRule(id: number): Promise<void>;
   on<K extends keyof Events>(event: K, cb: Events[K]): () => void;
   thumbUrl(id: number, v: number): string;
   previewUrl(id: number, v: number): string;

@@ -364,6 +364,25 @@ pub struct Decision {
     pub tags: Vec<(String, String, String)>,
 }
 
+/// Check a rule the owner wrote before it is saved.
+pub fn validate(def: &RuleDef) -> anyhow::Result<()> {
+    if def.when.is_empty() {
+        anyhow::bail!("A rule needs at least one condition.");
+    }
+    for c in &def.when {
+        if c.op == Op::Regex {
+            let pat = c.value.as_str().unwrap_or_default();
+            if let Err(e) = Regex::new(pat) {
+                anyhow::bail!("The pattern {pat} is not valid: {}", e.to_string().lines().last().unwrap_or_default());
+            }
+        }
+    }
+    if def.then.category.is_none() && def.then.tags.is_empty() {
+        anyhow::bail!("A rule needs a category or a tag to set.");
+    }
+    Ok(())
+}
+
 /// Run every enabled rule. The first matching rule that sets a category
 /// wins (rules are in priority order); tags from all matching rules apply.
 pub fn evaluate(rules: &[Rule], f: &Facts) -> Decision {

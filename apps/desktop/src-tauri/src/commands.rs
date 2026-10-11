@@ -4,7 +4,11 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use roll_core::Library;
+use roll_core::actions::EditAction;
+use roll_core::categories::CategoryPatch;
 use roll_core::model::*;
+use roll_core::planner::{PlanOptions, PlanSummary};
+use roll_core::rules::Rule;
 use roll_core::settings::Settings;
 use tauri::State;
 use tauri::ipc::Response;
@@ -192,4 +196,114 @@ pub fn has_secret(name: String) -> bool {
 #[tauri::command]
 pub fn delete_secret(name: String) -> Res<()> {
     roll_core::secrets::delete(&name).map_err(e)
+}
+
+// Edits, plans and history
+
+#[tauri::command]
+pub async fn edit(state: State<'_, AppState>, ids: Vec<i64>, action: EditAction) -> Res<usize> {
+    let lib = state.lib.clone();
+    blocking(move || lib.edit(&ids, &action)).await
+}
+
+#[tauri::command]
+pub async fn set_trashed(state: State<'_, AppState>, ids: Vec<i64>, trashed: bool) -> Res<()> {
+    let lib = state.lib.clone();
+    blocking(move || lib.set_trashed(&ids, trashed)).await
+}
+
+#[tauri::command]
+pub async fn empty_trash(state: State<'_, AppState>, ids: Option<Vec<i64>>) -> Res<usize> {
+    let lib = state.lib.clone();
+    blocking(move || lib.empty_trash(ids.as_deref())).await
+}
+
+#[tauri::command]
+pub async fn plan(state: State<'_, AppState>, options: PlanOptions) -> Res<PlanSummary> {
+    let lib = state.lib.clone();
+    blocking(move || lib.plan(&options)).await
+}
+
+/// Ask where to save the plan as CSV and write it there.
+#[tauri::command]
+pub async fn save_plan_csv(state: State<'_, AppState>, app: tauri::AppHandle, batch: i64) -> Res<bool> {
+    let lib = state.lib.clone();
+    blocking(move || {
+        let csv = lib.plan_csv(batch)?;
+        let Some(path) = app
+            .dialog()
+            .file()
+            .set_title("Export the plan")
+            .set_file_name("Roll plan.csv")
+            .add_filter("CSV", &["csv"])
+            .blocking_save_file()
+        else {
+            return Ok(false);
+        };
+        let path = path.into_path().map_err(|e| anyhow::anyhow!("{e}"))?;
+        std::fs::write(path, csv)?;
+        Ok(true)
+    })
+    .await
+}
+
+#[tauri::command]
+pub fn apply_plan(state: State<AppState>, batch: i64) -> Res<()> {
+    state.lib.apply(batch).map_err(e)
+}
+
+#[tauri::command]
+pub async fn undo(state: State<'_, AppState>, batch: i64) -> Res<()> {
+    let lib = state.lib.clone();
+    blocking(move || lib.undo(batch)).await
+}
+
+#[tauri::command]
+pub async fn undo_last(state: State<'_, AppState>) -> Res<Option<String>> {
+    let lib = state.lib.clone();
+    blocking(move || lib.undo_last()).await
+}
+
+#[tauri::command]
+pub async fn history(state: State<'_, AppState>, limit: i64) -> Res<Vec<BatchInfo>> {
+    let lib = state.lib.clone();
+    blocking(move || lib.history(limit)).await
+}
+
+#[tauri::command]
+pub async fn unsaved(state: State<'_, AppState>) -> Res<i64> {
+    let lib = state.lib.clone();
+    blocking(move || lib.unsaved()).await
+}
+
+// Categories and rules
+
+#[tauri::command]
+pub fn add_category(state: State<AppState>, name: String, parent: Option<String>, definition: String) -> Res<String> {
+    state.lib.add_category(&name, parent.as_deref(), &definition).map_err(e)
+}
+
+#[tauri::command]
+pub fn update_category(state: State<AppState>, key: String, patch: CategoryPatch) -> Res<()> {
+    state.lib.update_category(&key, &patch).map_err(e)
+}
+
+#[tauri::command]
+pub fn delete_category(state: State<AppState>, key: String) -> Res<()> {
+    state.lib.delete_category(&key).map_err(e)
+}
+
+#[tauri::command]
+pub fn rules(state: State<AppState>) -> Res<Vec<Rule>> {
+    state.lib.rules().map_err(e)
+}
+
+#[tauri::command]
+pub fn save_rule(state: State<AppState>, rule: Rule) -> Res<i64> {
+    state.lib.save_rule(&rule).map_err(e)
+}
+
+#[tauri::command]
+pub fn delete_rule(state: State<AppState>, id: i64) -> Res<()> {
+    state.lib.delete_rule(id).map_err(e)
 }

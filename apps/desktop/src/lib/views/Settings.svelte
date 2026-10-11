@@ -12,9 +12,13 @@
   import Switch from '../ui/Switch.svelte';
   import { n } from '../util/format';
   import { SHORTCUTS } from '../util/shortcuts';
+  import Categories from '../settings/Categories.svelte';
+  import Rules from '../settings/Rules.svelte';
 
   const SECTIONS = [
     ['library', 'Library'],
+    ['categories', 'Categories'],
+    ['rules', 'Rules'],
     ['saving', 'Saving changes'],
     ['appearance', 'Appearance'],
     ['ai', 'AI'],
@@ -105,6 +109,17 @@
         <Button onclick={addFolder}><FolderPlus size={16} strokeWidth={1.5} /> Add folder…</Button>
         <Button variant="ghost" onclick={() => void api.rescan()}><RefreshCw size={16} strokeWidth={1.5} /> Check for changes</Button>
       </div>
+    {:else if section === 'categories'}
+      <h1>Categories</h1>
+      <p class="lead">What Roll sorts items into, and the folder each category gets when you organize. Subcategories are tags unless they get their own folder.</p>
+      <Categories />
+    {:else if section === 'rules'}
+      <h1>Rules</h1>
+      <p class="lead">
+        Rules sort items by file name, camera, size and other facts, before any model looks at them. Your rules run first; the first rule that sets a
+        category wins, and tags from every matching rule apply.
+      </p>
+      <Rules />
     {:else if section === 'saving'}
       <h1>Saving changes</h1>
       <p class="lead">How fixed dates, places, tags and ratings are written.</p>

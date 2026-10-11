@@ -6,6 +6,8 @@
     CircleDashed,
     FileText,
     Folder,
+    FolderTree,
+    History,
     Image,
     Images,
     PanelLeftClose,
@@ -14,6 +16,7 @@
     Smartphone,
     Smile,
     Tag,
+    Trash2,
     Wallpaper,
   } from '@lucide/svelte';
   import type { Component } from 'svelte';
@@ -89,6 +92,9 @@
     {/if}
   </div>
   <div class="bottom">
+    {@render item('Organize', FolderTree, app.view === 'organize', () => app.go('organize'), app.unsaved, 'nav-organize')}
+    {@render item('History', History, app.view === 'history', () => goView('history'), undefined, 'nav-history')}
+    {@render item('Trash', Trash2, app.view === 'trash', () => goView('trash'), app.counts.trash, 'nav-trash')}
     <button class="item" class:active={app.view === 'activity'} onclick={() => goView('activity')} title={collapsed ? 'Activity' : undefined} data-testid="nav-activity">
       <Activity size={16} strokeWidth={1.5} />
       {#if !collapsed}

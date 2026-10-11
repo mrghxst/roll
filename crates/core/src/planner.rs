@@ -22,6 +22,7 @@ pub struct PlanOptions {
     pub rename: bool,
     pub rename_template: String,
     /// Only these assets (and their groups); all when empty.
+    #[ts(type = "Array<number>")]
     pub ids: Vec<i64>,
     /// Write pending metadata changes into files and sidecars.
     pub write_metadata: bool,

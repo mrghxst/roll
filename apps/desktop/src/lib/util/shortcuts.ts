@@ -13,4 +13,9 @@ export const SHORTCUTS: [string, string][] = [
   ['Ctrl+Scroll', 'Change the row height'],
   ['←/→', 'Previous and next item in the viewer'],
   ['+/−', 'Zoom in the viewer'],
+  ['Ctrl+Z', 'Undo the last change'],
+  ['Del', 'Move to the trash'],
+  ['F', 'Favorite or unfavorite'],
+  ['T', 'Add a tag'],
+  ['0–5', 'Rating, in the viewer'],
 ];

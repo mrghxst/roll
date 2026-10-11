@@ -4,11 +4,14 @@
 
 import type { Api, Events } from './api';
 import type { AssetDetail } from './bindings/AssetDetail';
+import type { BatchInfo } from './bindings/BatchInfo';
 import type { Category } from './bindings/Category';
 import type { FolderNode } from './bindings/FolderNode';
 import type { JobInfo } from './bindings/JobInfo';
+import type { PlanSummary } from './bindings/PlanSummary';
 import type { Query } from './bindings/Query';
 import type { RootInfo } from './bindings/RootInfo';
+import type { Rule } from './bindings/Rule';
 import type { Settings } from './bindings/Settings';
 import { Flag, type Timeline } from './timeline';
 
@@ -39,9 +42,14 @@ interface MockAsset {
   lat: number | null;
   lon: number | null;
   duration: number | null;
+  rating: number;
+  tags: string[];
+  trashed: boolean;
+  /** Changed in the library but not yet saved to the file. */
+  dirty: boolean;
 }
 
-const CATS: [string, string][] = [
+let CATS: [string, string][] = [
   ['photos', 'Photos'],
   ['screenshots', 'Screenshots'],
   ['memes', 'Memes'],
@@ -84,6 +92,10 @@ function makeAssets(n: number): MockAsset[] {
       lat: r() > 0.7 ? 45 + r() * 3 : null,
       lon: r() > 0.7 ? 8 + r() * 4 : null,
       duration: video ? Math.floor(r() * 60_000) + 2000 : null,
+      rating: 0,
+      tags: [],
+      trashed: false,
+      dirty: false,
     });
   }
   out.sort((a, b) => (a.local < b.local ? 1 : a.local > b.local ? -1 : b.id - a.id));
@@ -136,6 +148,70 @@ let roots: RootInfo[] = setup ? [{ id: 1, path: 'C:\\Users\\Example\\Pictures', 
 let assets: MockAsset[] = setup ? makeAssets(N) : [];
 let jobs: JobInfo[] = [];
 const secrets = new Set<string>();
+let history: BatchInfo[] = [];
+/** Undo data per batch: the asset fields before the change. */
+const undoData = new Map<number, Map<number, Partial<MockAsset>>>();
+let batchSeq = 0;
+let currentPlan: PlanSummary | null = null;
+let rules: Rule[] = [
+  rule(1, 'ios_screenshot', 'iOS screenshot marker', 'screenshot', 'eq', true, 'screenshots', 1, true, 'the iOS screenshot marker'),
+  rule(2, 'screenshot_name', 'Screenshot file name', 'name', 'regex', '(?i)^(screenshot|screen shot)[ _-]', 'screenshots', 0.99, true, 'a screenshot file name'),
+  rule(3, 'whatsapp_name', 'WhatsApp file name', 'name', 'regex', '^(IMG|VID)-[0-9]{8}-WA[0-9]+', null, 1, true, 'a WhatsApp file name', ['Source/WhatsApp']),
+  rule(4, 'camera_make', 'Camera make present', 'has_camera', 'eq', true, 'photos', 0.8, false, 'a camera make in the file'),
+  rule(5, 'gif', 'GIF image', 'format', 'eq', 'gif', 'memes', 0.6, false, 'a GIF'),
+];
+
+function rule(
+  id: number,
+  key: string | null,
+  name: string,
+  field: string,
+  op: Rule['def']['when'][number]['op'],
+  value: string | number | boolean,
+  category: string | null,
+  confidence: number,
+  certain: boolean,
+  because: string,
+  tags: string[] = [],
+): Rule {
+  return { id, key, name, enabled: true, priority: id * 10, builtin: key != null, def: { when: [{ field, op, value }], then: { category, confidence, certain, tags, because } } };
+}
+
+const plural = (n: number) => (n === 1 ? '1 item' : `${n} items`);
+
+function pushBatch(id: number, kind: string, label: string, ops: number) {
+  history = [{ id, kind, label, state: 'applied', created_at: Date.now(), applied_at: Date.now(), ops, failed: 0, summary: null }, ...history];
+}
+
+/** Record a change as an undoable batch, like the library does. */
+function change(kind: string, label: string, ids: number[], fn: (a: MockAsset) => boolean, dirty = true): number {
+  const before = new Map<number, Partial<MockAsset>>();
+  let n = 0;
+  for (const id of ids) {
+    const a = byId(id);
+    if (!a) continue;
+    const snap = { category: a.category, flags: a.flags, rating: a.rating, tags: [...a.tags], trashed: a.trashed, dirty: a.dirty, aspect: a.aspect };
+    if (fn(a)) {
+      before.set(id, snap);
+      if (dirty) a.dirty = true;
+      n++;
+    }
+  }
+  if (n > 0) {
+    const id = ++batchSeq;
+    undoData.set(id, before);
+    pushBatch(id, kind, label, n);
+    assets = [...assets];
+    emit('changed', 'assets');
+    emit('changed', 'history');
+  }
+  return n;
+}
+
+function targetDir(a: MockAsset) {
+  const name = CATS.find((c) => c[0] === a.category)?.[1] ?? a.category;
+  return a.category === 'wallpapers' ? name : `${a.local.slice(0, 4)}/${name}`;
+}
 const listeners: { [K in keyof Events]: Set<Events[K]> } = { jobs: new Set(), changed: new Set(), scanned: new Set() };
 
 function emit<K extends keyof Events>(k: K, ...args: Parameters<Events[K]>) {
@@ -158,6 +234,9 @@ function filter(q: Query): MockAsset[] {
     if (q.cameras.length && !q.cameras.includes(a.camera ?? '')) return false;
     if (q.folder != null && q.folder !== '' && !(q.recursive ? a.dir.startsWith(q.folder) : a.dir === q.folder)) return false;
     if (q.ids && !q.ids.includes(a.id)) return false;
+    if (a.trashed !== q.trashed) return false;
+    if (q.min_rating != null && a.rating < q.min_rating) return false;
+    if (q.tags.length && !q.tags.every((t) => a.tags.includes(t))) return false;
     if (q.text && !a.name.toLowerCase().includes(q.text.toLowerCase())) return false;
     return true;
   });
@@ -309,8 +388,8 @@ export const mockApi: Api = {
       category_name: CATS.find((c) => c[0] === a.category)?.[1] ?? null,
       category_conf: 0.97,
       review: 2,
-      tags: a.category === 'photos' ? [] : [`Category/${CATS.find((c) => c[0] === a.category)?.[1]}`],
-      rating: 0,
+      tags: [...(a.category === 'photos' || a.category === 'unsorted' ? [] : [`Category/${CATS.find((c) => c[0] === a.category)?.[1]}`]), ...a.tags],
+      rating: a.rating,
       favorite: (a.flags & Flag.FAVORITE) !== 0,
       description: null,
       private: false,
@@ -326,7 +405,7 @@ export const mockApi: Api = {
       ],
       sidecars: [],
       missing: false,
-      trashed: false,
+      trashed: a.trashed,
     };
   },
   folders: async () => tree(),
@@ -342,10 +421,22 @@ export const mockApi: Api = {
       immich_default: key === 'photos',
       auto_threshold: null,
       builtin: true,
-      count: assets.filter((a) => a.category === key).length,
+      count: assets.filter((a) => a.category === key && !a.trashed).length,
     })),
-  tagCounts: async () => [],
-  counts: async () => ({ total: assets.length, inbox: 0, review: Math.min(48, assets.length), date_issues: 12, no_location: assets.filter((a) => a.lat == null).length, trash: 0, duplicates: 0 }),
+  tagCounts: async () => {
+    const m = new Map<string, number>();
+    for (const a of assets) for (const t of a.tags) if (!a.trashed) m.set(t, (m.get(t) ?? 0) + 1);
+    return [...m.entries()].sort().map(([path, count], i) => ({ id: i + 1, path, count }));
+  },
+  counts: async () => ({
+    total: assets.length,
+    inbox: 0,
+    review: Math.min(48, assets.length),
+    date_issues: 12,
+    no_location: assets.filter((a) => a.lat == null).length,
+    trash: assets.filter((a) => a.trashed).length,
+    duplicates: 0,
+  }),
   facets: async (q) => {
     const list = filter(q);
     const count = <T extends string>(f: (a: MockAsset) => T | null) => {
@@ -385,6 +476,185 @@ export const mockApi: Api = {
   },
   hasSecret: async (name) => secrets.has(name),
   deleteSecret: async (name) => void secrets.delete(name),
+  edit: async (ids, action) => {
+    const name = (k: string | null) => CATS.find((c) => c[0] === k)?.[1] ?? 'Unsorted';
+    const items = plural(ids.length);
+    switch (action.kind) {
+      case 'category':
+        return change('edit', action.key ? `Move ${items} to ${name(action.key)}` : `Mark ${items} as unsorted`, ids, (a) => {
+          const k = action.key ?? 'unsorted';
+          if (a.category === k) return false;
+          a.category = k;
+          return true;
+        });
+      case 'add_tag':
+        return change('edit', `Tag ${items} ${action.path}`, ids, (a) => {
+          if (a.tags.includes(action.path)) return false;
+          a.tags = [...a.tags, action.path];
+          return true;
+        });
+      case 'remove_tag':
+        return change('edit', `Remove ${action.path} from ${items}`, ids, (a) => {
+          if (!a.tags.includes(action.path)) return false;
+          a.tags = a.tags.filter((t) => t !== action.path);
+          return true;
+        });
+      case 'rating':
+        return change('edit', `Rate ${items} ${action.rating}`, ids, (a) => {
+          if (a.rating === action.rating) return false;
+          a.rating = action.rating;
+          return true;
+        });
+      case 'favorite':
+        return change('edit', action.on ? `Favorite ${items}` : `Remove ${items} from favorites`, ids, (a) => {
+          if (((a.flags & Flag.FAVORITE) !== 0) === action.on) return false;
+          a.flags ^= Flag.FAVORITE;
+          return true;
+        });
+      case 'rotate':
+        return change('edit', `Rotate ${items} ${action.turns < 0 ? 'left' : 'right'}`, ids, (a) => {
+          if (a.flags & Flag.VIDEO) return false;
+          if (action.turns % 2) a.aspect = 1 / a.aspect;
+          return true;
+        });
+      default:
+        return 0;
+    }
+  },
+  setTrashed: async (ids, trashed) => {
+    const items = plural(ids.length);
+    const label = trashed ? `Move ${items} to the trash` : `Restore ${items} from the trash`;
+    change(
+      trashed ? 'trash' : 'restore',
+      label,
+      ids,
+      (a) => {
+        if (a.trashed === trashed) return false;
+        a.trashed = trashed;
+        return true;
+      },
+      false,
+    );
+  },
+  emptyTrash: async (ids) => {
+    const gone = new Set(assets.filter((a) => a.trashed && (!ids || ids.includes(a.id))).map((a) => a.id));
+    assets = assets.filter((a) => !gone.has(a.id));
+    pushBatch(++batchSeq, 'empty_trash', `Send ${plural(gone.size)} to the Recycle Bin`, gone.size);
+    emit('changed', 'assets');
+    emit('changed', 'history');
+    return gone.size;
+  },
+  plan: async (options) => {
+    const scope = options.ids.length ? new Set(options.ids) : null;
+    const live = assets.filter((a) => !a.trashed && (!scope || scope.has(a.id)));
+    const folders = new Map<string, { count: number; samples: number[] }>();
+    let undecided = 0;
+    let unchanged = 0;
+    for (const a of live) {
+      if (a.category === 'unsorted') {
+        undecided++;
+        continue;
+      }
+      const dir = targetDir(a);
+      if (a.dir === dir) {
+        unchanged++;
+        continue;
+      }
+      const f = folders.get(dir) ?? { count: 0, samples: [] };
+      f.count++;
+      if (f.samples.length < 12) f.samples.push(a.id);
+      folders.set(dir, f);
+    }
+    const moved = [...folders.values()].reduce((s, f) => s + f.count, 0);
+    const writes = options.write_metadata ? live.filter((a) => a.dirty).length : 0;
+    const first = live.find((a) => a.category !== 'unsorted');
+    currentPlan = {
+      batch_id: ++batchSeq,
+      moved,
+      renamed: options.rename ? moved : 0,
+      unchanged,
+      undecided,
+      writes,
+      new_folders: folders.size,
+      files: moved,
+      conflicts: first && moved > 3 ? [{ asset_id: first.id, wanted: `${targetDir(first)}/${first.name}`, got: `${targetDir(first)}/${first.name.replace('.', ' (2).')}` }] : [],
+      folders: [...folders.entries()].sort().map(([path, f]) => ({ root_id: 1, path, count: f.count, samples: f.samples, new: true })),
+    };
+    return structuredClone(currentPlan);
+  },
+  savePlanCsv: async () => true,
+  applyPlan: async (batch) => {
+    const p = currentPlan;
+    if (!p || p.batch_id !== batch) throw new Error('This plan is out of date. Preview it again.');
+    const before = new Map<number, Partial<MockAsset>>();
+    for (const a of assets) {
+      if (a.trashed || a.category === 'unsorted') continue;
+      const dir = targetDir(a);
+      if (a.dir !== dir || a.dirty) {
+        before.set(a.id, { dir: a.dir, dirty: a.dirty });
+        a.dir = dir;
+        a.dirty = false;
+      }
+    }
+    undoData.set(batch, before);
+    pushBatch(batch, 'organize', p.moved ? `Organize ${plural(p.moved)}` : `Save changes to ${p.writes} files`, p.files + p.writes);
+    currentPlan = null;
+    assets = [...assets];
+    emit('changed', 'assets');
+    emit('changed', 'history');
+  },
+  undo: async (batch) => {
+    const b = history.find((h) => h.id === batch);
+    if (!b || b.state !== 'applied') throw new Error('Only applied changes can be undone.');
+    if (b.kind === 'empty_trash') throw new Error('Items sent to the Recycle Bin can be restored from the Recycle Bin.');
+    for (const [id, snap] of undoData.get(batch) ?? []) {
+      const a = byId(id);
+      if (a) Object.assign(a, snap);
+    }
+    history = history.map((h) => (h.id === batch ? { ...h, state: 'undone' } : h));
+    assets = [...assets];
+    emit('changed', 'assets');
+    emit('changed', 'history');
+  },
+  undoLast: async () => {
+    const last = history.find((h) => h.state === 'applied' && h.kind !== 'empty_trash');
+    if (!last) return null;
+    await mockApi.undo(last.id);
+    return last.label;
+  },
+  history: async (limit) => history.slice(0, limit),
+  unsaved: async () => assets.filter((a) => a.dirty && !a.trashed).length,
+  addCategory: async (name, parent) => {
+    const key = (parent ? `${parent}.` : '') + name.toLowerCase().replace(/[^a-z0-9]+/g, '_');
+    if (CATS.some((c) => c[0] === key)) throw new Error(`A category named ${name} already exists here.`);
+    CATS = [...CATS.slice(0, -1), [key, name], CATS[CATS.length - 1]!];
+    emit('changed', 'categories');
+    return key;
+  },
+  updateCategory: async (key, patch) => {
+    const name = patch.name;
+    if (name) CATS = CATS.map((c) => (c[0] === key ? [key, name] : c));
+    emit('changed', 'categories');
+  },
+  deleteCategory: async (key) => {
+    CATS = CATS.filter((c) => c[0] !== key);
+    for (const a of assets) if (a.category === key) a.category = 'unsorted';
+    emit('changed', 'categories');
+  },
+  rules: async () => structuredClone(rules),
+  saveRule: async (r) => {
+    if (r.id > 0) {
+      rules = rules.map((x) => (x.id === r.id ? structuredClone(r) : x));
+      return r.id;
+    }
+    const id = Math.max(0, ...rules.map((x) => x.id)) + 1;
+    rules = [...rules, { ...structuredClone(r), id }];
+    return id;
+  },
+  deleteRule: async (id) => {
+    if (rules.find((r) => r.id === id)?.builtin) throw new Error('Built-in rules can be turned off but not deleted.');
+    rules = rules.filter((r) => r.id !== id);
+  },
   on(event, cb) {
     listeners[event].add(cb as never);
     return () => listeners[event].delete(cb as never);

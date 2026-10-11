@@ -54,9 +54,16 @@ class AppState {
   sidebarCollapsed = $state(false);
   paletteOpen = $state(false);
   filtersOpen = $state(false);
+  /** Items the tag sheet is open for. */
+  tagging = $state<number[] | null>(null);
+  /** Trashed items waiting for confirmation to go to the Recycle Bin. */
+  recycling = $state<number[] | 'all' | null>(null);
+  /** Items with changes not yet saved to their files. */
+  unsaved = $state(0);
   /** Bumped when the library changes, so views reload. */
   revision = $state(0);
   thumbsRevision = $state(0);
+  historyRevision = $state(0);
 
   query = $derived<Query>(mergeQuery(this.scope.query, this.filters));
 
@@ -76,18 +83,27 @@ class AppState {
     api.on('changed', (what) => {
       if (what === 'thumbs') this.thumbsRevision++;
       else if (what === 'settings') void api.getSettings().then((s) => (this.settings = s));
+      else if (what === 'history') this.historyRevision++;
       else void this.refresh();
     });
     this.ready = true;
   }
 
   async refresh() {
-    const [roots, counts, categories, tags] = await Promise.all([api.roots(), api.counts(), api.categories(), api.tagCounts()]);
+    const [roots, counts, categories, tags, unsaved] = await Promise.all([
+      api.roots(),
+      api.counts(),
+      api.categories(),
+      api.tagCounts(),
+      api.unsaved(),
+    ]);
     this.roots = roots;
     this.counts = counts;
     this.categories = categories;
     this.tags = tags;
+    this.unsaved = unsaved;
     this.revision++;
+    this.historyRevision++;
   }
 
   async saveSettings(patch: Partial<Settings>) {

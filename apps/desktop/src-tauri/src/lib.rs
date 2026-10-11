@@ -89,6 +89,22 @@ pub fn run() {
             commands::set_secret,
             commands::has_secret,
             commands::delete_secret,
+            commands::edit,
+            commands::set_trashed,
+            commands::empty_trash,
+            commands::plan,
+            commands::save_plan_csv,
+            commands::apply_plan,
+            commands::undo,
+            commands::undo_last,
+            commands::history,
+            commands::unsaved,
+            commands::add_category,
+            commands::update_category,
+            commands::delete_category,
+            commands::rules,
+            commands::save_rule,
+            commands::delete_rule,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Roll");

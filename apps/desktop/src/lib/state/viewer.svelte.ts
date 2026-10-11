@@ -20,6 +20,20 @@ class ViewerState {
     return this.ids ? (this.ids[this.index] ?? null) : null;
   }
 
+  /** Drop the current item (it went to the trash); close when none are left. */
+  removeCurrent() {
+    if (!this.ids) return;
+    const next = new Uint32Array(this.ids.length - 1);
+    next.set(this.ids.subarray(0, this.index));
+    next.set(this.ids.subarray(this.index + 1), this.index);
+    if (!next.length) {
+      this.close();
+      return;
+    }
+    this.ids = next;
+    this.index = Math.min(this.index, next.length - 1);
+  }
+
   step(d: number) {
     if (!this.ids) return;
     this.index = Math.max(0, Math.min(this.ids.length - 1, this.index + d));

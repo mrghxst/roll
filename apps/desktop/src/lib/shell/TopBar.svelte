@@ -113,6 +113,8 @@
     align-items: center;
     gap: 6px;
     width: min(520px, 50vw);
+    min-width: 160px;
+    flex-shrink: 1;
     height: 32px;
     padding: 0 10px;
     border: 1px solid var(--border);
@@ -176,6 +178,7 @@
   }
   .selection .mono {
     margin-right: 8px;
+    white-space: nowrap;
   }
   .size input {
     width: 96px;

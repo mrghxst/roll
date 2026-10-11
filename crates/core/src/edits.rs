@@ -11,11 +11,49 @@ use crate::db::now_ms;
 use crate::model::problem;
 use crate::tags;
 
-pub const FIELDS: &[&str] = &["category", "tags", "date", "location", "rating", "favorite", "description", "private", "immich", "trashed"];
+pub const FIELDS: &[&str] =
+    &["category", "tags", "date", "location", "rating", "favorite", "description", "private", "immich", "trashed", "orientation"];
 
 /// Fields that end up in file metadata.
 fn file_field(field: &str) -> bool {
-    matches!(field, "category" | "tags" | "date" | "location" | "rating" | "favorite" | "description" | "private")
+    matches!(field, "category" | "tags" | "date" | "location" | "rating" | "favorite" | "description" | "private" | "orientation")
+}
+
+/// Formats whose EXIF orientation Roll both honors when decoding and can
+/// write. HEIF rotation lives in the container, video rotation in the track.
+pub fn rotatable(format: &str) -> bool {
+    matches!(format, "jpeg" | "png" | "webp" | "tiff")
+}
+
+/// EXIF orientation as (clockwise quarter turns, mirrored).
+fn orientation_parts(o: i64) -> (i64, bool) {
+    match o {
+        2 => (0, true),
+        3 => (2, false),
+        4 => (2, true),
+        5 => (3, true),
+        6 => (1, false),
+        7 => (1, true),
+        8 => (3, false),
+        _ => (0, false),
+    }
+}
+
+/// The orientation after turning the displayed image `turns` quarter turns
+/// clockwise (negative turns go counterclockwise).
+pub fn rotate_orientation(o: i64, turns: i64) -> i64 {
+    let (q, m) = orientation_parts(o);
+    let q = (q + turns).rem_euclid(4);
+    match (q, m) {
+        (0, false) => 1,
+        (1, false) => 6,
+        (2, false) => 3,
+        (3, false) => 8,
+        (0, true) => 2,
+        (1, true) => 7,
+        (2, true) => 4,
+        _ => 5,
+    }
 }
 
 pub fn begin_batch(c: &Connection, kind: &str, label: &str) -> rusqlite::Result<i64> {
@@ -73,6 +111,7 @@ pub fn read(c: &Connection, asset: i64, field: &str) -> rusqlite::Result<Value> 
         "private" => json!(c.query_row("SELECT private FROM assets WHERE id = ?1", [asset], |r| r.get::<_, i64>(0))? != 0),
         "immich" => json!(c.query_row("SELECT immich FROM assets WHERE id = ?1", [asset], |r| r.get::<_, String>(0))?),
         "trashed" => json!(c.query_row("SELECT trashed_at IS NOT NULL FROM assets WHERE id = ?1", [asset], |r| r.get::<_, bool>(0))?),
+        "orientation" => json!(c.query_row("SELECT coalesce(orientation, 1) FROM assets WHERE id = ?1", [asset], |r| r.get::<_, i64>(0))?),
         _ => Value::Null,
     };
     Ok(v)
@@ -122,10 +161,10 @@ pub fn write(c: &Connection, asset: i64, field: &str, v: &Value) -> rusqlite::Re
             )?;
             tags::remove_prefix(c, asset, tags::CATEGORY_PREFIX)?;
             // Only decided categories become tags (proposals stay internal).
-            if review >= 2 {
-                if let Some(t) = key.filter(|k| *k != "unsorted").map(|k| category_tag(c, k)).transpose()?.flatten() {
-                    tags::add(c, asset, &t, v.get("source").and_then(Value::as_str).unwrap_or("manual"), None)?;
-                }
+            if review >= 2
+                && let Some(t) = key.filter(|k| *k != "unsorted").map(|k| category_tag(c, k)).transpose()?.flatten()
+            {
+                tags::add(c, asset, &t, v.get("source").and_then(Value::as_str).unwrap_or("manual"), None)?;
             }
         }
         "tags" => {
@@ -218,6 +257,18 @@ pub fn write(c: &Connection, asset: i64, field: &str, v: &Value) -> rusqlite::Re
         "trashed" => {
             let at = v.as_bool().unwrap_or(false).then(now_ms);
             c.execute("UPDATE assets SET trashed_at = ?2 WHERE id = ?1", params![asset, at])?;
+        }
+        "orientation" => {
+            let new = v.as_i64().unwrap_or(1).clamp(1, 8);
+            let old: i64 = c.query_row("SELECT coalesce(orientation, 1) FROM assets WHERE id = ?1", [asset], |r| r.get(0))?;
+            // A quarter turn swaps the displayed sides; thumbnails are redone.
+            let swap = (orientation_parts(old).0 + orientation_parts(new).0) % 2 == 1;
+            c.execute(
+                "UPDATE assets SET orientation = ?2, thumb = 0,
+                   width = CASE WHEN ?3 THEN height ELSE width END, height = CASE WHEN ?3 THEN width ELSE height END
+                 WHERE id = ?1",
+                params![asset, new, swap],
+            )?;
         }
         _ => {}
     }
