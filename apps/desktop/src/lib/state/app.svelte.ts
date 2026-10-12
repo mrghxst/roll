@@ -26,6 +26,7 @@ export type View =
   | 'events'
   | 'add'
   | 'immich'
+  | 'guide'
   | 'history'
   | 'trash'
   | 'organize';

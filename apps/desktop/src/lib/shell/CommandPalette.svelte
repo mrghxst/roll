@@ -31,6 +31,14 @@
       { group: 'Go to', title: 'Events', run: () => app.go('events') },
       { group: 'Go to', title: 'Add photos', run: () => app.go('add') },
       { group: 'Go to', title: 'Immich', run: () => app.go('immich') },
+      {
+        group: 'Go to',
+        title: 'Get started (the first guide)',
+        run: () => {
+          void app.saveSettings({ guide_done: false });
+          app.go('guide');
+        },
+      },
       { group: 'Actions', title: 'Add photos from a folder…', run: () => void app.addPhotos().catch((e) => toast.error(e)) },
       { group: 'Go to', title: 'Fix dates', run: () => app.go('dates') },
       { group: 'Go to', title: 'Fix places', run: () => app.go('places') },

@@ -235,6 +235,7 @@
                 onclick={() => void pick(id)}
                 role="option"
                 aria-selected={ref1?.d.id === id || ref2?.d.id === id}
+                aria-label="Photo {set.ids.indexOf(id) + 1} of {set.count}"
                 data-testid="set-thumb"><img src={api.thumbUrl(id, 1)} alt="" loading="lazy" /></button
               >
             {/each}

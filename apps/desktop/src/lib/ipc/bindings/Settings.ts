@@ -29,4 +29,8 @@ auto_precision: number, interpolation_minutes: number,
 /**
  * Camera models whose QuickTime dates are local time, not UTC.
  */
-quicktime_local_models: Array<string>, guide_done: boolean, };
+quicktime_local_models: Array<string>, guide_done: boolean, 
+/**
+ * Steps of the first guide the owner has opened or marked done.
+ */
+guide_steps: Array<string>, };

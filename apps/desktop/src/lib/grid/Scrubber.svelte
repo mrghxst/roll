@@ -114,11 +114,6 @@
     font-size: 10px;
     color: var(--muted);
     pointer-events: none;
-    opacity: 0.8;
-  }
-  .scrubber:hover .year,
-  .dragging .year {
-    opacity: 1;
   }
   .thumb {
     position: absolute;

@@ -5,6 +5,7 @@
     AtSign,
     CalendarClock,
     CalendarRange,
+    Compass,
     Copy,
     Sparkles,
     ListChecks,
@@ -79,6 +80,9 @@
     </button>
   </div>
   <div class="scroll">
+    {#if app.settings?.first_run_done && !app.settings.guide_done}
+      {@render item('Get started', Compass, app.view === 'guide', () => goView('guide'), undefined, 'nav-guide')}
+    {/if}
     {@render item('Timeline', Images, isScope('all'), () => goScope(ALL), undefined, 'nav-timeline')}
     {@render item('Folders', Folder, app.view === 'folders', () => goView('folders'), undefined, 'nav-folders')}
     {@render item('Map', Map, app.view === 'map', () => goView('map'), undefined, 'nav-map')}

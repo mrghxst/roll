@@ -163,10 +163,12 @@ const defaults: Settings = {
   interpolation_minutes: 30,
   quicktime_local_models: [],
   guide_done: false,
+  guide_steps: [],
 };
 
 const setup = params.get('setup') === '1';
-let settings: Settings = { ...defaults, first_run_done: setup };
+// `?guide=1` keeps the first guide open after setup.
+let settings: Settings = { ...defaults, first_run_done: setup, guide_done: setup && params.get('guide') !== '1' };
 let roots: RootInfo[] = setup ? [{ id: 1, path: 'C:\\Users\\Example\\Pictures', kind: 'library', count: N }] : [];
 let assets: MockAsset[] = setup ? makeAssets(N) : [];
 let jobs: JobInfo[] = [];

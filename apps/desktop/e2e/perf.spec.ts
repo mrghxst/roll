@@ -9,7 +9,7 @@ const CI = !!process.env.CI;
 test('scrolls 100k items smoothly and jumps quickly', async ({ page }) => {
   test.setTimeout(90_000);
   await page.goto('/?setup=1&mock=100000');
-  const grid = page.getByRole('grid', { name: 'Photos' });
+  const grid = page.getByRole('listbox', { name: 'Photos' });
   await expect(page.locator('.tile:not(.hidden)').first()).toBeVisible({ timeout: 30_000 });
 
   const frames = await grid.evaluate(async (el) => {

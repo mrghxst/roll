@@ -413,6 +413,7 @@
 </script>
 
 <div class="wrap">
+  <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
   <div
     id="grid"
     class="scroll"
@@ -427,19 +428,27 @@
     {ondblclick}
     {onwheel}
     tabindex="0"
-    role="grid"
+    role={data.count ? 'listbox' : undefined}
     aria-label="Photos"
-    aria-rowcount={-1}
-    aria-multiselectable="true"
+    aria-multiselectable={data.count ? true : undefined}
+    aria-busy={data.count && !L ? true : undefined}
+    aria-activedescendant={focus >= 0 && slots.includes(focus) ? `tile-${focus}` : undefined}
   >
     {#if L}
       <div class="content" style:height="{L.height}px">
         {#each visibleSections as s (s.kind + s.day + ':' + s.start)}
           {@const ids = sectionIds(s.start, s.end)}
           {@const all = ids.length > 0 && ids.every((id) => selection.has(id))}
-          <div class="head {s.kind}" style:transform="translate({s.x}px, {s.y}px)" style:width="{s.kind === 'day' ? Math.max(s.w, 24) : s.w}px">
+          <!-- Headers are for the eye and the mouse; each item's label names its day. -->
+          <div
+            class="head {s.kind}"
+            aria-hidden="true"
+            style:transform="translate({s.x}px, {s.y}px)"
+            style:width="{s.kind === 'day' ? Math.max(s.w, 24) : s.w}px"
+          >
             <button
               class="pick"
+              tabindex="-1"
               class:on={all}
               aria-label={all ? 'Deselect' : `Select ${s.kind === 'month' ? 'month' : 'day'}`}
               onclick={() => selection.toggleAll(ids)}><Check size={11} strokeWidth={3} /></button
@@ -468,7 +477,7 @@
             durationMs={durations.get(id) ?? null}
             selected={selection.has(id)}
             focused={idx === focus}
-            label={`Item ${idx + 1} of ${data.count}`}
+            label={`${dayLabel(data.days[idx] ?? 0, true)}, item ${idx + 1} of ${data.count}`}
           />
         {/each}
         {#if band}

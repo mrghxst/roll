@@ -57,6 +57,8 @@ pub struct Settings {
     /// Camera models whose QuickTime dates are local time, not UTC.
     pub quicktime_local_models: Vec<String>,
     pub guide_done: bool,
+    /// Steps of the first guide the owner has opened or marked done.
+    pub guide_steps: Vec<String>,
 }
 
 impl Default for Settings {
@@ -90,6 +92,7 @@ impl Default for Settings {
             interpolation_minutes: 30,
             quicktime_local_models: Vec::new(),
             guide_done: false,
+            guide_steps: Vec::new(),
         }
     }
 }

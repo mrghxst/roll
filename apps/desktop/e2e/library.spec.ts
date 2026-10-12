@@ -18,7 +18,7 @@ test.describe('first run', () => {
     await expect(page.getByRole('heading', { name: 'Ready' })).toBeVisible();
     await expect(page.getByText('Sidecars only')).toBeVisible();
     await page.getByTestId('continue').click();
-    await expect(page.getByRole('grid', { name: 'Photos' })).toBeVisible();
+    await expect(page.getByRole('listbox', { name: 'Photos' })).toBeVisible();
     await expect(page.locator('.tile:not(.hidden)').first()).toBeVisible();
   });
 });
@@ -42,7 +42,7 @@ test.describe('library', () => {
   });
 
   test('draws a selection band', async ({ page }) => {
-    const grid = page.getByRole('grid', { name: 'Photos' });
+    const grid = page.getByRole('listbox', { name: 'Photos' });
     const box = (await grid.boundingBox())!;
     await page.mouse.move(box.x + 30, box.y + 100);
     await page.mouse.down();
@@ -115,7 +115,7 @@ test.describe('library', () => {
   });
 
   test('keyboard moves the focus', async ({ page }) => {
-    await page.getByRole('grid', { name: 'Photos' }).focus();
+    await page.getByRole('listbox', { name: 'Photos' }).focus();
     await page.keyboard.press('ArrowRight');
     await page.keyboard.press('ArrowRight');
     await expect(page.getByTestId('selection-bar')).toContainText('1 selected');

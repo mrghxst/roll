@@ -70,7 +70,15 @@
 
 <main class="first-run">
   <div class="card" data-testid="first-run">
-    <div class="progress mono" aria-label="Step {step + 1} of {STEPS.length}">
+    <div
+      class="progress mono"
+      role="progressbar"
+      aria-label="Setup"
+      aria-valuemin={1}
+      aria-valuemax={STEPS.length}
+      aria-valuenow={step + 1}
+      aria-valuetext="Step {step + 1} of {STEPS.length}: {STEPS[step]}"
+    >
       {#each STEPS as s, i (s)}
         <span class:done={i < step} class:current={i === step}></span>
       {/each}

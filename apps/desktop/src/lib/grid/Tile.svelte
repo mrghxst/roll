@@ -50,8 +50,10 @@
   class:focused
   class:hidden
   data-index={index}
-  role="gridcell"
-  aria-selected={selected}
+  id={hidden ? undefined : `tile-${index}`}
+  role={hidden ? undefined : 'option'}
+  aria-selected={hidden ? undefined : selected}
+  aria-hidden={hidden ? true : undefined}
   aria-label={label}
   style:transform="translate({x}px, {y}px)"
   style:width="{w}px"

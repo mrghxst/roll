@@ -139,7 +139,13 @@ Milestones from PROMPT.md section 10. `[x]` done, `[~]` partly done,
       are written into the copies. Exports are not one event by default:
       sorted items go to their category folders, the rest wait in
       `Imported/<folder>`
-- [ ] Onboarding pass, accessibility, Windows installer, user docs
+- [x] First guide after indexing: seven steps from review to the first
+      Immich sync, each opening its view, progress kept in settings, back
+      from the command palette
+- [x] Accessibility: axe (WCAG 2.1 A/AA) over every view in Playwright,
+      light and dark; the photo grid is a multi-select listbox with
+      dated item labels and an active descendant; contrast and labels fixed
+- [ ] Windows installer, user docs
 ## M7 Later
 
 ## Next

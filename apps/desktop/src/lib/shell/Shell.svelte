@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from 'svelte';
   import { app } from '../state/app.svelte';
   import { toggleFavorite, trash, undoLast } from '../state/edits';
   import { selection } from '../state/selection.svelte';
@@ -12,6 +13,7 @@
   import Events from '../views/Events.svelte';
   import AddPhotos from '../views/AddPhotos.svelte';
   import Immich from '../views/Immich.svelte';
+  import Guide from '../views/Guide.svelte';
   import Duplicates from '../views/Duplicates.svelte';
   import Review from '../views/Review.svelte';
   import MapPage from '../views/MapPage.svelte';
@@ -35,6 +37,24 @@
   import TopBar from './TopBar.svelte';
 
   let topbar: ReturnType<typeof TopBar> | undefined = $state();
+
+  // After the first indexing, the guide opens once by itself.
+  $effect(() => {
+    const s = app.settings;
+    if (!s?.first_run_done || s.guide_done || app.counts.total === 0) return;
+    if (app.activeJobs.some((j) => j.kind === 'scan')) return;
+    untrack(() => {
+      let opened = false;
+      try {
+        opened = localStorage.getItem('roll.guide.opened') === '1';
+        localStorage.setItem('roll.guide.opened', '1');
+      } catch {
+        // Without storage the sidebar entry still leads to the guide.
+        opened = true;
+      }
+      if (!opened && app.view === 'timeline') app.go('guide');
+    });
+  });
 
   function typing(e: KeyboardEvent) {
     const t = e.target as HTMLElement;
@@ -128,6 +148,8 @@
           <Review />
         {:else if app.view === 'duplicates'}
           <Duplicates />
+        {:else if app.view === 'guide'}
+          <Guide />
         {:else if app.view === 'immich'}
           <Immich />
         {:else if app.view === 'add'}
