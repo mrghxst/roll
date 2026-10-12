@@ -1,8 +1,8 @@
 <script lang="ts">
-  import { ArchiveRestore, CalendarClock, ExternalLink, FolderInput, FolderOpen, Heart, MapPin, RotateCcw, RotateCw, Star, Tag, Trash2 } from '@lucide/svelte';
+  import { ArchiveRestore, CalendarClock, Cloud, ExternalLink, FolderInput, FolderOpen, Heart, MapPin, RotateCcw, RotateCw, Star, Tag, Trash2 } from '@lucide/svelte';
   import { api } from '../ipc/api';
   import { app } from '../state/app.svelte';
-  import { rate, restore, rotate, setCategory, toggleFavorite, trash } from '../state/edits';
+  import { rate, restore, rotate, setCategory, setImmich, toggleFavorite, trash } from '../state/edits';
   import { selection } from '../state/selection.svelte';
   import IconButton from '../ui/IconButton.svelte';
   import Menu, { type MenuItem } from '../ui/Menu.svelte';
@@ -25,6 +25,12 @@
     out.push({ label: 'Unsorted', run: () => void setCategory(ids, null) });
     return out;
   });
+
+  const immichItems = $derived<MenuItem[]>([
+    { label: 'Send to Immich', run: () => void setImmich(ids, 'send') },
+    { label: 'Keep local only', run: () => void setImmich(ids, 'local') },
+    { label: 'Use the default (category and event)', run: () => void setImmich(ids, 'default') },
+  ]);
 
   const ratingItems = $derived<MenuItem[]>(
     [5, 4, 3, 2, 1, 0].map((r) => ({ label: r ? '★'.repeat(r) : 'No rating', hint: String(r), run: () => void rate(ids, r) })),
@@ -51,6 +57,11 @@
   <Menu label="Rating" items={ratingItems}>
     {#snippet trigger({ open, toggle })}
       <IconButton label="Rating" active={open} onclick={toggle} data-testid="rating"><Star size={16} strokeWidth={1.5} /></IconButton>
+    {/snippet}
+  </Menu>
+  <Menu label="Immich" items={immichItems}>
+    {#snippet trigger({ open, toggle })}
+      <IconButton label="Immich" active={open} onclick={toggle} data-testid="immich-menu"><Cloud size={16} strokeWidth={1.5} /></IconButton>
     {/snippet}
   </Menu>
   <IconButton label="Rotate left" onclick={() => void rotate(ids, -1)}><RotateCcw size={16} strokeWidth={1.5} /></IconButton>

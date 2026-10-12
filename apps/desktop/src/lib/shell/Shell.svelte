@@ -11,6 +11,7 @@
   import Discover from '../views/Discover.svelte';
   import Events from '../views/Events.svelte';
   import AddPhotos from '../views/AddPhotos.svelte';
+  import Immich from '../views/Immich.svelte';
   import Duplicates from '../views/Duplicates.svelte';
   import Review from '../views/Review.svelte';
   import MapPage from '../views/MapPage.svelte';
@@ -127,6 +128,8 @@
           <Review />
         {:else if app.view === 'duplicates'}
           <Duplicates />
+        {:else if app.view === 'immich'}
+          <Immich />
         {:else if app.view === 'add'}
           <AddPhotos />
         {:else if app.view === 'events'}

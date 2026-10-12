@@ -41,6 +41,12 @@ export function rate(ids: number[], rating: number) {
   return run(ids, { kind: 'rating', rating }, (n) => (rating ? `Rated ${plural(n)} ${rating} of 5` : `Cleared the rating of ${plural(n)}`));
 }
 
+/** "send", "local" or "default" (the category and event decide). */
+export function setImmich(ids: number[], mode: 'send' | 'local' | 'default') {
+  const done = { send: 'will go to Immich', local: 'stay on this computer only', default: 'follow the Immich defaults' }[mode];
+  return run(ids, { kind: 'immich', mode }, (n) => `${plural(n)} ${done}`);
+}
+
 export function favorite(ids: number[], on: boolean) {
   return run(ids, { kind: 'favorite', on }, (n) => (on ? `Added ${plural(n)} to favorites` : `Removed ${plural(n)} from favorites`));
 }

@@ -2,6 +2,7 @@
   import { ArrowLeft, ArrowRight, CalendarClock, Check, FolderInput, MapPin, Undo2, X } from '@lucide/svelte';
   import { untrack } from 'svelte';
   import { api, emptyQuery } from '../ipc/api';
+  import type { ImmichUser } from '../ipc/bindings/ImmichUser';
   import type { ImportInfo } from '../ipc/bindings/ImportInfo';
   import type { ImportOptions } from '../ipc/bindings/ImportOptions';
   import type { ImportPlan } from '../ipc/bindings/ImportPlan';
@@ -33,7 +34,16 @@
   let planError = $state<string | null>(null);
   let picked = $state<number[]>([]);
   let nameDraft = $state('');
-  let opts = $state<ImportOptions>({ mode: 'copy', skip_known: true, root_id: null, as_event: true });
+  let opts = $state<ImportOptions>({ mode: 'copy', skip_known: true, root_id: null, as_event: true, immich_album: true, immich_share: [] });
+  let immichUsers = $state<ImmichUser[]>([]);
+  // People to share the album with, when Immich is connected.
+  $effect(() => {
+    if (step !== 'add' || !app.settings?.network.immich) return;
+    void api
+      .immichUsers()
+      .then((u) => (immichUsers = u))
+      .catch(() => (immichUsers = []));
+  });
   let busy = $state(false);
 
   const info = $derived(list.find((i) => i.id === app.importing) ?? null);
@@ -513,6 +523,7 @@
           <div class="row">
             <Button variant="primary" disabled={applying} onclick={() => showAdded(i)}>Show them</Button>
             {#if i.batch_id != null}<Button disabled={applying} onclick={() => void run(() => api.undo(i.batch_id!), 'Taking the items back out')}><Undo2 size={14} strokeWidth={1.5} /> Undo</Button>{/if}
+            {#if opts.as_event && opts.immich_album}<Button disabled={applying} onclick={() => app.go('immich')}>Send to Immich…</Button>{/if}
             <Button variant="ghost" disabled={applying} onclick={() => void run(() => api.importClose(i.id))} data-testid="close-import">Close</Button>
           </div>
         </div>
@@ -528,6 +539,26 @@
           />
           <span class="muted">{opts.mode === 'copy' ? 'The source stays untouched; each copy is checked against its original.' : 'The files leave the source folder.'}</span>
         </div>
+        {#if opts.as_event}
+          <div class="opts">
+            <Switch label="Album in Immich" bind:checked={opts.immich_album} />
+            <span>Album in Immich</span>
+            <span class="muted">{opts.immich_album ? 'Made at the next Immich sync, which shows its plan first.' : 'The event stays on this computer.'}</span>
+          </div>
+          {#if opts.immich_album && immichUsers.length}
+            <div class="opts" role="group" aria-label="Share the album with">
+              <span class="muted">Share with</span>
+              {#each immichUsers as u (u.id)}
+                <button
+                  class="chip"
+                  aria-pressed={opts.immich_share.includes(u.id)}
+                  onclick={() => (opts.immich_share = opts.immich_share.includes(u.id) ? opts.immich_share.filter((x) => x !== u.id) : [...opts.immich_share, u.id])}
+                  >{u.name}</button
+                >
+              {/each}
+            </div>
+          {/if}
+        {/if}
         {#if app.roots.length > 1}
           <label class="field">
             <span>Library folder</span>
@@ -856,6 +887,20 @@
   }
   .empty {
     margin-top: 24px;
+  }
+  .chip {
+    padding: 3px 10px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--bg);
+    color: var(--muted);
+    font-size: var(--t12);
+    cursor: pointer;
+  }
+  .chip[aria-pressed='true'] {
+    background: var(--fg);
+    color: var(--bg);
+    border-color: var(--fg);
   }
   .mini {
     position: relative;

@@ -17,4 +17,12 @@ root_id: number | null,
  * Add as one event with its own folder (a card, a trip). Off for
  * exports that span years: items go to their category folders.
  */
-as_event: boolean, };
+as_event: boolean, 
+/**
+ * The event becomes an Immich album at the next sync.
+ */
+immich_album: boolean, 
+/**
+ * Immich user ids to share that album with.
+ */
+immich_share: Array<string>, };

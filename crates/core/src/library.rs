@@ -220,6 +220,30 @@ impl Library {
                 self.db.tx(|tx| crate::search::reindex(tx, None, &place))?;
                 Ok(())
             }
+            JobSpec::Immich { remove } => {
+                let client = self.immich_client()?;
+                client.me()?;
+                let report = crate::immich::sync(&self.db, &client, *remove, &|done, total| ctx.progress(done, total));
+                let report = match report {
+                    Ok(r) => r,
+                    Err(e) => crate::immich::SyncReport { errors: vec![e.to_string()], ..Default::default() },
+                };
+                {
+                    let c = self.db.write();
+                    let label = crate::immich::report_label(&report);
+                    c.execute(
+                        "INSERT INTO batches (kind, label, state, created_at, applied_at, summary) VALUES ('immich', ?1, 'applied', ?2, ?2, ?3)",
+                        params![label, crate::db::now_ms(), serde_json::to_string(&report)?],
+                    )?;
+                }
+                self.emit(LibEvent::Changed("assets"));
+                self.emit(LibEvent::Changed("history"));
+                self.emit(LibEvent::Changed("immich"));
+                if let Some(first) = report.errors.first() {
+                    anyhow::bail!("{} problems while syncing with Immich. First: {first}", report.errors.len());
+                }
+                Ok(())
+            }
             JobSpec::Recover => {
                 if journal::recover(&self.db, &self.tools())? > 0 {
                     self.emit(LibEvent::Changed("assets"));
@@ -818,6 +842,7 @@ impl Library {
                 self.jobs.enqueue(JobSpec::Undo { batch })?;
             }
             "empty_trash" => anyhow::bail!("Items sent to the Recycle Bin can be restored from the Recycle Bin."),
+            "immich" => anyhow::bail!("A sync is not undone from History. Change what goes to Immich, then sync again."),
             _ => {
                 journal::undo(&self.db, &self.tools(), batch, &|_, _| true)?;
                 // An undone rotation needs its thumbnails again.
@@ -1220,6 +1245,80 @@ impl Library {
         }
         self.emit(LibEvent::Changed("imports"));
         Ok(())
+    }
+
+    // Immich
+
+    fn immich_client(&self) -> anyhow::Result<crate::immich::Client> {
+        let s = self.settings();
+        anyhow::ensure!(s.network.immich, "Immich is off. Turn it on in Settings › Network.");
+        let url = s
+            .immich_url
+            .filter(|u| !u.trim().is_empty())
+            .ok_or_else(|| anyhow::anyhow!("Add your Immich server address in Settings › Immich."))?;
+        let key = crate::secrets::get("immich").ok_or_else(|| anyhow::anyhow!("Add an Immich API key in Settings › Immich."))?;
+        Ok(crate::immich::Client::new(&url, &key))
+    }
+
+    /// Whether Immich is set up, and (when it is on) what the server says.
+    pub fn immich_status(&self) -> crate::immich::ImmichStatus {
+        let s = self.settings();
+        let mut st = crate::immich::ImmichStatus {
+            on: s.network.immich,
+            url: s.immich_url.clone(),
+            has_key: crate::secrets::has("immich"),
+            server: None,
+            user: None,
+            error: None,
+        };
+        if st.on && st.url.is_some() && st.has_key {
+            match self.immich_client().and_then(|c| Ok((c.version()?, c.me()?))) {
+                Ok((v, me)) => {
+                    st.server = Some(v);
+                    st.user = Some(me.name);
+                }
+                Err(e) => st.error = Some(e.to_string()),
+            }
+        }
+        st
+    }
+
+    pub fn immich_plan(&self) -> anyhow::Result<crate::immich::ImmichPlan> {
+        Ok(crate::immich::plan(&self.db.read())?)
+    }
+
+    /// Start a sync. The owner has seen the plan; `remove` confirms moving
+    /// items to Immich's trash.
+    pub fn immich_sync(&self, remove: bool) -> anyhow::Result<()> {
+        self.immich_client()?;
+        self.jobs.enqueue(JobSpec::Immich { remove })?;
+        Ok(())
+    }
+
+    pub fn immich_users(&self) -> anyhow::Result<Vec<crate::immich::ImmichUser>> {
+        let c = self.immich_client()?;
+        let me = c.me()?;
+        Ok(c.users()?.into_iter().filter(|u| u.id != me.id).collect())
+    }
+
+    pub fn immich_albums(&self) -> anyhow::Result<Vec<crate::immich::AlbumInfo>> {
+        Ok(crate::immich::album_list(&self.db.read())?)
+    }
+
+    /// Whether a confirmed event becomes an album, and who sees it.
+    pub fn immich_album(&self, event: i64, send: bool, share: &[String]) -> anyhow::Result<()> {
+        self.db.write().execute(
+            "UPDATE events SET immich = ?2, immich_share = ?3 WHERE id = ?1",
+            params![event, if send { "default" } else { "local" }, serde_json::to_string(share)?],
+        )?;
+        self.emit(LibEvent::Changed("immich"));
+        Ok(())
+    }
+
+    /// An Immich CLI script for the selection, for when the API sync is not
+    /// an option.
+    pub fn immich_script(&self, windows: bool) -> anyhow::Result<String> {
+        Ok(crate::immich::cli_script(&self.db.read(), windows)?)
     }
 
     // Duplicates

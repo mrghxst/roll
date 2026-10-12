@@ -65,6 +65,9 @@ interface MockAsset {
   conf: number;
   /** The staging root of an import, while it is being checked. */
   staged?: number;
+  /** "send", "local" or "default". */
+  immich?: string;
+  immichId?: string;
 }
 
 let CATS: [string, string][] = [
@@ -210,7 +213,7 @@ function change(kind: string, label: string, ids: number[], fn: (a: MockAsset) =
   for (const id of ids) {
     const a = byId(id);
     if (!a) continue;
-    const snap = { category: a.category, flags: a.flags, rating: a.rating, tags: [...a.tags], trashed: a.trashed, dirty: a.dirty, aspect: a.aspect, local: a.local, utc: a.utc, lat: a.lat, lon: a.lon, review: a.review };
+    const snap = { category: a.category, flags: a.flags, rating: a.rating, tags: [...a.tags], trashed: a.trashed, dirty: a.dirty, aspect: a.aspect, local: a.local, utc: a.utc, lat: a.lat, lon: a.lon, review: a.review, immich: a.immich };
     if (fn(a)) {
       before.set(id, snap);
       if (dirty) a.dirty = true;
@@ -269,6 +272,9 @@ interface MockEvent {
   custom: boolean;
   /** Merged or split by the owner: detection leaves it alone. */
   shaped: boolean;
+  immichOff?: boolean;
+  share?: string[];
+  album?: string;
 }
 let mockEvents: MockEvent[] = [];
 let eventSeq = 0;
@@ -486,6 +492,22 @@ function makeCard(root: number): MockAsset[] {
 }
 
 const stagedOf = (imp: MockImport) => staged.filter((a) => a.staged === imp.root);
+
+// Immich: what goes there follows the item choice, the category default
+// (Photos) and confirmed events.
+const IMMICH_USERS = [
+  { id: 'u1', name: 'Alex', email: 'alex@example.com' },
+  { id: 'u2', name: 'Sam', email: 'sam@example.com' },
+];
+let immichSeq = 0;
+function immichSelected(a: MockAsset) {
+  if (a.trashed || a.staged != null) return false;
+  if (a.immich === 'send') return true;
+  if (a.immich === 'local') return false;
+  if (mockEvents.some((e) => e.state === 'confirmed' && !e.immichOff && e.ids.includes(a.id))) return true;
+  return a.category === 'photos';
+}
+const immichReady = () => settings.network.immich && !!settings.immich_url && secrets.has('immich');
 const importById = (id: number) => {
   const imp = imports.find((i) => i.id === id);
   if (!imp) throw new Error('This import is gone. Open Add photos again.');
@@ -899,6 +921,18 @@ export const mockApi: Api = {
           a.flags ^= Flag.FAVORITE;
           return true;
         });
+      case 'immich':
+        return change(
+          'edit',
+          action.mode === 'send' ? `Send ${items} to Immich` : action.mode === 'local' ? `Keep ${items} local only` : `Use the default Immich choice for ${items}`,
+          ids,
+          (a) => {
+            if ((a.immich ?? 'default') === action.mode) return false;
+            a.immich = action.mode;
+            return true;
+          },
+          false,
+        );
       case 'rotate':
         return change('edit', `Rotate ${items} ${action.turns < 0 ? 'left' : 'right'}`, ids, (a) => {
           if (a.flags & Flag.VIDEO) return false;
@@ -1245,6 +1279,77 @@ export const mockApi: Api = {
     tracks = tracks.filter((t) => t.id !== id);
     emit('changed', 'places');
   },
+  immichStatus: async () => ({
+    on: settings.network.immich,
+    url: settings.immich_url,
+    has_key: secrets.has('immich'),
+    server: immichReady() ? '3.3.1' : null,
+    user: immichReady() ? 'You' : null,
+    error: null,
+  }),
+  immichPlan: async () => {
+    const want = assets.filter(immichSelected);
+    const up = want.filter((a) => !a.immichId);
+    const gone = assets.filter((a) => a.immichId && !immichSelected(a));
+    const evs = mockEvents.filter((e) => e.state === 'confirmed' && !e.immichOff && e.ids.some((id) => byId(id) && immichSelected(byId(id)!)));
+    return {
+      uploads: up.length,
+      upload_bytes: up.length * 3_400_000,
+      updates: want.filter((a) => a.immichId && a.dirty).length,
+      removes: gone.length,
+      new_albums: evs.filter((e) => !e.album).length,
+      album_updates: evs.filter((e) => e.album).length,
+      upload_samples: up.slice(0, 12).map((a) => a.id),
+      remove_samples: gone.slice(0, 12).map((a) => a.id),
+      in_sync: want.filter((a) => a.immichId && !a.dirty).length,
+    };
+  },
+  immichSync: async (remove) => {
+    if (!immichReady()) throw new Error('Immich is off. Turn it on in Settings › Network.');
+    let sent = 0;
+    let removed = 0;
+    for (const a of assets) {
+      if (immichSelected(a) && !a.immichId) {
+        a.immichId = `im${++immichSeq}`;
+        a.flags |= Flag.IMMICH;
+        sent++;
+      } else if (remove && a.immichId && !immichSelected(a)) {
+        a.immichId = undefined;
+        a.flags &= ~Flag.IMMICH;
+        removed++;
+      }
+    }
+    let albums = 0;
+    for (const e of mockEvents.filter((x) => x.state === 'confirmed' && !x.immichOff)) {
+      e.album ??= `album${++immichSeq}`;
+      albums++;
+    }
+    const parts = [sent && `sent ${sent}`, removed && `moved ${removed} to Immich's trash`, albums && `${albums} album${albums === 1 ? '' : 's'}`].filter(Boolean);
+    pushBatch(++batchSeq, 'immich', parts.length ? `Immich: ${parts.join(', ')}` : 'Immich: nothing to change', sent + removed);
+    assets = [...assets];
+    emit('changed', 'assets');
+    emit('changed', 'history');
+    emit('changed', 'immich');
+  },
+  immichUsers: async () => (immichReady() ? IMMICH_USERS : []),
+  immichAlbums: async () =>
+    mockEvents
+      .filter((e) => e.state === 'confirmed')
+      .map((e) => ({
+        event_id: e.id,
+        name: e.name,
+        send: !e.immichOff,
+        items: e.ids.filter((id) => byId(id) && immichSelected(byId(id)!)).length,
+        album_id: e.album ?? null,
+        share: e.share ?? [],
+      })),
+  immichAlbum: async (event, send, share) => {
+    const e = eventById(event);
+    e.immichOff = !send;
+    e.share = share;
+    emit('changed', 'immich');
+  },
+  saveImmichScript: async () => true,
   importStart: async (path) => {
     const source = path ?? 'E:\\';
     const open = imports.find((i) => i.source === source);
@@ -1317,7 +1422,17 @@ export const mockApi: Api = {
     }
     staged = staged.filter((a) => !bring.has(a.id));
     assets = [...assets, ...moved].sort((a, b) => (a.local < b.local ? 1 : a.local > b.local ? -1 : b.id - a.id));
-    const ev: MockEvent = { id: ++eventSeq, name, state: 'confirmed', ids: moved.map((a) => a.id), own_folder: true, custom: true, shaped: true };
+    const ev: MockEvent = {
+      id: ++eventSeq,
+      name,
+      state: 'confirmed',
+      ids: moved.map((a) => a.id),
+      own_folder: true,
+      custom: true,
+      shaped: true,
+      immichOff: !opts.immich_album,
+      share: [...opts.immich_share],
+    };
     mockEvents.push(ev);
     const batch = ++batchSeq;
     pushBatch(batch, 'import', `${opts.mode === 'move' ? 'Move' : 'Copy'} ${plural(moved.length)} into ${name}`, moved.length);

@@ -25,6 +25,7 @@ export type View =
   | 'map'
   | 'events'
   | 'add'
+  | 'immich'
   | 'history'
   | 'trash'
   | 'organize';

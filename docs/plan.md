@@ -44,7 +44,7 @@ Milestones from PROMPT.md section 10. `[x]` done, `[~]` partly done,
       kill during apply (`crates/core/tests/organize_acceptance.rs`)
 - [x] Explorer check through the Windows property system (docs/checks.md)
 - [ ] Photos app check by hand (docs/checks.md has the steps)
-- [ ] Immich round trip (needs Docker; moved to M6 with the Immich work)
+- [ ] Immich round trip (needs Docker; see M6)
 - [x] Rare access violation during thumbnailing: libwebp's encoder setup
       races on Windows (no lock in `WEBP_DSP_INIT`); one warm-up encode
       before parallel use fixes it. Found with the test's fault handler
@@ -108,7 +108,16 @@ Milestones from PROMPT.md section 10. `[x]` done, `[~]` partly done,
       with confirm, rename, merge, split, dismiss and own folder, all
       undoable; on the fixtures: Italy 2019, New York 2021, Lisbon 2022,
       the Dolomites hike, Christmas 2018 at home
-- [ ] Immich sync (needs a test server: Docker), CLI export, guide
+- [x] Immich sync through the v3 API (checked against the 3.3.1 OpenAPI
+      spec): plan first (send, update, new albums, removals that need a
+      tick), checksums before upload, Live Photo pairs, later edits and
+      tags pushed, event albums with sharing, Locked for private items,
+      Immich's trash only after confirmation, resumable per item, History
+      entry. Send to Immich / Keep local only on any selection. CLI script
+      export without the key. Guide in docs/immich.md. Tested against a
+      stand-in server (crates/core/tests/immich_sync.rs)
+- [ ] Immich round trip against a real server in Docker (9.3): waiting for
+      the owner's go-ahead to use Docker
 - [x] Add photos (4.11): a folder is indexed read-only as a staging set;
       source facts and items already in the library (skipped by default);
       dates against the library by day, smart offset from look-alike phone
@@ -120,7 +129,8 @@ Milestones from PROMPT.md section 10. `[x]` done, `[~]` partly done,
       fixture card: dates within 4 min, 40 of 40 placed, own folder;
       a camera card or phone that mounts with a DCIM folder offers Add
       photos; a mini map of the placed items
-- [ ] Add photos: Immich album (with the Immich work)
+- [x] Add photos: the event's Immich album (on by default) and who to
+      share it with, made at the next sync
 - [x] Takeout and WhatsApp importers, through Add photos: a chat export
       (Android or iPhone, either date order, 12- or 24-hour clock) gives
       each file its sending time and sender (`Source/WhatsApp`,

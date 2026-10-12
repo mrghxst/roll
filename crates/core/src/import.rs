@@ -100,11 +100,15 @@ pub struct ImportOptions {
     /// Add as one event with its own folder (a card, a trip). Off for
     /// exports that span years: items go to their category folders.
     pub as_event: bool,
+    /// The event becomes an Immich album at the next sync.
+    pub immich_album: bool,
+    /// Immich user ids to share that album with.
+    pub immich_share: Vec<String>,
 }
 
 impl Default for ImportOptions {
     fn default() -> Self {
-        ImportOptions { mode: "copy".into(), skip_known: true, root_id: None, as_event: true }
+        ImportOptions { mode: "copy".into(), skip_known: true, root_id: None, as_event: true, immich_album: true, immich_share: Vec::new() }
     }
 }
 
@@ -909,7 +913,11 @@ pub fn begin(c: &Connection, id: i64, opts: &ImportOptions, name: &str, place: O
                 },
             )?;
         }
-        crate::events::create(c, batch, name, &k.event_ids, place)?;
+        let event = crate::events::create(c, batch, name, &k.event_ids, place)?;
+        c.execute(
+            "UPDATE events SET immich = ?2, immich_share = ?3 WHERE id = ?1",
+            params![event, if opts.immich_album { "default" } else { "local" }, json!(opts.immich_share).to_string()],
+        )?;
     }
     let kind = if opts.mode == "move" { "move" } else { "copy" };
     let mut seq = 0;

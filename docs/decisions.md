@@ -212,3 +212,27 @@ questions. One line of reason each. Newest at the bottom of each section.
   years: items sorted as something go to their category folders, items not
   sorted yet wait in `Imported/<folder>` for Review and Organize. The
   owner can still add any import as one event.
+
+## Immich
+
+- **`PATCH /assets` for later edits.** Immich 3.x marks `PUT /assets`
+  deprecated in favor of an unlisted `PATCH` with the same body; Roll uses
+  the `PATCH` and falls back to `PUT` on a 404 or 405.
+- **What was pushed is stored per item** (`assets.immich_synced`, JSON) and
+  compared as text: parsed floats can differ in the last bit, which made
+  every geotagged item look changed.
+- **After an upload, saved metadata counts as pushed.** A file whose
+  changes are saved (and its `.xmp` sidecar, which is uploaded with it)
+  already tells Immich the same; items with unsaved changes get the update
+  step in the same sync.
+- **Items in Roll's trash leave Immich too**, with the same confirmation as
+  Keep local only. Both go to Immich's trash, never a forced delete.
+- **The CLI script names folders one by one** (no `--recursive`): Roll
+  knows which folders hold chosen items, and categories nest folders.
+  Event folders use `--album-name <event>`.
+- **The server address is a setting; only the API key is in the keychain.**
+  The address is not a secret and the UI shows it; PROMPT 4.10 puts both in
+  the keychain.
+- **Albums are shared as viewers.** The people the owner picks can see and
+  download, not change the album.
+

@@ -309,14 +309,17 @@ fn camera_card_becomes_an_event() {
     let tagged: i64 =
         c.query_row("SELECT count(*) FROM asset_tags at JOIN tags t ON t.id = at.tag_id WHERE t.path = ?1", [&tag], |r| r.get(0)).unwrap();
     assert_eq!(tagged, 40);
-    let (event_state, n): (String, i64) = c
+    let (event_state, n, immich): (String, i64, String) = c
         .query_row(
-            "SELECT e.state, (SELECT count(*) FROM event_assets ea WHERE ea.event_id = e.id) FROM events e WHERE e.name = ?1",
+            "SELECT e.state, (SELECT count(*) FROM event_assets ea WHERE ea.event_id = e.id), e.immich FROM events e WHERE e.name = ?1",
             [&info.name],
-            |r| Ok((r.get(0)?, r.get(1)?)),
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
         )
         .unwrap();
-    assert_eq!((event_state.as_str(), n), ("confirmed", 40));
+    assert_eq!((event_state.as_str(), n, immich.as_str()), ("confirmed", 40, "default"));
+    // The next Immich sync makes it an album.
+    let plan = roll_core::immich::plan(&c).unwrap();
+    assert_eq!(plan.new_albums, 1);
     drop(st);
     drop(c);
     // The metadata is in the copies.

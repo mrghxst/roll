@@ -1,7 +1,7 @@
 <script lang="ts">
   import { api } from '../ipc/api';
   import { ALL, app } from '../state/app.svelte';
-  import { rate, rotate, setCategory, toggleFavorite, trash, undoLast } from '../state/edits';
+  import { rate, rotate, setCategory, setImmich, toggleFavorite, trash, undoLast } from '../state/edits';
   import { selection } from '../state/selection.svelte';
   import { toast } from '../state/toast.svelte';
   import Kbd from '../ui/Kbd.svelte';
@@ -30,6 +30,7 @@
       { group: 'Go to', title: 'Discover', run: () => app.go('discover') },
       { group: 'Go to', title: 'Events', run: () => app.go('events') },
       { group: 'Go to', title: 'Add photos', run: () => app.go('add') },
+      { group: 'Go to', title: 'Immich', run: () => app.go('immich') },
       { group: 'Actions', title: 'Add photos from a folder…', run: () => void app.addPhotos().catch((e) => toast.error(e)) },
       { group: 'Go to', title: 'Fix dates', run: () => app.go('dates') },
       { group: 'Go to', title: 'Fix places', run: () => app.go('places') },
@@ -74,6 +75,8 @@
         { group: 'Selection', title: 'Change date…', keys: 'D', run: () => (app.dating = ids) },
         { group: 'Selection', title: 'Favorite or unfavorite', keys: 'F', run: () => void toggleFavorite(ids) },
         ...[0, 1, 2, 3, 4, 5].map((r) => ({ group: 'Selection', title: r ? `Rate ${r} of 5` : 'Clear rating', run: () => void rate(ids, r) })),
+        { group: 'Selection', title: 'Send to Immich', run: () => void setImmich(ids, 'send') },
+        { group: 'Selection', title: 'Keep local only (not in Immich)', run: () => void setImmich(ids, 'local') },
         { group: 'Selection', title: 'Rotate left', run: () => void rotate(ids, -1) },
         { group: 'Selection', title: 'Rotate right', run: () => void rotate(ids, 1) },
         {

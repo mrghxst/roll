@@ -1,6 +1,6 @@
 //! Database migrations. Append only: never edit a shipped migration.
 
-pub const MIGRATIONS: &[&str] = &[M1, M2, M3, M4, M5, M6, M7, M8];
+pub const MIGRATIONS: &[&str] = &[M1, M2, M3, M4, M5, M6, M7, M8, M9];
 
 const M1: &str = r#"
 CREATE TABLE settings (
@@ -347,6 +347,11 @@ CREATE TABLE event_undo (
   assets TEXT NOT NULL,
   PRIMARY KEY (batch_id, event_id)
 );
+"#;
+
+/// Immich users an event's album is shared with (JSON array of user ids).
+const M9: &str = r#"
+ALTER TABLE events ADD COLUMN immich_share TEXT NOT NULL DEFAULT '[]';
 "#;
 
 /// What kind of export an import is, and what Roll found in it.

@@ -1,6 +1,7 @@
 <script lang="ts">
   import {
     Activity,
+    Cloud,
     AtSign,
     CalendarClock,
     CalendarRange,
@@ -111,6 +112,7 @@
   </div>
   <div class="bottom">
     {@render item('Organize', FolderTree, app.view === 'organize', () => app.go('organize'), app.unsaved, 'nav-organize')}
+    {@render item('Immich', Cloud, app.view === 'immich', () => goView('immich'), undefined, 'nav-immich')}
     {@render item('History', History, app.view === 'history', () => goView('history'), undefined, 'nav-history')}
     {@render item('Trash', Trash2, app.view === 'trash', () => goView('trash'), app.counts.trash, 'nav-trash')}
     <button class="item" class:active={app.view === 'activity'} onclick={() => goView('activity')} title={collapsed ? 'Activity' : undefined} data-testid="nav-activity">

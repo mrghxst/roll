@@ -29,6 +29,10 @@ import type { JobInfo } from './bindings/JobInfo';
 import type { PlanOptions } from './bindings/PlanOptions';
 import type { PlanSummary } from './bindings/PlanSummary';
 import type { EventInfo } from './bindings/EventInfo';
+import type { AlbumInfo } from './bindings/AlbumInfo';
+import type { ImmichPlan } from './bindings/ImmichPlan';
+import type { ImmichStatus } from './bindings/ImmichStatus';
+import type { ImmichUser } from './bindings/ImmichUser';
 import type { ImportInfo } from './bindings/ImportInfo';
 import type { ImportOptions } from './bindings/ImportOptions';
 import type { ImportPlan } from './bindings/ImportPlan';
@@ -144,6 +148,19 @@ export interface Api {
   importApply(id: number, opts: ImportOptions): Promise<number>;
   /** Forget the import; the source files stay where they are. */
   importClose(id: number): Promise<void>;
+  /** Settings, and what the server says when Immich is on. */
+  immichStatus(): Promise<ImmichStatus>;
+  /** What a sync would do; from the library alone. */
+  immichPlan(): Promise<ImmichPlan>;
+  /** Start a sync; `remove` confirms moving items to Immich's trash. */
+  immichSync(remove: boolean): Promise<void>;
+  /** Other users on the server, to share albums with. */
+  immichUsers(): Promise<ImmichUser[]>;
+  immichAlbums(): Promise<AlbumInfo[]>;
+  /** Whether an event becomes an album, and who it is shared with. */
+  immichAlbum(event: number, send: boolean, share: string[]): Promise<void>;
+  /** Asks where to save the Immich CLI script; false when cancelled. */
+  saveImmichScript(): Promise<boolean>;
   /** Downloadable place names and models, with their state. */
   packs(): Promise<PackStatus[]>;
   /** Starts a download the owner has confirmed. */

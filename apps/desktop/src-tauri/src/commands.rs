@@ -10,6 +10,7 @@ use roll_core::datefix::{Candidate, DateFix, DatePreview, DateSet};
 use roll_core::discover::Cluster;
 use roll_core::dupes::DupeGroup;
 use roll_core::events::EventInfo;
+use roll_core::immich::{AlbumInfo, ImmichPlan, ImmichStatus, ImmichUser};
 use roll_core::import::{ImportInfo, ImportOptions, ImportPlan};
 use roll_core::library::PlacesInfo;
 use roll_core::model::*;
@@ -656,4 +657,67 @@ pub async fn import_apply(state: State<'_, AppState>, id: i64, opts: ImportOptio
 pub async fn import_close(state: State<'_, AppState>, id: i64) -> Res<()> {
     let lib = state.lib.clone();
     blocking(move || lib.import_close(id)).await
+}
+
+// Immich
+
+#[tauri::command]
+pub async fn immich_status(state: State<'_, AppState>) -> Res<ImmichStatus> {
+    let lib = state.lib.clone();
+    blocking(move || Ok(lib.immich_status())).await
+}
+
+#[tauri::command]
+pub async fn immich_plan(state: State<'_, AppState>) -> Res<ImmichPlan> {
+    let lib = state.lib.clone();
+    blocking(move || lib.immich_plan()).await
+}
+
+#[tauri::command]
+pub async fn immich_sync(state: State<'_, AppState>, remove: bool) -> Res<()> {
+    let lib = state.lib.clone();
+    blocking(move || lib.immich_sync(remove)).await
+}
+
+#[tauri::command]
+pub async fn immich_users(state: State<'_, AppState>) -> Res<Vec<ImmichUser>> {
+    let lib = state.lib.clone();
+    blocking(move || lib.immich_users()).await
+}
+
+#[tauri::command]
+pub async fn immich_albums(state: State<'_, AppState>) -> Res<Vec<AlbumInfo>> {
+    let lib = state.lib.clone();
+    blocking(move || lib.immich_albums()).await
+}
+
+#[tauri::command]
+pub async fn immich_album(state: State<'_, AppState>, event: i64, send: bool, share: Vec<String>) -> Res<()> {
+    let lib = state.lib.clone();
+    blocking(move || lib.immich_album(event, send, &share)).await
+}
+
+/// Save the Immich CLI script where the owner chooses; false when cancelled.
+#[tauri::command]
+pub async fn save_immich_script(state: State<'_, AppState>, app: tauri::AppHandle) -> Res<bool> {
+    let lib = state.lib.clone();
+    blocking(move || {
+        let windows = cfg!(windows);
+        let script = lib.immich_script(windows)?;
+        let (name, ext) = if windows { ("Send to Immich.ps1", "ps1") } else { ("send-to-immich.sh", "sh") };
+        let Some(path) = app
+            .dialog()
+            .file()
+            .set_title("Save the Immich CLI script")
+            .set_file_name(name)
+            .add_filter("Script", &[ext])
+            .blocking_save_file()
+        else {
+            return Ok(false);
+        };
+        let path = path.into_path().map_err(|e| anyhow::anyhow!("{e}"))?;
+        std::fs::write(path, script)?;
+        Ok(true)
+    })
+    .await
 }

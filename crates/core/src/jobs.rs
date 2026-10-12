@@ -33,6 +33,11 @@ pub enum JobSpec {
     Hash,
     /// Rebuild the full-text search index.
     Index,
+    /// Send the selection to Immich; `remove` is the owner's go-ahead for
+    /// moving items to Immich's trash.
+    Immich {
+        remove: bool,
+    },
 }
 
 impl JobSpec {
@@ -46,6 +51,7 @@ impl JobSpec {
             JobSpec::Classify => "classify",
             JobSpec::Hash => "hash",
             JobSpec::Index => "index",
+            JobSpec::Immich { .. } => "immich",
         }
     }
     pub fn priority(&self) -> i64 {
@@ -57,6 +63,7 @@ impl JobSpec {
             JobSpec::Classify => 25,
             JobSpec::Hash => 30,
             JobSpec::Index => 22,
+            JobSpec::Immich { .. } => 40,
         }
     }
     pub fn label(&self) -> String {
@@ -69,6 +76,7 @@ impl JobSpec {
             JobSpec::Classify => "Sorting with rules".into(),
             JobSpec::Hash => "Checking files for duplicates".into(),
             JobSpec::Index => "Preparing search".into(),
+            JobSpec::Immich { .. } => "Syncing with Immich".into(),
         }
     }
 }

@@ -192,6 +192,13 @@ pub fn run() {
             commands::import_plan,
             commands::import_apply,
             commands::import_close,
+            commands::immich_status,
+            commands::immich_plan,
+            commands::immich_sync,
+            commands::immich_users,
+            commands::immich_albums,
+            commands::immich_album,
+            commands::save_immich_script,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Roll");
