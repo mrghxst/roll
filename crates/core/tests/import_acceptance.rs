@@ -169,8 +169,11 @@ fn exports_bring_their_dates() {
     assert_eq!(copied.iter().filter(|n| n.ends_with(".jpg")).count(), 5, "{copied:?}");
     if lib.exiftool.is_some() {
         assert!(!copied.iter().any(|n| n.ends_with(".json")), "the JSON stays behind once written: {copied:?}");
-        let file =
-            walkdir::WalkDir::new(&lib_dir).into_iter().flatten().find(|e| e.file_name().to_string_lossy().ends_with(".jpg")).unwrap();
+        let file = walkdir::WalkDir::new(&lib_dir).into_iter().flatten().find(|e| {
+            let n = e.file_name().to_string_lossy();
+            n.starts_with("PXL_") && n.ends_with(".jpg")
+        });
+        let file = file.unwrap();
         let name = file.file_name().to_string_lossy().into_owned();
         let m = roll_meta::MetaReader::default().read(file.path()).unwrap();
         let t = m.taken.unwrap();
