@@ -1,6 +1,7 @@
 //! The thin Tauri layer: commands, events and the `roll://` scheme over
 //! roll-core.
 
+mod cards;
 mod commands;
 mod scheme;
 
@@ -89,6 +90,10 @@ pub fn run() {
             let lib = Library::open(&data_dir, sink)?;
             lib.start();
             app.manage(AppState { lib, log_dir: log_dir.clone() });
+            let handle = app.handle().clone();
+            cards::watch(move |path| {
+                let _ = handle.emit("card", path.to_string_lossy().into_owned());
+            });
             // The UI shows the window after its first paint; this is a fallback.
             let win = app.get_webview_window("main").expect("main window");
             std::thread::spawn(move || {

@@ -117,9 +117,10 @@ Milestones from PROMPT.md section 10. `[x]` done, `[~]` partly done,
       name from the folder or "{Month YYYY} {Place}"; copy (verified) or
       move into the event folder with metadata written, one batch in
       History with undo; drop a folder onto the window to start. On the
-      fixture card: dates within 4 min, 40 of 40 placed, own folder
-- [ ] Add photos: start when a camera card is connected, mini map,
-      Immich album (with the Immich work)
+      fixture card: dates within 4 min, 40 of 40 placed, own folder;
+      a camera card or phone that mounts with a DCIM folder offers Add
+      photos; a mini map of the placed items
+- [ ] Add photos: Immich album (with the Immich work)
 - [ ] Takeout and WhatsApp importers
 - [ ] Onboarding pass, accessibility, Windows installer, user docs
 ## M7 Later

@@ -7,6 +7,8 @@
   import type { ImportPlan } from '../ipc/bindings/ImportPlan';
   import type { PlaceGroup } from '../ipc/bindings/PlaceGroup';
   import type { Timeline } from '../ipc/timeline';
+  import { emptyMapPoints, type MapPoints } from '../ipc/mappoints';
+  import MapView from '../map/MapView.svelte';
   import { app } from '../state/app.svelte';
   import { toast } from '../state/toast.svelte';
   import { viewer } from '../state/viewer.svelte';
@@ -26,6 +28,7 @@
   let archiveDays = $state<Map<number, { ids: number[]; versions: number[] }>>(new Map());
   let groups = $state<PlaceGroup[]>([]);
   let unplaced = $state<number[]>([]);
+  let points = $state<MapPoints>(emptyMapPoints());
   let plan = $state<ImportPlan | null>(null);
   let planError = $state<string | null>(null);
   let picked = $state<number[]>([]);
@@ -122,9 +125,14 @@
     const i = info;
     void app.revision;
     if (!i || step !== 'places') return;
-    void Promise.all([api.importPlaces(i.id), api.queryIds({ ...emptyQuery(), staged: i.root_id, location: 'none' })])
-      .then(([g, ids]) => {
+    void Promise.all([
+      api.importPlaces(i.id),
+      api.queryIds({ ...emptyQuery(), staged: i.root_id, location: 'none' }),
+      api.mapPoints({ ...emptyQuery(), staged: i.root_id }),
+    ])
+      .then(([g, ids, p]) => {
         groups = g;
+        points = p;
         const suggested = new Set(g.flatMap((x) => x.ids));
         unplaced = ids.filter((x) => !suggested.has(x));
       })
@@ -409,6 +417,12 @@
             {plural(i.no_place, 'item')} without a place{i.count - i.no_place > 0 ? `, ${n(i.count - i.no_place)} placed${i.place ? ` in ${i.place}` : ''}` : ''}.
           {/if}
         </p>
+        {#if points.count}
+          <div class="mini" aria-label="Map of the placed items">
+            <MapView {points} fitKey={`${i.id}:${points.count}`} onopen={(ids) => viewer.open(Uint32Array.from(ids), 0, null)} />
+          </div>
+          <p class="muted">Approximate places show as dashed rings.</p>
+        {/if}
         {#each groups as g (g.key)}
           <div class="card" data-testid="place-group">
             <p>
@@ -816,5 +830,12 @@
   }
   .empty {
     margin-top: 24px;
+  }
+  .mini {
+    position: relative;
+    height: 280px;
+    border: 1px solid var(--border);
+    border-radius: var(--r-sheet);
+    overflow: hidden;
   }
 </style>
