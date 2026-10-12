@@ -31,7 +31,7 @@ fn load(c: &Connection, ids: Option<&[i64]>) -> rusqlite::Result<Vec<Row>> {
         "SELECT a.id, a.name, a.rel_path, a.ext, a.format, a.make, a.model, a.software, a.kind, a.screenshot, a.width, a.height,
                 a.duration_ms, a.size, a.problems, a.stats, a.review, c.key
          FROM assets a LEFT JOIN categories c ON c.id = a.category_id
-         WHERE a.missing = 0 AND a.trashed_at IS NULL AND a.review < 3 {filter}"
+         WHERE a.missing != 1 AND a.trashed_at IS NULL AND a.review < 3 {filter}"
     ))?;
     let rows = st.query_map([], |r| {
         let (w, h): (Option<i64>, Option<i64>) = (r.get(10)?, r.get(11)?);

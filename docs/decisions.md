@@ -169,3 +169,32 @@ questions. One line of reason each. Newest at the bottom of each section.
   threads encoding at the same moment could run on pointers another thread
   was rewriting (a crash in `VP8PutBit`). A `Once` warm-up in
   `roll_media::thumb::webp` finishes that setup first.
+
+## Add photos
+
+- **Staged items are `missing = 2`.** The folder being added is a root of
+  kind `staging`; its items are on disk but not part of the archive. Every
+  archive view already filters on `missing = 0`, so they stay out without a
+  new condition; indexing (thumbnails, hashes, groups, sorting rules) uses
+  `missing != 1`. `Query.staged` shows one import's items.
+- **Smart offset pairs by dHash until the image model is installed.**
+  Look-alikes are phone photos within ±48 h whose 64-bit dHash is within
+  10 bits; the offset is the median of the pairs that agree within 3 min.
+  On the fixture card it proposes +9 h 28 min (true: 9 h 30 min; the camera
+  shots follow the phone shots by 20 s to 3.5 min). SigLIP 2 will replace
+  the pairing; the rest stays.
+- **Imports land where Organize would put them.** The event folder follows
+  the planner's rule (`{year}/{yyyy-mm} {event}`), so a later plan leaves
+  the items alone; a free template for imports is not offered.
+- **Applying an import is the owner's decision for its unsorted items.**
+  Items sorted as something other than photos go to their category
+  folders; everything else goes to the event folder and becomes Photos,
+  recorded in the batch with the reason.
+- **"Already in the library"** means the same BLAKE3, or a dHash within
+  2 bits with the same aspect ratio and an archive copy at least as large.
+  Missing hashes on either side are computed when the import is checked.
+- **Undoing an import removes a copy only when it still matches the
+  original byte for byte.** A copy changed since goes to the Recycle Bin.
+  An applied import keeps its staging root after closing, so the batch
+  stays undoable; undo reopens it for checking.
+

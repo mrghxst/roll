@@ -217,15 +217,15 @@ pub fn run_pending(
     pool: &rayon::ThreadPool,
     check: &dyn Fn(usize, usize) -> bool,
 ) -> anyhow::Result<usize> {
-    let total: i64 = db.read().query_row("SELECT count(*) FROM assets WHERE thumb = 0 AND missing = 0", [], |r| r.get(0))?;
+    let total: i64 = db.read().query_row("SELECT count(*) FROM assets WHERE thumb = 0 AND missing != 1", [], |r| r.get(0))?;
     let done = AtomicUsize::new(0);
     loop {
         let batch: Vec<ThumbInput> = {
             let c = db.read();
             let mut st = c.prepare(
                 "SELECT a.id, r.path, a.rel_path, a.format, a.kind, a.orientation, a.duration_ms, a.width, a.height, a.thumb_v
-                 FROM assets a JOIN roots r ON r.id = a.root_id WHERE a.thumb = 0 AND a.missing = 0
-                 ORDER BY a.taken_utc DESC LIMIT 128",
+                 FROM assets a JOIN roots r ON r.id = a.root_id WHERE a.thumb = 0 AND a.missing != 1
+                 ORDER BY a.missing = 2 DESC, a.taken_utc DESC LIMIT 128",
             )?;
             st.query_map([], row_input)?.collect::<Result<_, _>>()?
         };

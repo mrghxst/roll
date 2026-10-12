@@ -32,4 +32,8 @@ review: Array<number>,
 /**
  * "sent", "local", "pending"
  */
-immich: string | null, orientation: string | null, private: boolean | null, inbox: boolean | null, trashed: boolean, missing: boolean, ids: Array<number> | null, };
+immich: string | null, orientation: string | null, private: boolean | null, inbox: boolean | null, trashed: boolean, missing: boolean, 
+/**
+ * The staging root of an import: its items instead of the archive's.
+ */
+staged: number | null, ids: Array<number> | null, };

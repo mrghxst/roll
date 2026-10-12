@@ -14,6 +14,7 @@ pub mod embeddings;
 pub mod events;
 pub mod fsops;
 pub mod groups;
+pub mod import;
 pub mod jobs;
 pub mod journal;
 pub mod library;

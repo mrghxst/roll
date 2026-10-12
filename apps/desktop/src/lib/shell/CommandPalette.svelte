@@ -3,6 +3,7 @@
   import { ALL, app } from '../state/app.svelte';
   import { rate, rotate, setCategory, toggleFavorite, trash, undoLast } from '../state/edits';
   import { selection } from '../state/selection.svelte';
+  import { toast } from '../state/toast.svelte';
   import Kbd from '../ui/Kbd.svelte';
 
   let { onsearch }: { onsearch: () => void } = $props();
@@ -28,6 +29,8 @@
       { group: 'Go to', title: 'Duplicates', run: () => app.go('duplicates') },
       { group: 'Go to', title: 'Discover', run: () => app.go('discover') },
       { group: 'Go to', title: 'Events', run: () => app.go('events') },
+      { group: 'Go to', title: 'Add photos', run: () => app.go('add') },
+      { group: 'Actions', title: 'Add photos from a folder…', run: () => void app.addPhotos().catch((e) => toast.error(e)) },
       { group: 'Go to', title: 'Fix dates', run: () => app.go('dates') },
       { group: 'Go to', title: 'Fix places', run: () => app.go('places') },
       { group: 'Go to', title: 'Organize', run: () => app.go('organize') },

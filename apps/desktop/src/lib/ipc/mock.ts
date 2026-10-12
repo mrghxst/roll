@@ -16,6 +16,8 @@ import type { Category } from './bindings/Category';
 import type { FolderNode } from './bindings/FolderNode';
 import type { JobInfo } from './bindings/JobInfo';
 import type { EventInfo } from './bindings/EventInfo';
+import type { ImportInfo } from './bindings/ImportInfo';
+import type { ImportPlan } from './bindings/ImportPlan';
 import type { PackStatus } from './bindings/PackStatus';
 import type { PlanSummary } from './bindings/PlanSummary';
 import type { Query } from './bindings/Query';
@@ -61,6 +63,8 @@ interface MockAsset {
   /** 1 proposed, 2 auto-accepted, 3 decided by the owner. */
   review: number;
   conf: number;
+  /** The staging root of an import, while it is being checked. */
+  staged?: number;
 }
 
 let CATS: [string, string][] = [
@@ -399,7 +403,8 @@ function shifted(fix: DateFix, a: MockAsset): string | null {
       if (!ref || !fix.reference) return null;
       return fmtLocal(parseLocal(a.local) + parseLocal(fix.reference.local) - parseLocal(ref.local));
     }
-    case 'amount': {
+    case 'amount':
+    case 'smart': {
       const m = fix.amount;
       if (!m) return null;
       const d = new Date(parseLocal(a.local));
@@ -419,14 +424,175 @@ function targetDir(a: MockAsset) {
   const name = CATS.find((c) => c[0] === a.category)?.[1] ?? a.category;
   return a.category === 'wallpapers' ? name : `${a.local.slice(0, 4)}/${name}`;
 }
-const listeners: { [K in keyof Events]: Set<Events[K]> } = { jobs: new Set(), changed: new Set(), scanned: new Set() };
+const listeners: { [K in keyof Events]: Set<Events[K]> } = { jobs: new Set(), changed: new Set(), scanned: new Set(), drop: new Set(), card: new Set() };
+
+// Add photos: a simulated camera card. The clock is 9 h 30 min behind, it
+// has no GPS, and two of its photos are already in the library.
+interface MockImport {
+  id: number;
+  root: number;
+  source: string;
+  state: 'checking' | 'applied';
+  name: string | null;
+  datesOk: boolean;
+  placesOk: boolean;
+  leftOut: number[];
+  batch: number | null;
+  orig: Map<number, string>;
+}
+let imports: MockImport[] = [];
+let staged: MockAsset[] = [];
+let importSeq = 0;
+const importGroups = new Map<string, PlaceGroup>();
+const customUndo = new Map<number, () => void>();
+/** What phone photos of the same moments suggest, in seconds. */
+const CARD_OFFSET = 9 * 3600 + 28 * 60 + 5;
+const MONTHS_LONG = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+function makeCard(root: number): MockAsset[] {
+  const r = rng(7 + root);
+  const out: MockAsset[] = [];
+  let t = Date.UTC(2022, 4, 19, 22, 37, 35);
+  for (let k = 0; k < 42; k++) {
+    t += k === 20 ? 9 * 3600_000 : Math.floor(60_000 + r() * 900_000);
+    const local = fmtLocal(t);
+    const hue = Math.floor(r() * 24) * 15;
+    const [rr, gg, bb] = hslToRgb(hue / 360, 0.5, 0.5);
+    out.push({
+      id: 900_000 + root * 1000 + k,
+      local,
+      utc: t - 2 * 3600_000,
+      aspect: 3 / 2,
+      color: (rr << 16) | (gg << 8) | bb,
+      flags: 0,
+      name: `IMG_${String(k + 1).padStart(4, '0')}.JPG`,
+      dir: 'DCIM/100CANON',
+      category: 'photos',
+      camera: 'Canon EOS R6',
+      lat: null,
+      lon: null,
+      duration: null,
+      rating: 0,
+      tags: [],
+      trashed: false,
+      dirty: false,
+      review: 2,
+      conf: 0.98,
+      staged: root,
+    });
+  }
+  return out;
+}
+
+const stagedOf = (imp: MockImport) => staged.filter((a) => a.staged === imp.root);
+const importById = (id: number) => {
+  const imp = imports.find((i) => i.id === id);
+  if (!imp) throw new Error('This import is gone. Open Add photos again.');
+  return imp;
+};
+
+function diffLabel(secs: number) {
+  if (Math.abs(secs) < 1) return 'no change';
+  const s = Math.abs(secs);
+  const parts = [[Math.floor(s / 86400), 'd'], [Math.floor((s % 86400) / 3600), 'h'], [Math.floor((s % 3600) / 60), 'min'], [s % 60, 's']]
+    .filter(([v]) => (v as number) > 0)
+    .map(([v, u]) => `${v} ${u}`);
+  return `${secs < 0 ? '−' : '+'}${parts.join(' ')}`;
+}
+
+function importInfo(imp: MockImport): ImportInfo {
+  const list = stagedOf(imp).sort((a, b) => (a.local < b.local ? -1 : 1));
+  const exact = list.slice(-2).map((a) => a.id);
+  const first = list[0];
+  const shiftedBy = first ? Math.round((parseLocal(first.local) - parseLocal(imp.orig.get(first.id) ?? first.local)) / 1000) : 0;
+  const remaining = CARD_OFFSET - shiftedBy;
+  const located = list.filter((a) => a.lat != null);
+  const place = located.length && placesInstalled ? 'Lisbon' : null;
+  const proposed = first ? `${MONTHS_LONG[Number(first.local.slice(5, 7)) - 1]} ${first.local.slice(0, 4)}${place ? ` ${place}` : ''}` : 'New photos';
+  const phones = assets.filter((a) => a.category === 'photos').slice(0, 4);
+  return {
+    id: imp.id,
+    root_id: imp.root,
+    source: imp.source,
+    state: imp.state,
+    name: imp.name ?? proposed,
+    custom_name: imp.name != null,
+    count: list.length,
+    photos: list.length,
+    videos: 0,
+    from_local: first?.local ?? '',
+    to_local: list[list.length - 1]?.local ?? '',
+    cameras: [{ label: 'Canon EOS R6', count: list.length }],
+    formats: [{ label: 'JPEG', count: list.length }],
+    exact,
+    similar: [],
+    left_out: [...imp.leftOut],
+    pending: 0,
+    date_sets: [
+      {
+        key: `camera:Canon EOS R6:${first?.local.slice(0, 10) ?? ''}`,
+        kind: 'camera',
+        label: 'Canon EOS R6',
+        count: list.length,
+        from_local: first?.local ?? '',
+        to_local: list[list.length - 1]?.local ?? '',
+        reasons: Math.abs(remaining) > 120 ? ['Phone photos from the same days are in UTC+1; this camera states no time zone and is read as UTC+2.'] : [],
+        has_offset: false,
+        ids: list.map((a) => a.id),
+      },
+    ],
+    smart: phones.length
+      ? {
+          seconds: remaining,
+          label: diffLabel(remaining),
+          offset_min: 60,
+          matched: 29,
+          compared: list.length,
+          pairs: list.slice(0, 4).map((a, i) => ({
+            item: a.id,
+            phone: phones[i]!.id,
+            item_local: a.local,
+            phone_local: fmtLocal(parseLocal(a.local) + remaining * 1000),
+          })),
+        }
+      : null,
+    no_date: 0,
+    no_place: list.length - located.length,
+    place,
+    categories: [{ label: 'Photos', count: list.length }],
+    dates_ok: imp.datesOk,
+    places_ok: imp.placesOk,
+    ids: list.map((a) => a.id),
+    batch_id: imp.batch,
+  };
+}
+
+function importPlan(imp: MockImport, skipKnown: boolean): ImportPlan {
+  const info = importInfo(imp);
+  const skip = new Set([...imp.leftOut, ...(skipKnown ? info.exact : [])]);
+  const bring = info.ids.filter((id) => !skip.has(id));
+  const start = byId(bring[0] ?? 0)?.local ?? info.from_local;
+  return {
+    root_id: roots[0]?.id ?? 1,
+    root_path: roots[0]?.path ?? '',
+    event: info.name,
+    files: bring.length,
+    sidecars: 0,
+    skipped: skip.size,
+    bytes: bring.length * 6_200_000,
+    free: 512_000_000_000,
+    folders: [{ root_id: roots[0]?.id ?? 1, path: `${start.slice(0, 4)}/${start.slice(0, 7)} ${info.name}`, count: bring.length, samples: bring.slice(0, 12), new: true }],
+    writes: true,
+  };
+}
 
 function emit<K extends keyof Events>(k: K, ...args: Parameters<Events[K]>) {
   for (const cb of listeners[k]) (cb as (...a: unknown[]) => void)(...args);
 }
 
 function filter(q: Query): MockAsset[] {
-  return assets.filter((a) => {
+  const base = q.staged != null ? staged.filter((a) => a.staged === q.staged).sort((a, b) => (a.local < b.local ? 1 : -1)) : assets;
+  return base.filter((a) => {
     if (q.media.length) {
       const v = (a.flags & Flag.VIDEO) !== 0;
       if (!q.media.some((m) => (m === 'video' ? v : m === 'photo' ? !v : m === 'live' ? (a.flags & Flag.LIVE) !== 0 : false))) return false;
@@ -479,7 +645,7 @@ function byId(id: number) {
     index = new Map(assets.map((a) => [a.id, a]));
     indexed = assets;
   }
-  return index.get(id);
+  return index.get(id) ?? (id >= 900_000 ? staged.find((a) => a.id === id) : undefined);
 }
 
 function tree(): FolderNode[] {
@@ -830,6 +996,7 @@ export const mockApi: Api = {
     const b = history.find((h) => h.id === batch);
     if (!b || b.state !== 'applied') throw new Error('Only applied changes can be undone.');
     if (b.kind === 'empty_trash') throw new Error('Items sent to the Recycle Bin can be restored from the Recycle Bin.');
+    customUndo.get(batch)?.();
     for (const [id, snap] of undoData.get(batch) ?? []) {
       const a = byId(id);
       if (a) Object.assign(a, snap);
@@ -1073,9 +1240,111 @@ export const mockApi: Api = {
     tracks = tracks.filter((t) => t.id !== id);
     emit('changed', 'places');
   },
+  importStart: async (path) => {
+    const source = path ?? 'E:\\';
+    const open = imports.find((i) => i.source === source);
+    if (open) return open.id;
+    const id = ++importSeq;
+    const root = 100 + id;
+    const card = makeCard(root);
+    staged = [...staged, ...card];
+    imports = [{ id, root, source, state: 'checking', name: null, datesOk: false, placesOk: false, leftOut: [], batch: null, orig: new Map(card.map((a) => [a.id, a.local])) }, ...imports];
+    emit('changed', 'imports');
+    return id;
+  },
+  imports: async () => imports.map(importInfo),
+  importInfo: async (id) => importInfo(importById(id)),
+  importName: async (id, name) => {
+    importById(id).name = name?.trim() || null;
+    emit('changed', 'imports');
+  },
+  importMark: async (id, datesOk, placesOk) => {
+    const imp = importById(id);
+    if (datesOk != null) imp.datesOk = datesOk;
+    if (placesOk != null) imp.placesOk = placesOk;
+    emit('changed', 'imports');
+  },
+  importLeaveOut: async (id, ids, out) => {
+    const imp = importById(id);
+    imp.leftOut = out ? [...new Set([...imp.leftOut, ...ids])] : imp.leftOut.filter((x) => !ids.includes(x));
+    emit('changed', 'imports');
+  },
+  importPlaces: async (id) => {
+    const imp = importById(id);
+    const missing = stagedOf(imp).filter((a) => a.lat == null);
+    if (!missing.length) return [];
+    const sorted = missing.sort((a, b) => (a.local < b.local ? -1 : 1));
+    const g: PlaceGroup = {
+      key: `import${imp.root}:neighbors::${sorted[0]!.local.slice(0, 10)}:${sorted[sorted.length - 1]!.local.slice(0, 10)}`,
+      source: 'neighbors',
+      evidence: 'your geotagged photos taken around the same time',
+      place: 'Lisbon, Lisbon, Portugal',
+      count: missing.length,
+      from_local: sorted[0]!.local,
+      to_local: sorted[sorted.length - 1]!.local,
+      lat: 38.7167,
+      lon: -9.1333,
+      accuracy_m: 40,
+      ids: missing.map((a) => a.id),
+    };
+    importGroups.set(g.key, g);
+    return [g];
+  },
+  importPlan: async (id, opts) => importPlan(importById(id), opts.skip_known),
+  importApply: async (id, opts) => {
+    const imp = importById(id);
+    if (!imp.datesOk) throw new Error('Check the dates first.');
+    if (!imp.placesOk) throw new Error('Check the places first.');
+    const plan = importPlan(imp, opts.skip_known);
+    const info = importInfo(imp);
+    const skip = new Set([...imp.leftOut, ...(opts.skip_known ? info.exact : [])]);
+    const bring = new Set(info.ids.filter((x) => !skip.has(x)));
+    if (!bring.size) throw new Error('Nothing to add: every item is left out or already in the archive.');
+    const moved = stagedOf(imp).filter((a) => bring.has(a.id));
+    const name = plan.event;
+    const dir = plan.folders[0]!.path;
+    const before = new Map(moved.map((a) => [a.id, { dir: a.dir, tags: [...a.tags], dirty: a.dirty }]));
+    for (const a of moved) {
+      a.staged = undefined;
+      a.dirty = false;
+      a.dir = dir;
+      a.tags = [...a.tags, `Event/${name}`];
+    }
+    staged = staged.filter((a) => !bring.has(a.id));
+    assets = [...assets, ...moved].sort((a, b) => (a.local < b.local ? 1 : a.local > b.local ? -1 : b.id - a.id));
+    const ev: MockEvent = { id: ++eventSeq, name, state: 'confirmed', ids: moved.map((a) => a.id), own_folder: true, custom: true, shaped: true };
+    mockEvents.push(ev);
+    const batch = ++batchSeq;
+    pushBatch(batch, 'import', `${opts.mode === 'move' ? 'Move' : 'Copy'} ${plural(moved.length)} into ${name}`, moved.length);
+    imp.state = 'applied';
+    imp.batch = batch;
+    customUndo.set(batch, () => {
+      for (const a of moved) {
+        Object.assign(a, before.get(a.id));
+        a.staged = imp.root;
+      }
+      assets = assets.filter((a) => !bring.has(a.id));
+      staged = [...staged, ...moved];
+      mockEvents = mockEvents.filter((e) => e !== ev);
+      imp.state = 'checking';
+      imp.batch = null;
+      emit('changed', 'imports');
+    });
+    emit('changed', 'assets');
+    emit('changed', 'history');
+    emit('changed', 'imports');
+    return batch;
+  },
+  importClose: async (id) => {
+    const imp = importById(id);
+    staged = staged.filter((a) => a.staged !== imp.root);
+    imports = imports.filter((i) => i !== imp);
+    emit('changed', 'imports');
+  },
   placeGroups: async () => mockGroups(),
   acceptPlaces: async (key) => {
-    const g = mockGroups().find((x) => x.key === key);
+    const g = importGroups.get(key) ?? mockGroups().find((x) => x.key === key);
+    importGroups.delete(key);
     if (!g) throw new Error('This suggestion is out of date. Refresh the list.');
     change('edit', `Set the location of ${plural(g.ids.length)}`, g.ids, (a) => {
       a.lat = g.lat + (Math.random() - 0.5) * 0.01;

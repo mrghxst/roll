@@ -17,6 +17,7 @@ use crate::actions::EditAction;
 use crate::datefix::{DateFix, DatePreview, DateSet};
 use crate::dates::SystemTz;
 use crate::db::Db;
+use crate::import::{ImportInfo, ImportOptions, ImportPlan};
 use crate::jobs::{JobCtx, JobSpec, Jobs};
 use crate::model::*;
 use crate::paths::{app_data_dir, join_rel};
@@ -178,6 +179,7 @@ impl Library {
                 self.reindex(&touched);
                 self.emit(LibEvent::Scanned(report));
                 self.emit(LibEvent::Changed("assets"));
+                self.emit(LibEvent::Changed("imports"));
                 self.jobs.enqueue(JobSpec::Thumbs)?;
                 self.jobs.enqueue(JobSpec::Hash)?;
                 Ok(())
@@ -222,6 +224,7 @@ impl Library {
                 let report = journal::apply(&self.db, &self.tools(), *batch, &|done, total| ctx.progress(done, total))?;
                 self.emit(LibEvent::Changed("assets"));
                 self.emit(LibEvent::Changed("history"));
+                self.emit(LibEvent::Changed("imports"));
                 if !report.errors.is_empty() {
                     anyhow::bail!(
                         "{} of {} changes could not be made. First: {}",
@@ -236,6 +239,7 @@ impl Library {
                 let report = journal::undo(&self.db, &self.tools(), *batch, &|done, total| ctx.progress(done, total))?;
                 self.emit(LibEvent::Changed("assets"));
                 self.emit(LibEvent::Changed("history"));
+                self.emit(LibEvent::Changed("imports"));
                 if !report.errors.is_empty() {
                     anyhow::bail!("{} changes could not be undone. First: {}", report.failed, report.errors[0]);
                 }
@@ -251,8 +255,8 @@ impl Library {
                 // Exact copies share size and quick hash: only those need a
                 // full read.
                 "SELECT a.id, r.path, a.rel_path FROM assets a JOIN roots r ON r.id = a.root_id
-                 WHERE a.blake3 IS NULL AND a.missing = 0
-                   AND EXISTS (SELECT 1 FROM assets b WHERE b.size = a.size AND b.quick_hash = a.quick_hash AND b.id != a.id AND b.missing = 0)",
+                 WHERE a.blake3 IS NULL AND a.missing != 1
+                   AND EXISTS (SELECT 1 FROM assets b WHERE b.size = a.size AND b.quick_hash = a.quick_hash AND b.id != a.id AND b.missing != 1)",
             )?;
             st.query_map([], |r| Ok((r.get(0)?, join_rel(Path::new(&r.get::<_, String>(1)?), &r.get::<_, String>(2)?))))?
                 .collect::<Result<_, _>>()?
@@ -804,7 +808,7 @@ impl Library {
             anyhow::bail!("Only applied changes can be undone.");
         }
         match kind.as_str() {
-            "organize" => {
+            "organize" | "import" => {
                 self.jobs.enqueue(JobSpec::Undo { batch })?;
             }
             "empty_trash" => anyhow::bail!("Items sent to the Recycle Bin can be restored from the Recycle Bin."),
@@ -1130,6 +1134,85 @@ impl Library {
 
     pub fn event_own_folder(&self, id: i64, on: bool) -> anyhow::Result<()> {
         crate::events::set_own_folder(&self.db.write(), id, on)?;
+        Ok(())
+    }
+
+    // Add photos
+
+    /// Start (or reopen) an import of a folder outside the library. It is
+    /// indexed read-only while the owner checks it.
+    pub fn import_start(&self, path: &Path) -> anyhow::Result<i64> {
+        let path = std::path::absolute(path)?;
+        anyhow::ensure!(path.is_dir(), "{} is not a folder.", path.display());
+        let (id, root) = crate::import::start(&self.db.write(), &path)?;
+        self.jobs.enqueue(JobSpec::Scan { root_id: root })?;
+        self.emit(LibEvent::Changed("imports"));
+        Ok(id)
+    }
+
+    pub fn imports(&self) -> anyhow::Result<Vec<ImportInfo>> {
+        let ids = crate::import::list_ids(&self.db.read())?;
+        ids.into_iter().map(|id| self.import_info(id)).collect()
+    }
+
+    pub fn import_info(&self, id: i64) -> anyhow::Result<ImportInfo> {
+        let gaz = self.gaz();
+        let place = |pts: &[(f64, f64)]| gaz.as_deref().and_then(|g| crate::events::common_place(pts, g));
+        // The write connection: missing BLAKE3 hashes are stored on the way.
+        crate::import::info(&self.db.write(), id, crate::db::now_ms(), &place)
+    }
+
+    pub fn import_name(&self, id: i64, name: Option<&str>) -> anyhow::Result<()> {
+        crate::import::set_name(&self.db.write(), id, name)?;
+        self.emit(LibEvent::Changed("imports"));
+        Ok(())
+    }
+
+    pub fn import_mark(&self, id: i64, dates_ok: Option<bool>, places_ok: Option<bool>) -> anyhow::Result<()> {
+        crate::import::mark(&self.db.write(), id, dates_ok, places_ok)?;
+        self.emit(LibEvent::Changed("imports"));
+        Ok(())
+    }
+
+    pub fn import_leave_out(&self, id: i64, ids: &[i64], out: bool) -> anyhow::Result<()> {
+        crate::import::leave_out(&self.db.write(), id, ids, out)?;
+        self.emit(LibEvent::Changed("imports"));
+        Ok(())
+    }
+
+    /// Place suggestions for an import's items; accept them with
+    /// `accept_places` like any other group.
+    pub fn import_places(&self, id: i64) -> anyhow::Result<Vec<PlaceGroup>> {
+        let root: i64 = self.db.read().query_row("SELECT root_id FROM imports WHERE id = ?1", [id], |r| r.get(0))?;
+        let window = self.settings().interpolation_minutes as i64;
+        let gaz = self.gaz();
+        let (groups, by_key) = crate::places::suggest_in(&self.db.read(), gaz.as_deref(), window, crate::model::Scope::Staged(root))?;
+        self.place_cache.lock().extend(by_key);
+        Ok(groups)
+    }
+
+    pub fn import_plan(&self, id: i64, opts: &ImportOptions) -> anyhow::Result<ImportPlan> {
+        let info = self.import_info(id)?;
+        crate::import::preview(&self.db.read(), id, opts, &info.name, self.exiftool.is_some())
+    }
+
+    /// Copy or move the import into the archive as one undoable batch.
+    pub fn import_apply(&self, id: i64, opts: &ImportOptions) -> anyhow::Result<i64> {
+        let info = self.import_info(id)?;
+        let batch = self.db.tx_any(|tx| crate::import::begin(tx, id, opts, &info.name, info.place.as_deref(), self.exiftool.is_some()))?;
+        self.jobs.enqueue(JobSpec::Apply { batch })?;
+        self.emit(LibEvent::Changed("imports"));
+        self.emit(LibEvent::Changed("history"));
+        Ok(batch)
+    }
+
+    /// Close an import; the files in the source stay where they are.
+    pub fn import_close(&self, id: i64) -> anyhow::Result<()> {
+        let ids = crate::import::close(&self.db.write(), id)?;
+        for a in ids {
+            let _ = self.thumbs.remove(a);
+        }
+        self.emit(LibEvent::Changed("imports"));
         Ok(())
     }
 

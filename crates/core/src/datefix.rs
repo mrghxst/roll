@@ -14,7 +14,7 @@ use ts_rs::TS;
 
 use crate::dates::TzGuess;
 use crate::edits::{self, Change};
-use crate::model::problem;
+use crate::model::{Scope, problem};
 
 const FMT: &str = "%Y-%m-%dT%H:%M:%S";
 
@@ -87,14 +87,21 @@ fn month_year(d: &NaiveDateTime) -> String {
 /// Camera sets (by make, model and serial, split where the camera was not
 /// used for a week) and the set of items without a trusted date.
 pub fn sets(c: &Connection, now_ms: i64) -> rusqlite::Result<Vec<DateSet>> {
+    sets_in(c, now_ms, Scope::Archive)
+}
+
+/// [`sets`] for the archive or one import's items. Phone time zones always
+/// come from the archive.
+pub fn sets_in(c: &Connection, now_ms: i64, scope: Scope) -> rusqlite::Result<Vec<DateSet>> {
     let rows: Vec<Row> = {
-        let mut st = c.prepare(
+        let mut st = c.prepare(&format!(
             "SELECT id, coalesce(make, ''), coalesce(model, ''), coalesce(serial, ''), taken_local, taken_utc, tz_offset, problems, dir
              FROM assets
-             WHERE (make IS NOT NULL OR model IS NOT NULL) AND taken_local IS NOT NULL AND missing = 0 AND trashed_at IS NULL
+             WHERE (make IS NOT NULL OR model IS NOT NULL) AND taken_local IS NOT NULL AND {} AND trashed_at IS NULL
                AND (group_role IS NULL OR group_role = 'primary')
              ORDER BY make, model, serial, taken_local",
-        )?;
+            scope.sql("")
+        ))?;
         st.query_map([], |r| {
             let make: String = r.get(1)?;
             let model: String = r.get(2)?;
@@ -136,7 +143,19 @@ pub fn sets(c: &Connection, now_ms: i64) -> rusqlite::Result<Vec<DateSet>> {
         .collect()
     };
     // Phone photos with a stated offset: reference zones by day.
-    let phone_zones: Vec<(NaiveDateTime, i32)> = rows.iter().filter(|r| r.phone).filter_map(|r| r.offset.map(|o| (r.local, o))).collect();
+    let phone_zones: Vec<(NaiveDateTime, i32)> = {
+        let mut st = c.prepare(
+            "SELECT make, model, taken_local, tz_offset FROM assets
+             WHERE tz_offset IS NOT NULL AND taken_local IS NOT NULL AND missing = 0 AND trashed_at IS NULL",
+        )?;
+        st.query_map([], |r| {
+            Ok((r.get::<_, Option<String>>(0)?, r.get::<_, Option<String>>(1)?, r.get::<_, String>(2)?, r.get::<_, i64>(3)?))
+        })?
+        .filter_map(Result::ok)
+        .filter(|(make, model, _, _)| is_phone(make.as_deref(), model.as_deref()))
+        .filter_map(|(_, _, l, o)| Some((parse(&l)?, o as i32)))
+        .collect()
+    };
 
     let mut runs: Vec<Vec<&Row>> = Vec::new();
     for r in &rows {
@@ -210,12 +229,13 @@ pub fn sets(c: &Connection, now_ms: i64) -> rusqlite::Result<Vec<DateSet>> {
     }
     // Items without a trusted date.
     let missing: Vec<(i64, Option<String>)> = {
-        let mut st = c.prepare(
+        let mut st = c.prepare(&format!(
             "SELECT id, taken_local FROM assets
              WHERE (problems & ?1 != 0 OR taken_local IS NULL OR date_source IN ('file_time', 'folder'))
-               AND missing = 0 AND trashed_at IS NULL AND (group_role IS NULL OR group_role = 'primary')
+               AND {} AND trashed_at IS NULL AND (group_role IS NULL OR group_role = 'primary')
              ORDER BY taken_local",
-        )?;
+            scope.sql("")
+        ))?;
         st.query_map([problem::NO_DATE], |r| Ok((r.get(0)?, r.get(1)?)))?.collect::<Result<_, _>>()?
     };
     if !missing.is_empty() {
@@ -435,8 +455,9 @@ pub fn compute(c: &Connection, fix: &DateFix, tz: &dyn TzGuess) -> anyhow::Resul
             label = format!("time zone {}", crate::places::offset_label(o));
             Box::new(move |it: &Cur| it.local.map(|l| (l, Some(o))))
         }
-        "amount" => {
+        "amount" | "smart" => {
             let a = fix.amount.clone().unwrap_or_default();
+            let zone = if fix.mode == "smart" { fix.offset_min } else { None };
             let dur = Duration::days(a.days as i64)
                 + Duration::hours(a.hours as i64)
                 + Duration::minutes(a.minutes as i64)
@@ -454,7 +475,10 @@ pub fn compute(c: &Connection, fix: &DateFix, tz: &dyn TzGuess) -> anyhow::Resul
                 let l = it.local.unwrap();
                 label = diff_label(l, shift(l).unwrap_or(l));
             }
-            Box::new(move |it: &Cur| it.local.and_then(shift).map(|l| (l, it.offset)))
+            if let Some(o) = zone {
+                label = format!("{label}, {}", crate::places::offset_label(o));
+            }
+            Box::new(move |it: &Cur| it.local.and_then(shift).map(|l| (l, zone.or(it.offset))))
         }
         "exact" => {
             let e = fix.exact.as_ref().ok_or_else(|| anyhow::anyhow!("Enter a date."))?;
@@ -557,6 +581,7 @@ pub fn apply(c: &Connection, fix: &DateFix, tz: &dyn TzGuess) -> anyhow::Result<
         ("drift", Some(r)) => format!("Shifted {label} (references: {r} and one more)."),
         ("zone", _) => format!("Time zone set to {}.", label.trim_start_matches("time zone ")),
         ("amount", _) => format!("Shifted {label} by hand."),
+        ("smart", _) => format!("Shifted {label} to match phone photos of the same moments."),
         ("suggested", _) => "Date suggested from the file name, folder or neighbouring files.".into(),
         _ => "Date set by hand.".into(),
     };
@@ -570,6 +595,168 @@ pub fn apply(c: &Connection, fix: &DateFix, tz: &dyn TzGuess) -> anyhow::Result<
         )?;
     }
     Ok((batch, n))
+}
+
+/// A camera clock offset found from phone photos of the same moments.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct SmartOffset {
+    /// Seconds to add to the items' times.
+    #[ts(type = "number")]
+    pub seconds: i64,
+    /// "+9 h 28 min 5 s".
+    pub label: String,
+    /// The phones' time zone at that time, when they state one.
+    pub offset_min: Option<i32>,
+    /// Items with a look-alike phone photo at that offset.
+    pub matched: i32,
+    /// Items that could be compared (dated, with a thumbnail).
+    pub compared: i32,
+    /// The closest pairs, as evidence.
+    pub pairs: Vec<OffsetPair>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct OffsetPair {
+    pub item: i32,
+    pub phone: i32,
+    pub item_local: String,
+    pub phone_local: String,
+}
+
+/// Look-alike photos: dHash within this many of 64 bits.
+const PAIR_BITS: u32 = 10;
+/// Phone photos this far from the camera's dates are not compared.
+const PAIR_WINDOW_S: i64 = 48 * 3600;
+/// Pairs within this many seconds of each other agree on the offset.
+const AGREE_S: i64 = 180;
+
+struct Shot {
+    id: i64,
+    local: NaiveDateTime,
+    hash: u64,
+    offset: Option<i32>,
+    phone: bool,
+}
+
+fn shots(c: &Connection, sql: &str, p: impl rusqlite::Params) -> rusqlite::Result<Vec<Shot>> {
+    let mut st = c.prepare(sql)?;
+    let rows = st.query_map(p, |r| {
+        let (make, model): (Option<String>, Option<String>) = (r.get(4)?, r.get(5)?);
+        Ok((
+            r.get::<_, i64>(0)?,
+            r.get::<_, String>(1)?,
+            r.get::<_, i64>(2)?,
+            r.get::<_, Option<i64>>(3)?,
+            is_phone(make.as_deref(), model.as_deref()),
+        ))
+    })?;
+    Ok(rows
+        .filter_map(Result::ok)
+        .filter_map(|(id, l, h, o, phone)| Some(Shot { id, local: parse(&l)?, hash: h as u64, offset: o.map(|o| o as i32), phone }))
+        .collect())
+}
+
+/// The smart offset (4.5): phone photos in the archive that look like the
+/// items and were taken within 48 h of them; the median time difference of
+/// the pairs that agree. `None` when fewer than three items pair up.
+pub fn smart_offset(c: &Connection, ids: &[i64]) -> rusqlite::Result<Option<SmartOffset>> {
+    if ids.is_empty() {
+        return Ok(None);
+    }
+    let list = ids.iter().map(|i| i.to_string()).collect::<Vec<_>>().join(",");
+    let items: Vec<Shot> = shots(
+        c,
+        &format!(
+            "SELECT id, taken_local, phash, tz_offset, make, model FROM assets
+             WHERE id IN ({list}) AND kind = 0 AND phash IS NOT NULL AND taken_local IS NOT NULL"
+        ),
+        [],
+    )?;
+    let (Some(lo), Some(hi)) = (items.iter().map(|s| s.local).min(), items.iter().map(|s| s.local).max()) else { return Ok(None) };
+    let window = Duration::seconds(PAIR_WINDOW_S);
+    let mine: std::collections::HashSet<i64> = ids.iter().copied().collect();
+    let phones: Vec<Shot> = shots(
+        c,
+        "SELECT id, taken_local, phash, tz_offset, make, model FROM assets
+         WHERE missing = 0 AND trashed_at IS NULL AND kind = 0 AND phash IS NOT NULL AND taken_local BETWEEN ?1 AND ?2",
+        params![fmt(lo - window), fmt(hi + window)],
+    )?
+    .into_iter()
+    .filter(|s| !mine.contains(&s.id) && s.phone)
+    .collect();
+
+    // (item index, phone index, seconds, bits); the 8 closest looks per item.
+    let mut cands: Vec<(usize, usize, i64, u32)> = Vec::new();
+    for (i, it) in items.iter().enumerate() {
+        let mut mine: Vec<(usize, usize, i64, u32)> = phones
+            .iter()
+            .enumerate()
+            .filter_map(|(j, p)| {
+                let d = (p.local - it.local).num_seconds();
+                let bits = (it.hash ^ p.hash).count_ones();
+                (d.abs() <= PAIR_WINDOW_S && bits <= PAIR_BITS).then_some((i, j, d, bits))
+            })
+            .collect();
+        mine.sort_by_key(|x| x.3);
+        cands.extend(mine.into_iter().take(8));
+    }
+    if cands.is_empty() {
+        return Ok(None);
+    }
+    // The offset most items agree on: a sliding window over the differences.
+    cands.sort_by_key(|x| x.2);
+    let (mut best, mut best_n, mut end) = ((0, 0), 0, 0);
+    for start in 0..cands.len() {
+        end = end.max(start);
+        while end + 1 < cands.len() && cands[end + 1].2 - cands[start].2 <= 2 * AGREE_S {
+            end += 1;
+        }
+        let n = cands[start..=end].iter().map(|x| x.0).collect::<std::collections::HashSet<_>>().len();
+        if n > best_n {
+            (best, best_n) = ((start, end), n);
+        }
+    }
+    if best_n < 3 {
+        return Ok(None);
+    }
+    // Each item's closest look-alike inside that window.
+    let mut per_item: HashMap<usize, (usize, i64, u32)> = HashMap::new();
+    for &(i, j, d, bits) in &cands[best.0..=best.1] {
+        if per_item.get(&i).is_none_or(|x| bits < x.2) {
+            per_item.insert(i, (j, d, bits));
+        }
+    }
+    let mut deltas: Vec<i64> = per_item.values().map(|x| x.1).collect();
+    deltas.sort_unstable();
+    let seconds = deltas[deltas.len() / 2];
+    let mut zones: HashMap<i32, usize> = HashMap::new();
+    for (j, _, _) in per_item.values() {
+        if let Some(o) = phones[*j].offset {
+            *zones.entry(o).or_default() += 1;
+        }
+    }
+    let mut pairs: Vec<(&usize, &(usize, i64, u32))> = per_item.iter().collect();
+    pairs.sort_by_key(|(i, x)| (x.2, items[**i].local));
+    let first = items.iter().map(|s| s.local).min().unwrap_or(lo);
+    Ok(Some(SmartOffset {
+        seconds,
+        label: diff_label(first, first + Duration::seconds(seconds)),
+        offset_min: zones.into_iter().max_by_key(|(o, n)| (*n, *o)).map(|(o, _)| o),
+        matched: per_item.len() as i32,
+        compared: items.len() as i32,
+        pairs: pairs
+            .into_iter()
+            .take(6)
+            .map(|(i, (j, _, _))| OffsetPair {
+                item: items[*i].id as i32,
+                phone: phones[*j].id as i32,
+                item_local: fmt(items[*i].local),
+                phone_local: fmt(phones[*j].local),
+            })
+            .collect(),
+    }))
 }
 
 /// A suggested date for an item without a trusted one.

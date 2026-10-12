@@ -11,6 +11,7 @@
     CircleDashed,
     FileText,
     Folder,
+    FolderInput,
     FolderTree,
     History,
     Image,
@@ -81,6 +82,7 @@
     {@render item('Folders', Folder, app.view === 'folders', () => goView('folders'), undefined, 'nav-folders')}
     {@render item('Map', Map, app.view === 'map', () => goView('map'), undefined, 'nav-map')}
     {@render item('Events', CalendarRange, app.view === 'events', () => goView('events'), undefined, 'nav-events')}
+    {@render item('Add photos', FolderInput, app.view === 'add', () => goView('add'), undefined, 'nav-add')}
 
     {#if !collapsed}<div class="section">Fix</div>{:else}<hr />{/if}
     {@render item('Review', ListChecks, app.view === 'review', () => goView('review'), app.counts.review, 'nav-review')}

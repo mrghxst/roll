@@ -10,6 +10,7 @@ use roll_core::datefix::{Candidate, DateFix, DatePreview, DateSet};
 use roll_core::discover::Cluster;
 use roll_core::dupes::DupeGroup;
 use roll_core::events::EventInfo;
+use roll_core::import::{ImportInfo, ImportOptions, ImportPlan};
 use roll_core::library::PlacesInfo;
 use roll_core::model::*;
 use roll_core::packs::PackStatus;
@@ -580,4 +581,79 @@ pub async fn event_split(state: State<'_, AppState>, id: i64, at: i64, name: Str
 pub async fn event_own_folder(state: State<'_, AppState>, id: i64, on: bool) -> Res<()> {
     let lib = state.lib.clone();
     blocking(move || lib.event_own_folder(id, on)).await
+}
+
+// Add photos
+
+/// Start an import of `path`, or of a folder the owner picks.
+#[tauri::command]
+pub async fn import_start(state: State<'_, AppState>, app: tauri::AppHandle, path: Option<String>) -> Res<Option<i64>> {
+    let lib = state.lib.clone();
+    blocking(move || {
+        let path = match path {
+            Some(p) => PathBuf::from(p),
+            None => {
+                let Some(dir) = app.dialog().file().set_title("Choose the folder to add").blocking_pick_folder() else {
+                    return Ok(None);
+                };
+                dir.into_path().map_err(|e| anyhow::anyhow!("{e}"))?
+            }
+        };
+        lib.import_start(&path).map(Some)
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn imports(state: State<'_, AppState>) -> Res<Vec<ImportInfo>> {
+    let lib = state.lib.clone();
+    blocking(move || lib.imports()).await
+}
+
+#[tauri::command]
+pub async fn import_info(state: State<'_, AppState>, id: i64) -> Res<ImportInfo> {
+    let lib = state.lib.clone();
+    blocking(move || lib.import_info(id)).await
+}
+
+#[tauri::command]
+pub async fn import_name(state: State<'_, AppState>, id: i64, name: Option<String>) -> Res<()> {
+    let lib = state.lib.clone();
+    blocking(move || lib.import_name(id, name.as_deref())).await
+}
+
+#[tauri::command]
+pub async fn import_mark(state: State<'_, AppState>, id: i64, dates_ok: Option<bool>, places_ok: Option<bool>) -> Res<()> {
+    let lib = state.lib.clone();
+    blocking(move || lib.import_mark(id, dates_ok, places_ok)).await
+}
+
+#[tauri::command]
+pub async fn import_leave_out(state: State<'_, AppState>, id: i64, ids: Vec<i64>, out: bool) -> Res<()> {
+    let lib = state.lib.clone();
+    blocking(move || lib.import_leave_out(id, &ids, out)).await
+}
+
+#[tauri::command]
+pub async fn import_places(state: State<'_, AppState>, id: i64) -> Res<Vec<PlaceGroup>> {
+    let lib = state.lib.clone();
+    blocking(move || lib.import_places(id)).await
+}
+
+#[tauri::command]
+pub async fn import_plan(state: State<'_, AppState>, id: i64, opts: ImportOptions) -> Res<ImportPlan> {
+    let lib = state.lib.clone();
+    blocking(move || lib.import_plan(id, &opts)).await
+}
+
+#[tauri::command]
+pub async fn import_apply(state: State<'_, AppState>, id: i64, opts: ImportOptions) -> Res<i64> {
+    let lib = state.lib.clone();
+    blocking(move || lib.import_apply(id, &opts)).await
+}
+
+#[tauri::command]
+pub async fn import_close(state: State<'_, AppState>, id: i64) -> Res<()> {
+    let lib = state.lib.clone();
+    blocking(move || lib.import_close(id)).await
 }

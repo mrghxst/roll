@@ -24,6 +24,7 @@ use ts_rs::TS;
 
 use crate::db::now_ms;
 use crate::edits::{self, Change};
+use crate::model::Scope;
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]
@@ -238,12 +239,19 @@ pub type ByGroup = HashMap<String, Vec<Suggested>>;
 /// Compute suggestion groups. Returns the groups for the UI and the
 /// per-item suggestions by group key.
 pub fn suggest(c: &Connection, gaz: Option<&Gazetteer>, window_min: i64) -> anyhow::Result<(Vec<PlaceGroup>, ByGroup)> {
+    suggest_in(c, gaz, window_min, Scope::Archive)
+}
+
+/// [`suggest`] for the archive or one import's items. Neighbours always come
+/// from the archive; an import's group keys start with `import<root>:`.
+pub fn suggest_in(c: &Connection, gaz: Option<&Gazetteer>, window_min: i64, scope: Scope) -> anyhow::Result<(Vec<PlaceGroup>, ByGroup)> {
     let candidates: Vec<Candidate> = {
-        let mut st = c.prepare(
+        let mut st = c.prepare(&format!(
             "SELECT id, taken_utc, taken_local, tz_offset, date_source, dir FROM assets
-             WHERE lat IS NULL AND missing = 0 AND trashed_at IS NULL AND (group_role IS NULL OR group_role = 'primary')
+             WHERE lat IS NULL AND {} AND trashed_at IS NULL AND (group_role IS NULL OR group_role = 'primary')
              ORDER BY coalesce(taken_local, '9999'), id",
-        )?;
+            scope.sql("")
+        ))?;
         st.query_map([], |r| {
             let local: Option<String> = r.get(2)?;
             let offset: Option<i64> = r.get(3)?;
@@ -379,7 +387,11 @@ pub fn suggest(c: &Connection, gaz: Option<&Gazetteer>, window_min: i64) -> anyh
         };
         let from = g.items.iter().map(|(c, _)| c.local_str.as_str()).filter(|s| !s.is_empty()).min().unwrap_or("").to_string();
         let to = g.items.iter().map(|(c, _)| c.local_str.as_str()).max().unwrap_or("").to_string();
-        let key = format!("{}:{}:{}:{}", g.kind, g.key, from.get(..10).unwrap_or(""), to.get(..10).unwrap_or(""));
+        let prefix = match scope {
+            Scope::Archive => String::new(),
+            Scope::Staged(root) => format!("import{root}:"),
+        };
+        let key = format!("{prefix}{}:{}:{}:{}", g.kind, g.key, from.get(..10).unwrap_or(""), to.get(..10).unwrap_or(""));
         if dismissed.contains(&key) {
             continue;
         }

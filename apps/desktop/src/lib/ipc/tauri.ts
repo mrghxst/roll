@@ -88,8 +88,21 @@ export const tauriApi: Api = {
   parseSearch: (text) => invoke('parse_search', { text }),
   dupeGroups: () => invoke('dupe_groups'),
   mergeDupes: (keep, others) => invoke('merge_dupes', { keep, others }),
+  importStart: (path) => invoke('import_start', { path }),
+  imports: () => invoke('imports'),
+  importInfo: (id) => invoke('import_info', { id }),
+  importName: (id, name) => invoke('import_name', { id, name }),
+  importMark: (id, datesOk, placesOk) => invoke('import_mark', { id, datesOk, placesOk }),
+  importLeaveOut: (id, ids, out) => invoke('import_leave_out', { id, ids, out }),
+  importPlaces: (id) => invoke('import_places', { id }),
+  importPlan: (id, opts) => invoke('import_plan', { id, opts }),
+  importApply: (id, opts) => invoke('import_apply', { id, opts }),
+  importClose: (id) => invoke('import_close', { id }),
   on<K extends keyof Events>(event: K, cb: Events[K]) {
-    const un = listen(event, (e) => (cb as (p: unknown) => void)(e.payload));
+    const un =
+      event === 'drop'
+        ? listen<{ paths: string[] }>('tauri://drag-drop', (e) => (cb as Events['drop'])(e.payload.paths))
+        : listen(event, (e) => (cb as (p: unknown) => void)(e.payload));
     return () => void un.then((f) => f());
   },
   thumbUrl: (id, v) => `${url(`thumb/${id}`)}?v=${v}`,

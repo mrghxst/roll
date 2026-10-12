@@ -1,6 +1,6 @@
 //! Database migrations. Append only: never edit a shipped migration.
 
-pub const MIGRATIONS: &[&str] = &[M1, M2, M3, M4, M5, M6];
+pub const MIGRATIONS: &[&str] = &[M1, M2, M3, M4, M5, M6, M7];
 
 const M1: &str = r#"
 CREATE TABLE settings (
@@ -346,5 +346,23 @@ CREATE TABLE event_undo (
   row TEXT,
   assets TEXT NOT NULL,
   PRIMARY KEY (batch_id, event_id)
+);
+"#;
+
+/// Add photos: one row per import, tied to its staging root.
+const M7: &str = r#"
+CREATE TABLE imports (
+  id INTEGER PRIMARY KEY,
+  root_id INTEGER NOT NULL UNIQUE REFERENCES roots(id) ON DELETE CASCADE,
+  -- 'checking', 'applied' or 'closed'
+  state TEXT NOT NULL DEFAULT 'checking',
+  -- the owner's event name; NULL proposes one
+  name TEXT,
+  dates_ok INTEGER NOT NULL DEFAULT 0,
+  places_ok INTEGER NOT NULL DEFAULT 0,
+  -- JSON array of asset ids the owner left out
+  left_out TEXT NOT NULL DEFAULT '[]',
+  batch_id INTEGER,
+  created_at INTEGER NOT NULL
 );
 "#;

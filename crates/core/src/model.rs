@@ -14,6 +14,32 @@ pub mod problem {
     pub const NO_OFFSET: i64 = 32;
 }
 
+/// `assets.missing`: 0 present in the archive, 1 gone from disk, 2 present
+/// in a staging root (an import being checked, not part of the archive).
+pub mod presence {
+    pub const ARCHIVE: i64 = 0;
+    pub const GONE: i64 = 1;
+    pub const STAGED: i64 = 2;
+}
+
+/// Which items a check looks at: the archive, or one import's staging set.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Scope {
+    Archive,
+    Staged(i64),
+}
+
+impl Scope {
+    /// A WHERE condition on `assets` (with an optional table alias).
+    pub fn sql(&self, alias: &str) -> String {
+        let a = if alias.is_empty() { String::new() } else { format!("{alias}.") };
+        match self {
+            Scope::Archive => format!("{a}missing = 0"),
+            Scope::Staged(root) => format!("{a}root_id = {root} AND {a}missing = 2"),
+        }
+    }
+}
+
 /// Tile flags packed into the timeline payload.
 pub mod tile {
     pub const VIDEO: u16 = 1;
@@ -269,6 +295,8 @@ pub struct Query {
     pub inbox: Option<bool>,
     pub trashed: bool,
     pub missing: bool,
+    /// The staging root of an import: its items instead of the archive's.
+    pub staged: Option<i32>,
     pub ids: Option<Vec<i32>>,
 }
 

@@ -32,7 +32,11 @@ pub const IMMICH_SELECTED: &str = "(CASE a.immich WHEN 'send' THEN 1 WHEN 'local
 pub fn where_clause(q: &Query) -> Sql {
     let mut w: Vec<String> = Vec::new();
     let mut p: Vec<Value> = Vec::new();
-    w.push(if q.missing { "a.missing = 1".into() } else { "a.missing = 0".into() });
+    w.push(match (q.staged, q.missing) {
+        (Some(root), _) => format!("a.root_id = {root} AND a.missing = 2"),
+        (None, true) => "a.missing = 1".into(),
+        (None, false) => "a.missing = 0".into(),
+    });
     w.push(if q.trashed { "a.trashed_at IS NOT NULL".into() } else { "a.trashed_at IS NULL".into() });
     if q.ids.is_none() {
         w.push("(a.group_role IS NULL OR a.group_role = 'primary')".into());

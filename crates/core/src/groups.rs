@@ -147,7 +147,7 @@ pub fn find(members: &[Member]) -> Vec<Group> {
 pub fn load_members(c: &Connection, root_id: i64) -> rusqlite::Result<Vec<Member>> {
     let mut st = c.prepare(
         "SELECT id, dir, name, ext, kind, content_id, burst_id, taken_utc, duration_ms
-         FROM assets WHERE root_id = ?1 AND missing = 0 AND trashed_at IS NULL",
+         FROM assets WHERE root_id = ?1 AND missing != 1 AND trashed_at IS NULL",
     )?;
     let rows = st.query_map([root_id], |r| {
         Ok(Member {

@@ -177,6 +177,16 @@ pub fn run() {
             commands::event_merge,
             commands::event_split,
             commands::event_own_folder,
+            commands::import_start,
+            commands::imports,
+            commands::import_info,
+            commands::import_name,
+            commands::import_mark,
+            commands::import_leave_out,
+            commands::import_places,
+            commands::import_plan,
+            commands::import_apply,
+            commands::import_close,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Roll");

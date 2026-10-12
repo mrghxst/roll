@@ -109,7 +109,18 @@ Milestones from PROMPT.md section 10. `[x]` done, `[~]` partly done,
       undoable; on the fixtures: Italy 2019, New York 2021, Lisbon 2022,
       the Dolomites hike, Christmas 2018 at home
 - [ ] Immich sync (needs a test server: Docker), CLI export, guide
-- [ ] Add photos (4.11), Takeout and WhatsApp importers
+- [x] Add photos (4.11): a folder is indexed read-only as a staging set;
+      source facts and items already in the library (skipped by default);
+      dates against the library by day, smart offset from look-alike phone
+      photos, the Fix dates tools on the set; places from the library's
+      photos at the same time, one place for the rest or per day; event
+      name from the folder or "{Month YYYY} {Place}"; copy (verified) or
+      move into the event folder with metadata written, one batch in
+      History with undo; drop a folder onto the window to start. On the
+      fixture card: dates within 4 min, 40 of 40 placed, own folder
+- [ ] Add photos: start when a camera card is connected, mini map,
+      Immich album (with the Immich work)
+- [ ] Takeout and WhatsApp importers
 - [ ] Onboarding pass, accessibility, Windows installer, user docs
 ## M7 Later
 

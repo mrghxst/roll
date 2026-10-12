@@ -9,6 +9,7 @@ import type { RootInfo } from '../ipc/bindings/RootInfo';
 import type { Settings } from '../ipc/bindings/Settings';
 import type { TagCount } from '../ipc/bindings/TagCount';
 import type { ZoneProposal } from '../ipc/bindings/ZoneProposal';
+import { toast } from './toast.svelte';
 
 export type View =
   | 'timeline'
@@ -23,6 +24,7 @@ export type View =
   | 'places'
   | 'map'
   | 'events'
+  | 'add'
   | 'history'
   | 'trash'
   | 'organize';
@@ -80,6 +82,9 @@ class AppState {
   revision = $state(0);
   thumbsRevision = $state(0);
   historyRevision = $state(0);
+  importsRevision = $state(0);
+  /** The import the Add photos view shows. */
+  importing = $state<number | null>(null);
 
   query = $derived<Query>(mergeQuery(this.scope.query, this.filters));
 
@@ -97,11 +102,19 @@ class AppState {
       this.error = String(e);
     }
     api.on('jobs', (list) => (this.jobs = list));
+    // A folder dropped onto the window, or a camera card connected: Add photos.
+    api.on('drop', (paths) => {
+      if (paths[0]) void this.addPhotos(paths[0]).catch((e) => toast.error(e));
+    });
+    api.on('card', (path) =>
+      toast.show(`A camera card or phone is connected (${path}).`, { action: { label: 'Add photos from it', run: () => void this.addPhotos(path).catch((e) => toast.error(e)) } }),
+    );
     api.on('changed', (what) => {
       if (what === 'thumbs') this.thumbsRevision++;
       else if (what === 'settings') void api.getSettings().then((s) => (this.settings = s));
       else if (what === 'history') this.historyRevision++;
       else if (what === 'packs') void this.loadPacks();
+      else if (what === 'imports') this.importsRevision++;
       else void this.refresh();
     });
     this.ready = true;
@@ -138,6 +151,14 @@ class AppState {
     this.settings = next;
     if (patch.theme) applyTheme(patch.theme);
     await api.saveSettings($state.snapshot(next));
+  }
+
+  /** Check a folder to add: `path`, or one the owner picks. */
+  async addPhotos(path: string | null = null) {
+    const id = await api.importStart(path);
+    if (id == null) return;
+    this.importing = id;
+    this.go('add');
   }
 
   go(view: View, scope?: Scope) {

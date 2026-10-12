@@ -33,6 +33,7 @@ export function emptyQuery(): Query {
     inbox: null,
     trashed: false,
     missing: false,
+    staged: null,
     ids: null,
   };
 }

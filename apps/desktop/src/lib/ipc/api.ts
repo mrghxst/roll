@@ -29,6 +29,9 @@ import type { JobInfo } from './bindings/JobInfo';
 import type { PlanOptions } from './bindings/PlanOptions';
 import type { PlanSummary } from './bindings/PlanSummary';
 import type { EventInfo } from './bindings/EventInfo';
+import type { ImportInfo } from './bindings/ImportInfo';
+import type { ImportOptions } from './bindings/ImportOptions';
+import type { ImportPlan } from './bindings/ImportPlan';
 import type { PackStatus } from './bindings/PackStatus';
 import type { Query } from './bindings/Query';
 import type { RootInfo } from './bindings/RootInfo';
@@ -45,6 +48,10 @@ export interface Events {
   jobs: (list: JobInfo[]) => void;
   changed: (what: ChangeKind) => void;
   scanned: (report: ScanReport) => void;
+  /** Files or folders dropped onto the window. */
+  drop: (paths: string[]) => void;
+  /** A camera card or phone with a DCIM folder was connected. */
+  card: (path: string) => void;
 }
 
 export interface Api {
@@ -119,6 +126,24 @@ export interface Api {
   /** `at` and later items become a new event; false when `at` is first. */
   eventSplit(id: number, at: number, name: string): Promise<boolean>;
   eventOwnFolder(id: number, on: boolean): Promise<void>;
+  /** Start checking a folder to add (one the owner picks when `path` is
+   * null). Returns the import, or null when cancelled. */
+  importStart(path: string | null): Promise<number | null>;
+  /** Open imports, newest first. */
+  imports(): Promise<ImportInfo[]>;
+  importInfo(id: number): Promise<ImportInfo>;
+  /** The event name; null goes back to the proposed one. */
+  importName(id: number, name: string | null): Promise<void>;
+  /** "Dates look right" and "Places look right". */
+  importMark(id: number, datesOk: boolean | null, placesOk: boolean | null): Promise<void>;
+  importLeaveOut(id: number, ids: number[], out: boolean): Promise<void>;
+  /** Place suggestions for the import's items (accept with acceptPlaces). */
+  importPlaces(id: number): Promise<PlaceGroup[]>;
+  importPlan(id: number, opts: ImportOptions): Promise<ImportPlan>;
+  /** Copy or move into the library; returns the History batch. */
+  importApply(id: number, opts: ImportOptions): Promise<number>;
+  /** Forget the import; the source files stay where they are. */
+  importClose(id: number): Promise<void>;
   /** Downloadable place names and models, with their state. */
   packs(): Promise<PackStatus[]>;
   /** Starts a download the owner has confirmed. */

@@ -71,6 +71,42 @@ fn set_state(c: &Connection, op: i64, state: &str, payload: Option<&Value>, erro
     Ok(())
 }
 
+/// The staging root an import operation takes its file from.
+fn from_root(c: &Connection, op: &OpRow) -> rusqlite::Result<Option<(i64, PathBuf)>> {
+    let Some(id) = op.payload.get("from_root").and_then(Value::as_i64) else { return Ok(None) };
+    let path: String = c.query_row("SELECT path FROM roots WHERE id = ?1", [id], |r| r.get(0))?;
+    Ok(Some((id, PathBuf::from(path))))
+}
+
+/// Point an asset or sidecar at a path in another root: the archive after
+/// an import (`presence` 0) or the staging root after its undo (2).
+fn relocate_to(c: &Connection, op: &OpRow, root_id: i64, to: &str, root: &Path, presence: i64) -> rusqlite::Result<()> {
+    if let Some(sid) = op.payload.get("sidecar").and_then(Value::as_i64) {
+        c.execute("UPDATE sidecars SET root_id = ?2, rel_path = ?3 WHERE id = ?1", params![sid, root_id, to])?;
+    } else if let Some(a) = op.asset {
+        let mtime = std::fs::metadata(join_rel(root, to)).map(|m| mtime_ms(&m)).ok();
+        c.execute(
+            "UPDATE assets SET root_id = ?2, rel_path = ?3, dir = ?4, name = ?5, mtime = coalesce(?6, mtime), missing = ?7, inbox = 0 WHERE id = ?1",
+            params![a, root_id, to, rel_dir(to), file_name(to), mtime, presence],
+        )?;
+    }
+    Ok(())
+}
+
+/// Take back an imported copy: removed when it still matches the original,
+/// otherwise (changed since) sent to the Recycle Bin.
+fn take_back_copy(src: &Path, dst: &Path) -> anyhow::Result<()> {
+    if !dst.exists() {
+        return Ok(());
+    }
+    if src.exists() && same_content(src, dst) {
+        std::fs::remove_file(dst)?;
+    } else {
+        trash::delete(dst).map_err(|e| anyhow::anyhow!("{}: {e}", dst.display()))?;
+    }
+    Ok(())
+}
+
 /// Point an asset or sidecar at its new path.
 fn relocate(c: &Connection, op: &OpRow, to: &str, root: &Path) -> rusqlite::Result<()> {
     if let Some(sid) = op.payload.get("sidecar").and_then(Value::as_i64) {
@@ -195,6 +231,29 @@ fn perform(db: &Db, tools: &Tools, op: &mut OpRow) -> anyhow::Result<()> {
             op.payload["removed"] = json!(removed);
             db.tx(|tx| set_state(tx, op.id, "done", Some(&op.payload), None))?;
         }
+        "move" | "copy" if op.payload.get("from_root").is_some() => {
+            let (_, src_root) = from_root(&db.read(), op)?.ok_or_else(|| anyhow::anyhow!("The import's source is gone."))?;
+            let (from, to) = (op.src.clone().unwrap_or_default(), op.dst.clone().unwrap_or_default());
+            let (src, dst) = (join_rel(&src_root, &from), join_rel(&root, &to));
+            if op.kind == "copy" {
+                let hash = fsops::copy_verified(&src, &dst)?;
+                db.tx(|tx| {
+                    relocate_to(tx, op, root_id, &to, &root, crate::model::presence::ARCHIVE)?;
+                    if op.payload.get("sidecar").is_none()
+                        && let Some(a) = op.asset
+                    {
+                        tx.execute("UPDATE assets SET blake3 = ?2 WHERE id = ?1", params![a, hash])?;
+                    }
+                    set_state(tx, op.id, "done", None, None)
+                })?;
+            } else {
+                fsops::move_file(&src, &dst)?;
+                db.tx(|tx| {
+                    relocate_to(tx, op, root_id, &to, &root, crate::model::presence::ARCHIVE)?;
+                    set_state(tx, op.id, "done", None, None)
+                })?;
+            }
+        }
         "move" => {
             let (from, to) = (op.src.clone().unwrap_or_default(), op.dst.clone().unwrap_or_default());
             fsops::move_file(&join_rel(&root, &from), &join_rel(&root, &to))?;
@@ -246,6 +305,17 @@ fn reverse(db: &Db, tools: &Tools, op: &OpRow) -> anyhow::Result<()> {
             if op.payload.get("removed").and_then(Value::as_bool).unwrap_or(false) {
                 std::fs::create_dir_all(join_rel(&root, op.src.as_deref().unwrap_or_default()))?;
             }
+        }
+        "move" | "copy" if op.payload.get("from_root").is_some() => {
+            let (src_id, src_root) = from_root(&db.read(), op)?.ok_or_else(|| anyhow::anyhow!("The import's source is gone."))?;
+            let (from, to) = (op.src.clone().unwrap_or_default(), op.dst.clone().unwrap_or_default());
+            let (src, dst) = (join_rel(&src_root, &from), join_rel(&root, &to));
+            if op.kind == "copy" {
+                take_back_copy(&src, &dst)?;
+            } else if dst.exists() || !src.exists() {
+                fsops::move_file(&dst, &src)?;
+            }
+            db.tx(|tx| relocate_to(tx, op, src_id, &from, &src_root, crate::model::presence::STAGED))?;
         }
         "move" => {
             let (from, to) = (op.src.clone().unwrap_or_default(), op.dst.clone().unwrap_or_default());
@@ -313,7 +383,7 @@ pub fn apply(db: &Db, tools: &Tools, batch: i64, check: Check) -> anyhow::Result
 pub fn undo(db: &Db, tools: &Tools, batch: i64, check: Check) -> anyhow::Result<Report> {
     let kind: Option<String> = db.read().query_row("SELECT kind FROM batches WHERE id = ?1", [batch], |r| r.get(0)).optional()?;
     let mut report = Report::default();
-    if kind.as_deref() != Some("organize") {
+    if !matches!(kind.as_deref(), Some("organize" | "import")) {
         db.tx(|tx| {
             report.done = crate::edits::undo_batch(tx, batch)?.len();
             crate::events::undo(tx, batch)?;
@@ -340,7 +410,16 @@ pub fn undo(db: &Db, tools: &Tools, batch: i64, check: Check) -> anyhow::Result<
         }
     }
     let state = if report.failed > 0 { "applied" } else { "undone" };
-    db.write().execute("UPDATE batches SET state = ?2, undone_at = ?3 WHERE id = ?1", params![batch, state, now_ms()])?;
+    db.tx(|tx| {
+        tx.execute("UPDATE batches SET state = ?2, undone_at = ?3 WHERE id = ?1", params![batch, state, now_ms()])?;
+        // An import also tagged and named its event in the same batch.
+        if state == "undone" && kind.as_deref() == Some("import") {
+            crate::edits::undo_batch(tx, batch)?;
+            crate::events::undo(tx, batch)?;
+            tx.execute("UPDATE imports SET state = 'checking', batch_id = NULL WHERE batch_id = ?1", [batch])?;
+        }
+        Ok(())
+    })?;
     Ok(report)
 }
 
@@ -357,7 +436,54 @@ pub fn recover(db: &Db, tools: &Tools) -> anyhow::Result<usize> {
         let stuck = load_ops(&db.read(), *batch, &["performing", "undoing"], false)?;
         for mut op in stuck {
             let root = root_of(&db.read(), &op)?;
+            let root_id = op.payload.get("root").and_then(Value::as_i64).unwrap_or(0);
             match op.kind.as_str() {
+                "move" | "copy" if op.payload.get("from_root").is_some() => {
+                    let Some((src_id, src_root)) = from_root(&db.read(), &op)? else {
+                        set_state(&db.write(), op.id, "failed", None, Some("The import's source is gone."))?;
+                        continue;
+                    };
+                    let (from, to) = (op.src.clone().unwrap_or_default(), op.dst.clone().unwrap_or_default());
+                    let (src, dst) = (join_rel(&src_root, &from), join_rel(&root, &to));
+                    let _ = std::fs::remove_file(fsops::partial_path(&dst));
+                    let _ = std::fs::remove_file(fsops::partial_path(&src));
+                    let at_dst = dst.exists() && (!src.exists() || same_content(&src, &dst));
+                    if applying {
+                        if op.kind == "move" && at_dst && src.exists() {
+                            // A finished cross-volume copy: the source can go.
+                            std::fs::remove_file(&src)?;
+                        }
+                    } else if op.kind == "copy" {
+                        take_back_copy(&src, &dst)?;
+                    } else if dst.exists() {
+                        if src.exists() && same_content(&src, &dst) {
+                            std::fs::remove_file(&dst)?;
+                        } else if !src.exists() {
+                            fsops::move_file(&dst, &src)?;
+                        }
+                    }
+                    let done = at_dst && applying;
+                    db.tx(|tx| {
+                        if done {
+                            relocate_to(tx, &op, root_id, &to, &root, crate::model::presence::ARCHIVE)?;
+                        } else {
+                            relocate_to(tx, &op, src_id, &from, &src_root, crate::model::presence::STAGED)?;
+                        }
+                        set_state(
+                            tx,
+                            op.id,
+                            if done {
+                                "done"
+                            } else if applying {
+                                "pending"
+                            } else {
+                                "undone"
+                            },
+                            None,
+                            None,
+                        )
+                    })?;
+                }
                 "move" => {
                     let (from, to) = (op.src.clone().unwrap_or_default(), op.dst.clone().unwrap_or_default());
                     let (src, dst) = (join_rel(&root, &from), join_rel(&root, &to));

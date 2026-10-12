@@ -85,11 +85,47 @@ struct Item {
     dirty: bool,
 }
 
-struct Cat {
+pub(crate) struct Cat {
     name: String,
     parent: Option<String>,
     template: Option<String>,
     own_folder: bool,
+}
+
+pub(crate) fn load_categories(c: &Connection) -> rusqlite::Result<HashMap<String, Cat>> {
+    let mut st = c.prepare(
+        "SELECT c.key, c.name, p.key, c.folder_template, c.own_folder FROM categories c LEFT JOIN categories p ON p.id = c.parent_id",
+    )?;
+    st.query_map([], |r| {
+        Ok((r.get::<_, String>(0)?, Cat { name: r.get(1)?, parent: r.get(2)?, template: r.get(3)?, own_folder: r.get::<_, i64>(4)? != 0 }))
+    })?
+    .collect()
+}
+
+static EVENT_PREFIX: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| Regex::new(r"^\d{4}-\d{2}\b").unwrap());
+
+/// An event's folder: `{year}/{yyyy-mm} {event}` from its first day, or
+/// `{year}/{event}` when the name already starts with the month.
+pub(crate) fn event_dir(name: &str, start_local: Option<String>) -> String {
+    let t = if EVENT_PREFIX.is_match(name) { "{year}/{event}" } else { "{year}/{yyyy-mm} {event}" };
+    template::render(t, &Ctx { local: start_local, event: Some(name.to_string()), ..Default::default() })
+}
+
+pub(crate) fn parent_of<'a>(cats: &'a HashMap<String, Cat>, key: &str) -> Option<&'a str> {
+    cats.get(key)?.parent.as_deref()
+}
+
+/// The folder of an item in a category (not in an event folder).
+pub(crate) fn category_dir(
+    cats: &HashMap<String, Cat>,
+    key: &str,
+    local: Option<String>,
+    source: Option<String>,
+    camera: Option<String>,
+) -> Option<String> {
+    let (tmpl, cat_name, sub) = category_template(cats, key)?;
+    let ctx = Ctx { local, category: Some(cat_name), subcategory: sub, source, camera, ..Default::default() };
+    Some(template::render(&tmpl, &ctx))
 }
 
 /// Where items of a category go, before tokens are filled in.
@@ -109,7 +145,7 @@ fn category_template(cats: &HashMap<String, Cat>, key: &str) -> Option<(String, 
     }
 }
 
-fn case_key(rel: &str) -> String {
+pub(crate) fn case_key(rel: &str) -> String {
     if cfg!(any(windows, target_os = "macos")) { rel.to_lowercase() } else { rel.to_string() }
 }
 
@@ -122,7 +158,7 @@ fn stem_of(name: &str) -> &str {
 }
 
 /// The name a sidecar gets when its media file is renamed.
-fn sidecar_name(side: &str, old_media: &str, new_media: &str) -> String {
+pub(crate) fn sidecar_name(side: &str, old_media: &str, new_media: &str) -> String {
     if old_media == new_media {
         return side.to_string();
     }
@@ -152,18 +188,7 @@ pub fn plan(c: &Connection, opts: &PlanOptions) -> anyhow::Result<PlanSummary> {
         let mut st = c.prepare("SELECT id, path FROM roots WHERE kind = 'library'")?;
         st.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?.collect::<Result<_, _>>()?
     };
-    let cats: HashMap<String, Cat> = {
-        let mut st = c.prepare(
-            "SELECT c.key, c.name, p.key, c.folder_template, c.own_folder FROM categories c LEFT JOIN categories p ON p.id = c.parent_id",
-        )?;
-        st.query_map([], |r| {
-            Ok((
-                r.get::<_, String>(0)?,
-                Cat { name: r.get(1)?, parent: r.get(2)?, template: r.get(3)?, own_folder: r.get::<_, i64>(4)? != 0 },
-            ))
-        })?
-        .collect::<Result<_, _>>()?
-    };
+    let cats = load_categories(c)?;
     let items: Vec<Item> = {
         let mut st = c.prepare(
             "SELECT a.id, a.root_id, a.rel_path, a.name, a.group_id, a.group_role, c.key, a.review, a.taken_local, coalesce(a.model, a.make), a.meta_dirty,
@@ -219,7 +244,6 @@ pub fn plan(c: &Connection, opts: &PlanOptions) -> anyhow::Result<PlanSummary> {
         items.iter().filter(|i| wanted.contains(&i.id) || i.group.is_some_and(|g| groups.contains(&g))).map(|i| i.id).collect()
     });
     let in_scope = |i: &Item| scope.as_ref().is_none_or(|s| s.contains(&i.id));
-    let event_prefix = Regex::new(r"^\d{4}-\d{2}\b").unwrap();
 
     let mut by_group: HashMap<i64, Vec<&Item>> = HashMap::new();
     for i in &items {
@@ -263,24 +287,20 @@ pub fn plan(c: &Connection, opts: &PlanOptions) -> anyhow::Result<PlanSummary> {
         };
         let event =
             (key == "photos" || cats.get(&key).and_then(|c| c.parent.as_deref()) == Some("photos")).then(|| events.get(&i.id)).flatten();
-        let (template_str, ctx) = match event {
-            Some((name, start)) => {
-                let t = if event_prefix.is_match(name) { "{year}/{event}" } else { "{year}/{yyyy-mm} {event}" };
-                (t.to_string(), Ctx { local: start.clone().or(i.local.clone()), event: Some(name.clone()), ..Default::default() })
-            }
-            None => (
-                tmpl,
-                Ctx {
+        let dir = match event {
+            Some((name, start)) => event_dir(name, start.clone().or(i.local.clone())),
+            None => {
+                let ctx = Ctx {
                     local: i.local.clone(),
                     category: Some(cat_name),
                     subcategory: sub,
                     source: sources.get(&i.id).cloned(),
                     camera: i.camera.clone(),
                     ..Default::default()
-                },
-            ),
+                };
+                template::render(&tmpl, &ctx)
+            }
         };
-        let dir = template::render(&template_str, &ctx);
         let new_stem = opts.rename.then(|| {
             let base =
                 template::render(&opts.rename_template, &Ctx { local: i.local.clone(), camera: i.camera.clone(), ..Default::default() });

@@ -445,6 +445,32 @@ pub fn confirm(c: &Connection, id: i64, new_name: Option<&str>) -> rusqlite::Res
     Ok(batch)
 }
 
+/// A new confirmed event of `ids` named `name`, made by `batch` (an
+/// import); undoing the batch removes it again.
+pub fn create(c: &Connection, batch: i64, name: &str, ids: &[i64], place: Option<&str>) -> rusqlite::Result<i64> {
+    let list = ids.iter().map(|i| i.to_string()).collect::<Vec<_>>().join(",");
+    let (start, end, lat, lon): (Option<i64>, Option<i64>, Option<f64>, Option<f64>) = c.query_row(
+        &format!(
+            "SELECT min(taken_utc), max(taken_utc), avg(lat), avg(lon) FROM assets WHERE id IN ({})",
+            if list.is_empty() { "NULL" } else { &list }
+        ),
+        [],
+        |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+    )?;
+    c.execute(
+        "INSERT INTO events (name, start_utc, end_utc, lat, lon, place, state, own_folder, created_at, custom_name)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'confirmed', 1, ?7, 1)",
+        params![name, start, end, lat, lon, place, crate::db::now_ms()],
+    )?;
+    let id = c.last_insert_rowid();
+    c.execute("INSERT INTO event_undo (batch_id, event_id, row, assets) VALUES (?1, ?2, NULL, '[]')", params![batch, id])?;
+    for a in ids {
+        c.execute("INSERT OR IGNORE INTO event_assets (event_id, asset_id) VALUES (?1, ?2)", params![id, a])?;
+    }
+    retag(c, batch, ids, None, Some(name))?;
+    Ok(id)
+}
+
 pub fn rename(c: &Connection, id: i64, new_name: &str) -> rusqlite::Result<i64> {
     let (old, state) = info(c, id)?;
     let name = new_name.trim();

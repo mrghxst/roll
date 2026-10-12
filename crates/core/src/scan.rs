@@ -339,7 +339,8 @@ struct Existing {
 }
 
 /// Scan one root. `inbox` marks new files for the Inbox (not on the first
-/// scan of a root).
+/// scan of a root). Items of a staging root are kept as staged
+/// (`missing = 2`), outside the archive.
 pub fn scan_root(
     db: &Db,
     root_id: i64,
@@ -349,6 +350,9 @@ pub fn scan_root(
     progress: Progress,
 ) -> anyhow::Result<(ScanReport, Vec<i64>)> {
     progress("Looking for files", 0, 0);
+    let staged =
+        db.read().query_row("SELECT kind = 'staging' FROM roots WHERE id = ?1", [root_id], |r| r.get::<_, bool>(0)).unwrap_or(false);
+    let inbox = inbox && !staged;
     let w = walk(root);
     let mut report =
         ScanReport { root_id: root_id as i32, seen: w.media.len() as i32, placeholders: w.placeholders.len() as i32, ..Default::default() };
@@ -365,7 +369,7 @@ pub fn scan_root(
                     mtime: r.get(3)?,
                     quick_hash: r.get(4)?,
                     blake3: r.get(5)?,
-                    missing: r.get::<_, i64>(6)? != 0,
+                    missing: r.get::<_, i64>(6)? == crate::model::presence::GONE,
                 },
             ))
         })?;
@@ -433,6 +437,9 @@ pub fn scan_root(
                 let id = insert(tx, root_id, r, &d, if inbox { 1 } else { 0 })?;
                 report.added += 1;
                 touched.push(id);
+            }
+            if staged {
+                tx.execute("UPDATE assets SET missing = 2 WHERE root_id = ?1 AND missing = 0", [root_id])?;
             }
             Ok(())
         })?;
