@@ -41,6 +41,12 @@ pub struct ImportInfo {
     pub source: String,
     /// "checking", "applying" or "applied".
     pub state: String,
+    /// "folder", "takeout" (a Google Takeout export) or "whatsapp" (a chat
+    /// export).
+    pub kind: String,
+    /// What Roll read from the export: "Dates from the chat for 50 of 52
+    /// items."
+    pub facts: Vec<String>,
     /// The event name: the owner's, or proposed from the folder name, or
     /// "{Month YYYY} {Place}".
     pub name: String,
@@ -56,6 +62,8 @@ pub struct ImportInfo {
     pub exact: Vec<i32>,
     /// Look like archive items that are at least as large (dHash).
     pub similar: Vec<i32>,
+    /// Repeats of other items in the folder; one of each is added.
+    pub twins: Vec<i32>,
     /// Items the owner left out.
     pub left_out: Vec<i32>,
     /// Items still waiting for a thumbnail while indexing runs.
@@ -75,6 +83,8 @@ pub struct ImportInfo {
     pub places_ok: bool,
     /// Every item to bring in, in time order.
     pub ids: Vec<i32>,
+    /// Items the applied batch brought into the library.
+    pub added: Vec<i32>,
     pub batch_id: Option<i32>,
 }
 
@@ -87,11 +97,14 @@ pub struct ImportOptions {
     pub skip_known: bool,
     /// The library folder to add to; the first one when empty.
     pub root_id: Option<i32>,
+    /// Add as one event with its own folder (a card, a trip). Off for
+    /// exports that span years: items go to their category folders.
+    pub as_event: bool,
 }
 
 impl Default for ImportOptions {
     fn default() -> Self {
-        ImportOptions { mode: "copy".into(), skip_known: true, root_id: None }
+        ImportOptions { mode: "copy".into(), skip_known: true, root_id: None, as_event: true }
     }
 }
 
@@ -207,23 +220,26 @@ fn counts(list: impl Iterator<Item = String>) -> Vec<Count> {
     v
 }
 
-/// Staged items that are exact copies of archive items. BLAKE3 hashes
-/// missing on either side (the hash job may not have run yet) are made now.
-fn exact_copies(c: &Connection, root: i64) -> rusqlite::Result<Vec<i64>> {
+/// Staged items with the same content as another item: in the archive
+/// (`twins = false`), or earlier in the same folder (`twins = true`; Takeout
+/// repeats album photos in its year folders). BLAKE3 hashes missing on
+/// either side (the hash job may not have run yet) are made now.
+fn copies(c: &Connection, root: i64, twins: bool) -> rusqlite::Result<Vec<i64>> {
     struct Side {
         id: i64,
         blake3: Option<String>,
         root: String,
         rel: String,
     }
+    let other = if twins { "a.root_id = s.root_id AND a.missing = 2 AND a.id < s.id" } else { "a.missing = 0" };
     let pairs: Vec<(Side, Side)> = {
-        let mut st = c.prepare(
+        let mut st = c.prepare(&format!(
             "SELECT s.id, s.blake3, rs.path, s.rel_path, a.id, a.blake3, ra.path, a.rel_path
              FROM assets s JOIN roots rs ON rs.id = s.root_id
-             JOIN assets a ON a.size = s.size AND a.quick_hash = s.quick_hash AND a.missing = 0 AND a.trashed_at IS NULL
+             JOIN assets a ON a.size = s.size AND a.quick_hash = s.quick_hash AND {other} AND a.trashed_at IS NULL
              JOIN roots ra ON ra.id = a.root_id
-             WHERE s.root_id = ?1 AND s.missing = 2",
-        )?;
+             WHERE s.root_id = ?1 AND s.missing = 2"
+        ))?;
         st.query_map([root], |r| {
             Ok((
                 Side { id: r.get(0)?, blake3: r.get(1)?, root: r.get(2)?, rel: r.get(3)? },
@@ -257,6 +273,14 @@ fn exact_copies(c: &Connection, root: i64) -> rusqlite::Result<Vec<i64>> {
         }
     }
     Ok(out)
+}
+
+/// Exact copies of archive items, and repeats within the folder.
+fn exact_copies(c: &Connection, root: i64) -> rusqlite::Result<(Vec<i64>, Vec<i64>)> {
+    let archive = copies(c, root, false)?;
+    let mut twins = copies(c, root, true)?;
+    twins.retain(|t| !archive.contains(t));
+    Ok((archive, twins))
 }
 
 /// Staged photos that look like an archive photo of the same shape that is
@@ -295,11 +319,13 @@ struct Row {
     places_ok: bool,
     left_out: Vec<i64>,
     batch_id: Option<i64>,
+    kind: String,
+    facts: Vec<String>,
 }
 
 fn row(c: &Connection, id: i64) -> rusqlite::Result<Row> {
     c.query_row(
-        "SELECT i.id, i.root_id, r.path, i.state, i.name, i.dates_ok, i.places_ok, i.left_out, i.batch_id
+        "SELECT i.id, i.root_id, r.path, i.state, i.name, i.dates_ok, i.places_ok, i.left_out, i.batch_id, i.kind, i.facts
          FROM imports i JOIN roots r ON r.id = i.root_id WHERE i.id = ?1",
         [id],
         |r| {
@@ -313,6 +339,8 @@ fn row(c: &Connection, id: i64) -> rusqlite::Result<Row> {
                 places_ok: r.get(6)?,
                 left_out: serde_json::from_str(&r.get::<_, String>(7)?).unwrap_or_default(),
                 batch_id: r.get(8)?,
+                kind: r.get(9)?,
+                facts: serde_json::from_str(&r.get::<_, String>(10)?).unwrap_or_default(),
             })
         },
     )
@@ -360,13 +388,156 @@ pub fn list_ids(c: &Connection) -> rusqlite::Result<Vec<i64>> {
     st.query_map([], |r| r.get(0))?.collect()
 }
 
+/// Read what an export says about its items, after each scan of the
+/// staging root: WhatsApp chats give each file its sending time and sender;
+/// Google Takeout JSON (already applied by the scan) gets the time zone of
+/// its place, and album folders become `Album/<name>` tags, shared with the
+/// copies of the same photo in the year folders.
+pub fn prepare(c: &Connection, id: i64, tz: &dyn crate::dates::TzGuess) -> anyhow::Result<()> {
+    let r = row(c, id)?;
+    let source = PathBuf::from(&r.source);
+    struct Staged {
+        id: i64,
+        dir: String,
+        name: String,
+        date_source: Option<String>,
+    }
+    let staged: Vec<Staged> = {
+        let mut st = c.prepare("SELECT id, dir, name, date_source FROM assets WHERE root_id = ?1 AND missing = 2")?;
+        st.query_map([r.root_id], |x| Ok(Staged { id: x.get(0)?, dir: x.get(1)?, name: x.get(2)?, date_source: x.get(3)? }))?
+            .collect::<Result<_, _>>()?
+    };
+    let mut kind = "folder";
+    let mut facts = Vec::new();
+
+    // WhatsApp: chat texts next to the media (the export folder, or one
+    // folder per chat inside it).
+    let chats: Vec<PathBuf> = walkdir::WalkDir::new(&source)
+        .max_depth(3)
+        .into_iter()
+        .flatten()
+        .filter(|e| e.file_type().is_file() && roll_meta::whatsapp::is_chat_file(&e.file_name().to_string_lossy()))
+        .map(|e| e.into_path())
+        .collect();
+    for chat in &chats {
+        let dir = chat.parent().unwrap_or(&source);
+        let rel = crate::paths::rel_string(dir.strip_prefix(&source).unwrap_or(Path::new("")));
+        let here: Vec<&Staged> = staged.iter().filter(|s| s.dir == rel).collect();
+        let known: Vec<String> = here.iter().map(|s| s.name.to_lowercase()).collect();
+        let Ok(text) = std::fs::read_to_string(chat) else { continue };
+        let parsed = roll_meta::whatsapp::parse(&text, &known);
+        let chat_name = roll_meta::whatsapp::chat_name(
+            &chat.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(),
+            &dir.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(),
+        );
+        let mut dated = 0;
+        for s in &here {
+            let Some(sent) = parsed.files.get(&s.name.to_lowercase()) else { continue };
+            // A file sent as a document keeps its camera date.
+            if !matches!(s.date_source.as_deref(), Some("exif_original" | "quicktime" | "xmp" | "sidecar")) {
+                let local = sent.local.format("%Y-%m-%dT%H:%M:%S").to_string();
+                let utc = sent.local.and_utc().timestamp_millis() - tz.offset_for_local(sent.local) as i64 * 60_000;
+                let why = format!(
+                    "Sent by {} in the WhatsApp chat{} on {}.",
+                    sent.sender,
+                    chat_name.as_deref().map(|n| format!(" with {n}")).unwrap_or_default(),
+                    sent.local.format("%-d %b %Y at %H:%M")
+                );
+                let value = json!({"utc": utc, "local": local, "offset": null, "source": "chat", "conf": 0.95});
+                edits::set(
+                    c,
+                    None,
+                    s.id,
+                    &Change { field: "date", value, source: "import", source_ref: None, conf: Some(0.95), why: Some(why) },
+                )?;
+            }
+            crate::tags::add(c, s.id, "Source/WhatsApp", "import", None)?;
+            crate::tags::add(c, s.id, &format!("From/{}", sent.sender.replace('/', "-")), "import", None)?;
+            dated += 1;
+        }
+        if !here.is_empty() {
+            kind = "whatsapp";
+            let who = chat_name.as_deref().map(|n| format!("WhatsApp chat with {n}")).unwrap_or_else(|| "WhatsApp chat".into());
+            facts.push(format!("{who}: the chat gives the sending time and sender of {} of {} items.", dated, here.len()));
+        }
+    }
+
+    // Google Takeout: the JSON was applied while scanning.
+    let (json_dates, json_places): (i64, i64) = c.query_row(
+        "SELECT coalesce(sum(date_source = 'takeout'), 0), coalesce(sum(loc_source = 'takeout'), 0) FROM assets WHERE root_id = ?1 AND missing = 2",
+        [r.root_id],
+        |x| Ok((x.get(0)?, x.get(1)?)),
+    )?;
+    if json_dates + json_places > 0 && kind == "folder" {
+        kind = "takeout";
+        // Takeout times are instants: the place gives the zone.
+        let zoned: Vec<(i64, i64, f64, f64)> = {
+            let mut st = c.prepare(
+                "SELECT id, taken_utc, lat, lon FROM assets
+                 WHERE root_id = ?1 AND missing = 2 AND date_source = 'takeout' AND tz_offset IS NULL AND lat IS NOT NULL AND taken_utc IS NOT NULL",
+            )?;
+            st.query_map([r.root_id], |x| Ok((x.get(0)?, x.get(1)?, x.get(2)?, x.get(3)?)))?.collect::<Result<_, _>>()?
+        };
+        for (a, utc, lat, lon) in zoned {
+            if let Some(off) = roll_geo::tz::zone_at(lat, lon).and_then(|z| roll_geo::tz::offset_at_utc(&z, utc)) {
+                let local = chrono::DateTime::from_timestamp_millis(utc + off as i64 * 60_000).unwrap_or_default().naive_utc();
+                c.execute(
+                    "UPDATE assets SET taken_local = ?2, tz_offset = ?3, problems = problems & ~?4 WHERE id = ?1",
+                    params![a, local.format("%Y-%m-%dT%H:%M:%S").to_string(), off, problem::NO_OFFSET],
+                )?;
+            }
+        }
+        facts.push(format!("Google Takeout export: Google's data gives dates for {json_dates} and places for {json_places} items."));
+        // Album folders: everything below "Google Photos" except the year folders.
+        static YEAR_FOLDER: LazyLock<Regex> =
+            LazyLock::new(|| Regex::new(r"(?i)^(photos from \d{4}|fotos von \d{4}|untitled|archive|trash|bin)$").unwrap());
+        let mut albums: HashMap<String, Vec<i64>> = HashMap::new();
+        for s in &staged {
+            let segs: Vec<&str> = s.dir.split('/').collect();
+            let album = segs
+                .iter()
+                .position(|x| x.eq_ignore_ascii_case("google photos") || x.eq_ignore_ascii_case("google fotos"))
+                .and_then(|i| segs.get(i + 1));
+            if let Some(a) = album.filter(|a| !YEAR_FOLDER.is_match(a)) {
+                albums.entry(a.to_string()).or_default().push(s.id);
+            }
+        }
+        if !albums.is_empty() {
+            let mut list: Vec<(&String, &Vec<i64>)> = albums.iter().collect();
+            list.sort_by(|a, b| b.1.len().cmp(&a.1.len()).then(a.0.cmp(b.0)));
+            facts.push(format!(
+                "Albums, kept as Album tags: {}.",
+                list.iter().map(|(n, ids)| format!("{n} ({})", ids.len())).collect::<Vec<_>>().join(", ")
+            ));
+            for (album, ids) in &albums {
+                let tag = format!("Album/{}", album.replace('/', "-"));
+                for a in ids {
+                    // The same photo in a year folder gets the tag too.
+                    let same: Vec<i64> = {
+                        let mut st = c.prepare_cached(
+                            "SELECT b.id FROM assets a JOIN assets b ON b.size = a.size AND b.quick_hash = a.quick_hash AND b.root_id = a.root_id AND b.missing = 2
+                             WHERE a.id = ?1",
+                        )?;
+                        st.query_map([a], |x| x.get(0))?.collect::<Result<_, _>>()?
+                    };
+                    for b in same {
+                        crate::tags::add(c, b, &tag, "import", None)?;
+                    }
+                }
+            }
+        }
+    }
+    c.execute("UPDATE imports SET kind = ?2, facts = ?3 WHERE id = ?1", params![id, kind, json!(facts).to_string()])?;
+    Ok(())
+}
+
 /// Everything the Add photos steps show.
 pub fn info(c: &Connection, id: i64, now: i64, place: &PlaceOf) -> anyhow::Result<ImportInfo> {
     let r = row(c, id)?;
     let all = items(c, r.root_id)?;
     let left: HashSet<i64> = r.left_out.iter().copied().collect();
-    let exact = exact_copies(c, r.root_id)?;
-    let exact_set: HashSet<i64> = exact.iter().copied().collect();
+    let (exact, twins) = exact_copies(c, r.root_id)?;
+    let exact_set: HashSet<i64> = exact.iter().chain(&twins).copied().collect();
     let similar = similar_copies(c, &all, &exact_set)?;
     let pending: i64 =
         c.query_row("SELECT count(*) FROM assets WHERE root_id = ?1 AND missing = 2 AND thumb = 0", [r.root_id], |x| x.get(0))?;
@@ -390,6 +561,8 @@ pub fn info(c: &Connection, id: i64, now: i64, place: &PlaceOf) -> anyhow::Resul
         root_id: r.root_id as i32,
         source: r.source.clone(),
         state: r.state.clone(),
+        kind: r.kind.clone(),
+        facts: r.facts.clone(),
         name,
         custom_name: custom,
         count: all.len() as i32,
@@ -401,6 +574,7 @@ pub fn info(c: &Connection, id: i64, now: i64, place: &PlaceOf) -> anyhow::Resul
         formats: counts(all.iter().map(|i| i.format.to_uppercase())),
         exact: exact.iter().map(|i| *i as i32).collect(),
         similar: similar.iter().map(|i| *i as i32).collect(),
+        twins: twins.iter().map(|i| *i as i32).collect(),
         left_out: r.left_out.iter().map(|i| *i as i32).collect(),
         pending: pending as i32,
         date_sets: datefix::sets_in(c, now, Scope::Staged(r.root_id))?,
@@ -415,6 +589,16 @@ pub fn info(c: &Connection, id: i64, now: i64, place: &PlaceOf) -> anyhow::Resul
         dates_ok: r.dates_ok,
         places_ok: r.places_ok,
         ids: all.iter().map(|i| i.id as i32).collect(),
+        added: match r.batch_id {
+            Some(b) => {
+                let mut st = c.prepare(
+                    "SELECT asset_id FROM ops WHERE batch_id = ?1 AND kind IN ('copy', 'move') AND state = 'done'
+                       AND json_extract(payload, '$.sidecar') IS NULL ORDER BY seq",
+                )?;
+                st.query_map([b], |x| x.get::<_, i32>(0))?.collect::<Result<_, _>>()?
+            }
+            None => Vec::new(),
+        },
         batch_id: r.batch_id.map(|b| b as i32),
     })
 }
@@ -484,8 +668,10 @@ fn compute(c: &Connection, id: i64, opts: &ImportOptions, name: &str, write: boo
     };
     let all = items(c, r.root_id)?;
     let mut skip: HashSet<i64> = r.left_out.iter().copied().collect();
+    let (exact, twins) = exact_copies(c, r.root_id)?;
+    skip.extend(&twins);
     if opts.skip_known {
-        let exact: HashSet<i64> = exact_copies(c, r.root_id)?.into_iter().collect();
+        let exact: HashSet<i64> = exact.into_iter().collect();
         skip.extend(similar_copies(c, &all, &exact)?);
         skip.extend(exact);
     }
@@ -501,8 +687,14 @@ fn compute(c: &Connection, id: i64, opts: &ImportOptions, name: &str, write: boo
     let start = bringing.iter().filter_map(|i| i.local.clone()).min();
     let event_dir = planner::event_dir(name, start);
 
+    // Not as an event: items still unsorted wait in one folder named after
+    // the source, for Review and Organize to place later.
+    let waiting =
+        format!("Imported/{}", crate::template::safe_segment(&folder_name(Path::new(&r.source)).unwrap_or_else(|| name.to_string())));
+
     // Where each item goes: its category's folder when it is sorted as
-    // something other than a photo, else the event folder.
+    // something other than a photo (or always, when not added as an event),
+    // else the event folder.
     let mut event_ids = Vec::new();
     let mut unsorted = Vec::new();
     let mut dirs: Vec<(&Item, String)> = Vec::new();
@@ -510,13 +702,14 @@ fn compute(c: &Connection, id: i64, opts: &ImportOptions, name: &str, write: boo
         let key = i.category.as_deref().unwrap_or("unsorted");
         let photo = key == "photos" || planner::parent_of(&cats, key) == Some("photos");
         let decided = i.review >= 2 && key != "unsorted";
-        let dir = if decided && !photo {
+        let dir = if decided && (!photo || !opts.as_event) {
             planner::category_dir(&cats, key, i.local.clone(), sources.get(&i.id).cloned(), i.camera.clone())
         } else {
             None
         };
         match dir {
             Some(d) => dirs.push((i, d)),
+            None if !opts.as_event => dirs.push((i, waiting.clone())),
             None => {
                 event_ids.push(i.id);
                 if !(decided && photo) {
@@ -546,7 +739,11 @@ fn compute(c: &Connection, id: i64, opts: &ImportOptions, name: &str, write: boo
         st.query_map([r.root_id], |x| Ok((x.get(0)?, (x.get(1)?, x.get(2)?, x.get(3)?))))?.collect::<Result<_, _>>()?
     };
     let sidecars: HashMap<i64, Vec<(i64, String, i64)>> = {
-        let mut st = c.prepare("SELECT asset_id, id, rel_path, size FROM sidecars WHERE root_id = ?1 AND asset_id IS NOT NULL")?;
+        // Takeout JSON stays behind when its values are written into the files.
+        let mut st = c.prepare(&format!(
+            "SELECT asset_id, id, rel_path, size FROM sidecars WHERE root_id = ?1 AND asset_id IS NOT NULL {}",
+            if write { "AND kind != 'takeout'" } else { "" }
+        ))?;
         let mut m: HashMap<i64, Vec<(i64, String, i64)>> = HashMap::new();
         for x in st.query_map([r.root_id], |x| Ok((x.get::<_, i64>(0)?, x.get(1)?, x.get(2)?, x.get(3)?)))? {
             let (a, sid, rel, size) = x?;
@@ -685,7 +882,11 @@ pub fn begin(c: &Connection, id: i64, opts: &ImportOptions, name: &str, place: O
         );
     }
     let verb = if opts.mode == "move" { "Move" } else { "Copy" };
-    let label = format!("{verb} {} into {name}", plural(k.plan.files as usize));
+    let label = if opts.as_event {
+        format!("{verb} {} into {name}", plural(k.plan.files as usize))
+    } else {
+        format!("{verb} {} from {}", plural(k.plan.files as usize), folder_name(Path::new(&r.source)).unwrap_or_else(|| r.source.clone()))
+    };
     c.execute(
         "INSERT INTO batches (kind, label, state, created_at, summary) VALUES ('import', ?1, 'applying', ?2, ?3)",
         params![label, now_ms(), serde_json::to_string(&k.plan)?],

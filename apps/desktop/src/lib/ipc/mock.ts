@@ -434,6 +434,7 @@ interface MockImport {
   source: string;
   state: 'checking' | 'applied';
   name: string | null;
+  added: number[];
   datesOk: boolean;
   placesOk: boolean;
   leftOut: number[];
@@ -515,6 +516,8 @@ function importInfo(imp: MockImport): ImportInfo {
     root_id: imp.root,
     source: imp.source,
     state: imp.state,
+    kind: 'folder',
+    facts: [],
     name: imp.name ?? proposed,
     custom_name: imp.name != null,
     count: list.length,
@@ -526,6 +529,7 @@ function importInfo(imp: MockImport): ImportInfo {
     formats: [{ label: 'JPEG', count: list.length }],
     exact,
     similar: [],
+    twins: [],
     left_out: [...imp.leftOut],
     pending: 0,
     date_sets: [
@@ -563,6 +567,7 @@ function importInfo(imp: MockImport): ImportInfo {
     dates_ok: imp.datesOk,
     places_ok: imp.placesOk,
     ids: list.map((a) => a.id),
+    added: imp.added,
     batch_id: imp.batch,
   };
 }
@@ -1248,7 +1253,7 @@ export const mockApi: Api = {
     const root = 100 + id;
     const card = makeCard(root);
     staged = [...staged, ...card];
-    imports = [{ id, root, source, state: 'checking', name: null, datesOk: false, placesOk: false, leftOut: [], batch: null, orig: new Map(card.map((a) => [a.id, a.local])) }, ...imports];
+    imports = [{ id, root, source, state: 'checking', name: null, added: [], datesOk: false, placesOk: false, leftOut: [], batch: null, orig: new Map(card.map((a) => [a.id, a.local])) }, ...imports];
     emit('changed', 'imports');
     return id;
   },
@@ -1318,6 +1323,7 @@ export const mockApi: Api = {
     pushBatch(batch, 'import', `${opts.mode === 'move' ? 'Move' : 'Copy'} ${plural(moved.length)} into ${name}`, moved.length);
     imp.state = 'applied';
     imp.batch = batch;
+    imp.added = moved.map((a) => a.id);
     customUndo.set(batch, () => {
       for (const a of moved) {
         Object.assign(a, before.get(a.id));
@@ -1328,6 +1334,7 @@ export const mockApi: Api = {
       mockEvents = mockEvents.filter((e) => e !== ev);
       imp.state = 'checking';
       imp.batch = null;
+      imp.added = [];
       emit('changed', 'imports');
     });
     emit('changed', 'assets');

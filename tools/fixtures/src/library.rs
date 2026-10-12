@@ -267,6 +267,93 @@ pub fn generate(g: &mut Gen) -> Result<()> {
     duplicates_and_paths(g)?;
     hike(g)?;
     camera_card(g)?;
+    exports(g)?;
+    Ok(())
+}
+
+/// Exports outside the library for Add photos: an Android WhatsApp chat
+/// (day-first dates, German), an iPhone one (month-first, 12-hour clock),
+/// and a Google Takeout export whose album repeats photos of a year folder.
+fn exports(g: &mut Gen) -> Result<()> {
+    // Android: `IMG-YYYYMMDD-WA0001.jpg`, no EXIF, times only in the chat.
+    let mut chat = String::from("12.06.21, 09:58 - Nachrichten und Anrufe sind Ende-zu-Ende-verschlüsselt.\n");
+    for k in 0..6u32 {
+        let t = lt(2021, 6, 12 + k / 3, 10 + k, 5 * k, 0);
+        let name = format!("IMG-{}-WA{:04}.jpg", t.format("%Y%m%d"), k + 1);
+        let rel = format!("whatsapp-android/{name}");
+        g.plain_jpeg(&rel, &pixels::scene(1600, 1200, 9700 + k as u64, 0), 80, None)?;
+        let sender = if k % 2 == 0 { "Alice" } else { "Ben" };
+        chat.push_str(&format!("{}, {} - {sender}: {name} (Datei angehängt)\n", t.format("%d.%m.%y"), t.format("%H:%M")));
+        chat.push_str(&format!("{}, {} - {sender}: Schön hier\n", t.format("%d.%m.%y"), t.format("%H:%M")));
+        g.push(Item {
+            path: rel,
+            kind: "photo",
+            true_local: Some(iso(t)),
+            tags: vec!["Source/WhatsApp".into(), format!("From/{sender}")],
+            flags: vec!["whatsapp_export", "no_metadata"],
+            ..Default::default()
+        });
+    }
+    g.write("whatsapp-android/WhatsApp Chat mit Alice.txt", chat.as_bytes())?;
+
+    // iPhone: `_chat.txt` in a folder named after the chat; 3/7/21 is
+    // 7 March or 3 July only by the file names.
+    let dir = "whatsapp-iphone/WhatsApp Chat - Bob";
+    let mut chat = String::from("\u{feff}[7/3/21, 6:00:00 PM] Bob: \u{200e}Messages and calls are end-to-end encrypted.\n");
+    for k in 0..4u32 {
+        let t = lt(2021, 7, 3, 18, 20 + k, 11 + k);
+        let name = format!("{:08}-PHOTO-{}.jpg", k + 3, t.format("%Y-%m-%d-%H-%M-%S"));
+        let rel = format!("{dir}/{name}");
+        g.plain_jpeg(&rel, &pixels::scene(1200, 1600, 9720 + k as u64, 0), 80, None)?;
+        chat.push_str(&format!("[{}, {}] Bob: \u{200e}<attached: {name}>\n", t.format("%-m/%-d/%y"), t.format("%-I:%M:%S %p")));
+        g.push(Item {
+            path: rel,
+            kind: "photo",
+            true_local: Some(iso(t)),
+            tags: vec!["Source/WhatsApp".into(), "From/Bob".into()],
+            flags: vec!["whatsapp_export", "no_metadata"],
+            ..Default::default()
+        });
+    }
+    g.write(&format!("{dir}/_chat.txt"), chat.as_bytes())?;
+
+    // Takeout: five Rome photos in the year folder, three of them again in
+    // the album folder. EXIF is stripped; the JSON has the instants (UTC).
+    let base = "takeout-export/Takeout/Google Photos";
+    for k in 0..5u32 {
+        let t = lt(2021, 9, 18, 11, 10 * k, 0);
+        let utc = to_utc(t, 120);
+        let name = format!("PXL_20210918_{}.jpg", utc.format("%H%M%S000"));
+        let img = pixels::scene(1512, 2016, 9740 + k as u64, 0);
+        let (lat, lon) = (41.8902 + k as f64 * 0.002, 12.4922);
+        let json = serde_json::json!({
+            "title": name, "description": "",
+            "photoTakenTime": {"timestamp": utc.timestamp().to_string(), "formatted": ""},
+            "geoData": {"latitude": lat, "longitude": lon, "altitude": 30.0},
+            "geoDataExif": {"latitude": lat, "longitude": lon, "altitude": 30.0},
+        });
+        let mut folders = vec!["Photos from 2021"];
+        if k < 3 {
+            folders.push("Rome trip");
+        }
+        for f in folders {
+            let rel = format!("{base}/{f}/{name}");
+            g.plain_jpeg(&rel, &img, 85, None)?;
+            g.write(&format!("{base}/{f}/{name}.supplemental-metadata.json"), serde_json::to_string_pretty(&json)?.as_bytes())?;
+            g.push(Item {
+                path: rel,
+                kind: "photo",
+                category: Some("photos"),
+                true_local: Some(iso(t)),
+                true_offset_min: Some(120),
+                true_gps: Some([lat, lon]),
+                tags: if k < 3 { vec!["Album/Rome trip".into()] } else { vec![] },
+                flags: vec!["takeout_export", "no_metadata"],
+                ..Default::default()
+            });
+        }
+    }
+    g.write(&format!("{base}/Rome trip/metadata.json"), br#"{"title": "Rome trip", "description": "", "access": "protected"}"#)?;
     Ok(())
 }
 

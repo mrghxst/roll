@@ -12,4 +12,9 @@ skip_known: boolean,
 /**
  * The library folder to add to; the first one when empty.
  */
-root_id: number | null, };
+root_id: number | null, 
+/**
+ * Add as one event with its own folder (a card, a trip). Off for
+ * exports that span years: items go to their category folders.
+ */
+as_event: boolean, };

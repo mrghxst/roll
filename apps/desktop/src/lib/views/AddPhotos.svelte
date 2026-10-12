@@ -33,11 +33,12 @@
   let planError = $state<string | null>(null);
   let picked = $state<number[]>([]);
   let nameDraft = $state('');
-  let opts = $state<ImportOptions>({ mode: 'copy', skip_known: true, root_id: null });
+  let opts = $state<ImportOptions>({ mode: 'copy', skip_known: true, root_id: null, as_event: true });
   let busy = $state(false);
 
   const info = $derived(list.find((i) => i.id === app.importing) ?? null);
   const known = $derived(new Set([...(info?.exact ?? []), ...(info?.similar ?? [])]));
+  const twins = $derived(new Set(info?.twins ?? []));
   const leftOut = $derived(new Set(info?.left_out ?? []));
   const applying = $derived(app.activeJobs.some((j) => j.kind === 'apply'));
 
@@ -66,6 +67,8 @@
       step = i.state === 'applied' ? 'add' : 'source';
       picked = [];
       nameDraft = i.name;
+      // Exports span years: not one event unless the owner says so.
+      opts.as_event = i.kind === 'folder';
     } else if (!i.custom_name && untrack(() => nameDraft) === proposed) {
       nameDraft = i.name;
     }
@@ -233,9 +236,8 @@
     }, `${opts.mode === 'move' ? 'Moving' : 'Copying'} ${plural(plan?.files ?? 0, 'item')} into ${i.name}`);
   }
 
-  function showEvent(i: ImportInfo) {
-    const tag = `Event/${i.name.replaceAll('/', '-')}`;
-    app.go('timeline', { key: `tag:${tag}`, label: i.name, query: { tags: [tag] } });
+  function showAdded(i: ImportInfo) {
+    app.go('timeline', { key: `import:${i.id}`, label: `Added from ${i.source}`, query: { ids: i.added } });
   }
 
   const STEPS: { key: Step; label: string }[] = [
@@ -304,7 +306,18 @@
           <dt>Formats</dt>
           <dd>{i.formats.map((c) => `${c.label} (${n(c.count)})`).join(', ')}</dd>
         </dl>
+        {#if i.facts.length}
+          <div class="note" data-testid="facts">
+            {#each i.facts as f (f)}<p>{f}</p>{/each}
+          </div>
+        {/if}
         {#if i.pending}<p class="muted">Making thumbnails: {n(i.pending)} left.</p>{/if}
+        {#if twins.size}
+          <p class="muted" data-testid="twins">
+            {plural(twins.size, 'item')}
+            {twins.size === 1 ? 'appears' : 'appear'} twice in the folder{i.kind === 'takeout' ? ' (album folders repeat photos)' : ''}; one copy of each is added.
+          </p>
+        {/if}
         {#if known.size}
           <div class="note" data-testid="known">
             <p>
@@ -334,14 +347,14 @@
             <button
               class="s"
               class:picked={picked.includes(id)}
-              class:out={leftOut.has(id) || (opts.skip_known && known.has(id))}
+              class:out={leftOut.has(id) || twins.has(id) || (opts.skip_known && known.has(id))}
               onclick={() => togglePick(id)}
               ondblclick={() => viewer.open(Uint32Array.from(i.ids), k, null)}
               aria-pressed={picked.includes(id)}
               aria-label="Item {k + 1}"
             >
               <img src={thumb(id)} alt="" loading="lazy" />
-              {#if leftOut.has(id)}<span class="badge">Left out</span>{:else if known.has(id)}<span class="badge">In library</span>{/if}
+              {#if leftOut.has(id)}<span class="badge">Left out</span>{:else if twins.has(id)}<span class="badge">Repeat</span>{:else if known.has(id)}<span class="badge">In library</span>{/if}
             </button>
           {/each}
         </div>
@@ -462,6 +475,18 @@
           >
         </div>
       {:else if step === 'event'}
+        <div class="opts">
+          <Switch label="Add as one event" bind:checked={opts.as_event} />
+          <span>Add as one event</span>
+        </div>
+        {#if !opts.as_event}
+          <p class="muted">
+            Items go to their category folders. Items not sorted yet wait in
+            <span class="mono">Imported/{i.source.split(/[\/]/).filter(Boolean).pop()}</span> until you review them; Events finds the trips and
+            days in them later.
+          </p>
+          <p>Sorted as: {i.categories.map((c) => `${c.label} ${n(c.count)}`).join(', ')}.</p>
+        {:else}
         <label class="field">
           <span>Event name</span>
           <Input bind:value={nameDraft} aria-label="Event name" onblur={() => void saveName(i)} onkeydown={(e: KeyboardEvent) => e.key === 'Enter' && void saveName(i)} />
@@ -477,15 +502,16 @@
         {#if i.from_local && Date.parse(`${i.to_local}Z`) - Date.parse(`${i.from_local}Z`) > 14 * 86_400_000}
           <p class="muted">These items span more than two weeks. After adding them you can split the event in Events.</p>
         {/if}
+        {/if}
       {:else if i.state === 'applied'}
         <div class="card" data-testid="import-done">
-          <p><strong>{applying ? `Adding to ${i.name}…` : `Added to ${i.name}.`}</strong></p>
+          <p><strong>{applying ? 'Adding…' : `Added ${plural(i.added.length, 'item')}${opts.as_event ? ` to ${i.name}` : ''}.`}</strong></p>
           <p class="muted">
             {applying ? 'Copies are checked against the originals as they are made.' : 'The batch is in History; undo takes the copies back out.'}
             {i.count ? `${plural(i.count, 'item')} stayed in the source.` : ''}
           </p>
           <div class="row">
-            <Button variant="primary" disabled={applying} onclick={() => showEvent(i)}>Show them</Button>
+            <Button variant="primary" disabled={applying} onclick={() => showAdded(i)}>Show them</Button>
             {#if i.batch_id != null}<Button disabled={applying} onclick={() => void run(() => api.undo(i.batch_id!), 'Taking the items back out')}><Undo2 size={14} strokeWidth={1.5} /> Undo</Button>{/if}
             <Button variant="ghost" disabled={applying} onclick={() => void run(() => api.importClose(i.id))} data-testid="close-import">Close</Button>
           </div>
@@ -540,7 +566,7 @@
         <div class="foot">
           <Button variant="ghost" onclick={() => void run(() => api.importClose(i.id))}><X size={14} strokeWidth={1.5} /> Stop and forget this folder</Button>
           <Button variant="primary" disabled={busy || !plan || !i.dates_ok || !i.places_ok} onclick={() => void apply(i)} data-testid="apply-import">
-            {opts.mode === 'move' ? 'Move' : 'Copy'} {plan ? plural(plan.files, 'item') : ''} into {i.name}
+            {opts.mode === 'move' ? 'Move' : 'Copy'} {plan ? plural(plan.files, 'item') : ''}{opts.as_event ? ` into ${i.name}` : ' into the library'}
           </Button>
         </div>
       {/if}

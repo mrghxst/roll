@@ -197,4 +197,18 @@ questions. One line of reason each. Newest at the bottom of each section.
   original byte for byte.** A copy changed since goes to the Recycle Bin.
   An applied import keeps its staging root after closing, so the batch
   stays undoable; undo reopens it for checking.
-
+- **WhatsApp exports: the chat text is the date source.** Media in a chat
+  export has no capture date; the chat line that attached it gives the
+  sending time (to the minute on Android, the second on iPhone), recorded
+  as a date edit with source `chat` and the sender in the reason. The date
+  order (day or month first) comes from values above 12, else from the
+  dates in the file names. Senders become `From/<name>` tags, so the owner
+  can find what a person sent; a file sent as a document keeps its camera
+  date.
+- **Takeout JSON values are written into the copies** (dates in the zone
+  of the JSON place, GPS), so the JSON files are not copied along; without
+  ExifTool they are, so nothing is lost.
+- **Exports are not one event by default.** A Takeout or chat export spans
+  years: items sorted as something go to their category folders, items not
+  sorted yet wait in `Imported/<folder>` for Review and Organize. The
+  owner can still add any import as one event.

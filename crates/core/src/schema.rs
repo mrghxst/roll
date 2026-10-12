@@ -1,6 +1,6 @@
 //! Database migrations. Append only: never edit a shipped migration.
 
-pub const MIGRATIONS: &[&str] = &[M1, M2, M3, M4, M5, M6, M7];
+pub const MIGRATIONS: &[&str] = &[M1, M2, M3, M4, M5, M6, M7, M8];
 
 const M1: &str = r#"
 CREATE TABLE settings (
@@ -347,6 +347,12 @@ CREATE TABLE event_undo (
   assets TEXT NOT NULL,
   PRIMARY KEY (batch_id, event_id)
 );
+"#;
+
+/// What kind of export an import is, and what Roll found in it.
+const M8: &str = r#"
+ALTER TABLE imports ADD COLUMN kind TEXT NOT NULL DEFAULT 'folder';
+ALTER TABLE imports ADD COLUMN facts TEXT NOT NULL DEFAULT '[]';
 "#;
 
 /// Add photos: one row per import, tied to its staging root.

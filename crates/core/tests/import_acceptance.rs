@@ -62,8 +62,121 @@ fn wait_idle(lib: &Library) {
 /// name, path, local time, offset, lat, lon, missing
 type Imported = (String, String, String, Option<i64>, Option<f64>, Option<f64>, i64);
 
+/// The truth for manifest items under `prefix`, by file name.
+fn truth_under(manifest: &Value, prefix: &str) -> HashMap<String, Value> {
+    manifest["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|i| i["path"].as_str().unwrap().starts_with(prefix) && i["kind"] == "photo")
+        .map(|i| (i["path"].as_str().unwrap().rsplit('/').next().unwrap().to_string(), i.clone()))
+        .collect()
+}
+
+/// (name, local time, offset, has GPS) of the staged items of an import.
+fn staged(lib: &Library, root: i32) -> Vec<(String, String, Option<i64>, bool, i64)> {
+    let c = lib.db.read();
+    let mut st = c
+        .prepare("SELECT name, taken_local, tz_offset, lat IS NOT NULL, id FROM assets WHERE root_id = ?1 AND missing = 2 ORDER BY name")
+        .unwrap();
+    st.query_map([root], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?))).unwrap().collect::<Result<_, _>>().unwrap()
+}
+
 fn local(s: &str) -> NaiveDateTime {
     NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S").unwrap()
+}
+
+#[test]
+fn exports_bring_their_dates() {
+    let fx = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../fixtures-out");
+    let Ok(manifest) = std::fs::read_to_string(fx.join("manifest.json")) else {
+        eprintln!("fixtures-out not found; skipping");
+        return;
+    };
+    let manifest: Value = serde_json::from_str(&manifest).unwrap();
+    if !fx.join("whatsapp-android").exists() {
+        eprintln!("fixtures-out predates the export fixtures; skipping");
+        return;
+    }
+    let tmp = tempfile::tempdir().unwrap();
+    let (data, lib_dir) = (tmp.path().join("data"), tmp.path().join("Archive"));
+    std::fs::create_dir_all(&lib_dir).unwrap();
+    for d in ["whatsapp-android", "whatsapp-iphone", "takeout-export"] {
+        copy_dir(&fx.join(d), &tmp.path().join(d));
+    }
+    let lib = Library::open(&data, Arc::new(|_| {})).unwrap();
+    lib.add_root(&lib_dir).unwrap();
+    lib.start();
+    wait_idle(&lib);
+    let opts = ImportOptions { as_event: false, ..Default::default() };
+    let tags_of = |id: i64| roll_core::tags::of_asset(&lib.db.read(), id).unwrap();
+
+    // WhatsApp, Android and iPhone: the chat gives the times and senders.
+    for (dir, chat, n) in [("whatsapp-android", "WhatsApp chat with Alice", 6), ("whatsapp-iphone", "WhatsApp chat with Bob", 4)] {
+        let truth = truth_under(&manifest, dir);
+        let id = lib.import_start(&tmp.path().join(dir)).unwrap();
+        wait_idle(&lib);
+        let info = lib.import_info(id).unwrap();
+        assert_eq!((info.kind.as_str(), info.count), ("whatsapp", n), "{info:?}");
+        assert!(info.facts.iter().any(|f| f.starts_with(chat) && f.contains(&format!("{n} of {n}"))), "{:?}", info.facts);
+        for (name, l, _, _, asset) in staged(&lib, info.root_id) {
+            let t = &truth[&name];
+            assert_eq!(l, t["true_local"].as_str().unwrap(), "{name}");
+            let tags = tags_of(asset);
+            for want in t["tags"].as_array().unwrap() {
+                assert!(tags.contains(&want.as_str().unwrap().to_string()), "{name}: {tags:?}");
+            }
+        }
+        lib.import_mark(id, Some(true), Some(true)).unwrap();
+        let plan = lib.import_plan(id, &opts).unwrap();
+        assert_eq!(plan.files, n);
+        assert!(plan.folders.iter().all(|f| f.path.starts_with("Imported/")), "{:?}", plan.folders);
+        lib.import_apply(id, &opts).unwrap();
+        wait_idle(&lib);
+        if lib.exiftool.is_some() {
+            let (name, t) = truth.iter().next().unwrap();
+            let file = walkdir::WalkDir::new(&lib_dir).into_iter().flatten().find(|e| e.file_name().to_string_lossy() == *name).unwrap();
+            let m = roll_meta::MetaReader::default().read(file.path()).unwrap();
+            assert_eq!(m.taken.unwrap().local, local(t["true_local"].as_str().unwrap()), "{name}");
+            assert!(m.tags.iter().any(|x| x.starts_with("From/")), "{:?}", m.tags);
+        }
+    }
+
+    // Takeout: JSON dates in the place's time zone, album repeats added once.
+    let truth = truth_under(&manifest, "takeout-export");
+    let id = lib.import_start(&tmp.path().join("takeout-export")).unwrap();
+    wait_idle(&lib);
+    let info = lib.import_info(id).unwrap();
+    assert_eq!((info.kind.as_str(), info.count, info.twins.len()), ("takeout", 8, 3), "{info:?}");
+    assert!(info.facts.iter().any(|f| f.contains("Rome trip (3)")), "{:?}", info.facts);
+    for (name, l, off, gps, asset) in staged(&lib, info.root_id) {
+        let t = &truth[&name];
+        assert_eq!((l.as_str(), off, gps), (t["true_local"].as_str().unwrap(), Some(120), true), "{name}");
+        let album = tags_of(asset).contains(&"Album/Rome trip".to_string());
+        assert_eq!(album, !t["tags"].as_array().unwrap().is_empty(), "{name}");
+    }
+    lib.import_mark(id, Some(true), Some(true)).unwrap();
+    let plan = lib.import_plan(id, &opts).unwrap();
+    assert_eq!((plan.files, plan.skipped), (5, 3), "{plan:?}");
+    lib.import_apply(id, &opts).unwrap();
+    wait_idle(&lib);
+    let copied: Vec<String> = walkdir::WalkDir::new(&lib_dir)
+        .into_iter()
+        .flatten()
+        .filter(|e| e.file_type().is_file() && e.file_name().to_string_lossy().starts_with("PXL_"))
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .collect();
+    assert_eq!(copied.iter().filter(|n| n.ends_with(".jpg")).count(), 5, "{copied:?}");
+    if lib.exiftool.is_some() {
+        assert!(!copied.iter().any(|n| n.ends_with(".json")), "the JSON stays behind once written: {copied:?}");
+        let file =
+            walkdir::WalkDir::new(&lib_dir).into_iter().flatten().find(|e| e.file_name().to_string_lossy().ends_with(".jpg")).unwrap();
+        let name = file.file_name().to_string_lossy().into_owned();
+        let m = roll_meta::MetaReader::default().read(file.path()).unwrap();
+        let t = m.taken.unwrap();
+        assert_eq!((t.local, t.offset_min), (local(truth[&name]["true_local"].as_str().unwrap()), Some(120)), "{name}");
+        assert!(m.gps.is_some(), "{name}");
+    }
 }
 
 #[test]

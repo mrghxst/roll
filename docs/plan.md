@@ -121,7 +121,14 @@ Milestones from PROMPT.md section 10. `[x]` done, `[~]` partly done,
       a camera card or phone that mounts with a DCIM folder offers Add
       photos; a mini map of the placed items
 - [ ] Add photos: Immich album (with the Immich work)
-- [ ] Takeout and WhatsApp importers
+- [x] Takeout and WhatsApp importers, through Add photos: a chat export
+      (Android or iPhone, either date order, 12- or 24-hour clock) gives
+      each file its sending time and sender (`Source/WhatsApp`,
+      `From/<name>`); a Takeout export gets its JSON dates in the place's
+      time zone, `Album/<name>` tags, and album repeats added once; both
+      are written into the copies. Exports are not one event by default:
+      sorted items go to their category folders, the rest wait in
+      `Imported/<folder>`
 - [ ] Onboarding pass, accessibility, Windows installer, user docs
 ## M7 Later
 

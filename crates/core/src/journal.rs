@@ -143,18 +143,24 @@ pub fn meta_edit(c: &Connection, asset: i64) -> rusqlite::Result<(MetaEdit, Medi
         [asset],
         |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?, r.get(6)?, r.get(7)?, r.get(8)?, r.get(9)?)),
     )?;
+    // Dates and places from Google Takeout JSON are not in the file yet.
+    let (date_from_json, place_from_json): (bool, bool) = c.query_row(
+        "SELECT coalesce(date_source = 'takeout', 0), coalesce(loc_source = 'takeout', 0) FROM assets WHERE id = ?1",
+        [asset],
+        |r| Ok((r.get(0)?, r.get(1)?)),
+    )?;
     let tags = crate::tags::of_asset(c, asset)?;
     let mut e = MetaEdit::default();
     if !tags.is_empty() || edited("tags")? || edited("category")? || edited("favorite")? || edited("private")? {
         e.tags = Some(tags);
     }
-    if edited("date")? {
+    if edited("date")? || date_from_json {
         e.taken = local
             .as_deref()
             .and_then(|l| chrono::NaiveDateTime::parse_from_str(l, "%Y-%m-%dT%H:%M:%S").ok())
             .map(|l| Taken::new(l, offset.map(|o| o as i32), DateSource::ExifOriginal));
     }
-    if edited("location")? {
+    if edited("location")? || place_from_json {
         e.gps = Some(lat.zip(lon).map(|(lat, lon)| Gps { lat, lon, alt, accuracy_m: acc }));
     }
     if rating > 0 || edited("rating")? {

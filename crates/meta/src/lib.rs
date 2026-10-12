@@ -12,6 +12,7 @@ pub mod quicktime;
 pub mod read;
 pub mod tags;
 pub mod takeout;
+pub mod whatsapp;
 pub mod write;
 pub mod xmp;
 

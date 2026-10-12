@@ -51,7 +51,7 @@ fn main() -> Result<()> {
     if library {
         let ffmpeg = find_ffmpeg().context("FFmpeg was not found. Set ROLL_FFMPEG or add it to PATH.")?;
         let exiftool = roll_meta::exiftool::locate().context("ExifTool was not found. Set ROLL_EXIFTOOL or add it to PATH.")?;
-        for sub in ["library", "location-history", "camera-card"] {
+        for sub in ["library", "location-history", "camera-card", "whatsapp-android", "whatsapp-iphone", "takeout-export"] {
             let p = out.join(sub);
             if p.exists() {
                 clear_readonly(&p);

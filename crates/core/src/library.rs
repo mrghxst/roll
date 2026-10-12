@@ -174,6 +174,12 @@ impl Library {
                 };
                 let (report, touched) = scan::scan_root(&self.db, *root_id, &root, &self.tz, !first, &progress)?;
                 groups::rebuild(&self.db, *root_id)?;
+                // An export being added: read what its chats and JSON say.
+                let import: Option<i64> =
+                    self.db.read().query_row("SELECT id FROM imports WHERE root_id = ?1", [root_id], |r| r.get(0)).optional()?;
+                if let Some(i) = import {
+                    self.db.tx_any(|tx| crate::import::prepare(tx, i, &self.tz))?;
+                }
                 classify::run(&self.db.write(), Some(&touched))?;
                 crate::privacy::guard_descriptions(&self.db.write(), Some(&touched))?;
                 self.reindex(&touched);

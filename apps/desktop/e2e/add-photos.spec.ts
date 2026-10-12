@@ -31,7 +31,7 @@ test('a camera card becomes an event: dates, places, then copy', async ({ page }
   await expect(page.getByTestId('import-plan')).toContainText('40 files');
   await expect(page.getByTestId('import-plan')).toContainText('2022/2022-05 May 2022 Lisbon');
   await page.getByTestId('apply-import').click();
-  await expect(page.getByTestId('import-done')).toContainText('Added to May 2022 Lisbon');
+  await expect(page.getByTestId('import-done')).toContainText('Added 40 items to May 2022 Lisbon');
 
   // The items are in the library under their event, and undo takes them out.
   await page.getByRole('button', { name: 'Show them' }).click();

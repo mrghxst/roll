@@ -60,7 +60,7 @@ pub fn sync(db: &Db, root_id: i64, root: &Path, found: &[Found], tz: &dyn TzGues
         for f in found {
             let dir = rel_dir(&f.rel);
             if !by_dir.contains_key(&dir) {
-                let mut st = tx.prepare_cached("SELECT id, name FROM assets WHERE root_id = ?1 AND dir = ?2 AND missing = 0")?;
+                let mut st = tx.prepare_cached("SELECT id, name FROM assets WHERE root_id = ?1 AND dir = ?2 AND missing != 1")?;
                 let names = st.query_map(params![root_id, dir], |r| Ok((r.get(0)?, r.get(1)?)))?.collect::<Result<Vec<_>, _>>()?;
                 by_dir.insert(dir.clone(), names);
             }

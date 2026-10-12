@@ -13,6 +13,16 @@ root_id: number, source: string,
  */
 state: string, 
 /**
+ * "folder", "takeout" (a Google Takeout export) or "whatsapp" (a chat
+ * export).
+ */
+kind: string, 
+/**
+ * What Roll read from the export: "Dates from the chat for 50 of 52
+ * items."
+ */
+facts: Array<string>, 
+/**
  * The event name: the owner's, or proposed from the folder name, or
  * "{Month YYYY} {Place}".
  */
@@ -25,6 +35,10 @@ exact: Array<number>,
  * Look like archive items that are at least as large (dHash).
  */
 similar: Array<number>, 
+/**
+ * Repeats of other items in the folder; one of each is added.
+ */
+twins: Array<number>, 
 /**
  * Items the owner left out.
  */
@@ -53,4 +67,8 @@ categories: Array<Count>, dates_ok: boolean, places_ok: boolean,
 /**
  * Every item to bring in, in time order.
  */
-ids: Array<number>, batch_id: number | null, };
+ids: Array<number>, 
+/**
+ * Items the applied batch brought into the library.
+ */
+added: Array<number>, batch_id: number | null, };
