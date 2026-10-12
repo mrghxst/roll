@@ -164,3 +164,8 @@ questions. One line of reason each. Newest at the bottom of each section.
   with `<<` fillers) counts, because OCR often loses the second line.
 - **Private items move only after review** (review state 3, which a
   manual category sets). The plan counts them as "Private, not reviewed".
+- **One WebP encode runs before any parallel ones.** libwebp picks its
+  encoder routines on first use and, on Windows, does so without a lock;
+  threads encoding at the same moment could run on pointers another thread
+  was rewriting (a crash in `VP8PutBit`). A `Once` warm-up in
+  `roll_media::thumb::webp` finishes that setup first.

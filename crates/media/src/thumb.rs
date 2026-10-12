@@ -30,6 +30,16 @@ pub fn thumb_size(w: u32, h: u32) -> (u32, u32) {
 }
 
 pub fn webp(img: &RgbImage, quality: f32) -> Vec<u8> {
+    // libwebp sets up its encoder routines (function pointers chosen by
+    // CPU) on first use, without a lock on Windows. Encodes starting on
+    // several threads at once could run with pointers another thread is
+    // rewriting, which crashed in VP8PutBit about once in 50 test runs.
+    // One encode before any parallel ones finishes the setup.
+    static READY: std::sync::Once = std::sync::Once::new();
+    READY.call_once(|| {
+        let warm = RgbImage::from_pixel(64, 48, image::Rgb([128, 96, 64]));
+        let _ = webp::Encoder::from_rgb(warm.as_raw(), 64, 48).encode(quality);
+    });
     webp::Encoder::from_rgb(img.as_raw(), img.width(), img.height()).encode(quality).to_vec()
 }
 

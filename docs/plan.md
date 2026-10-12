@@ -45,10 +45,10 @@ Milestones from PROMPT.md section 10. `[x]` done, `[~]` partly done,
 - [x] Explorer check through the Windows property system (docs/checks.md)
 - [ ] Photos app check by hand (docs/checks.md has the steps)
 - [ ] Immich round trip (needs Docker; moved to M6 with the Immich work)
-- [ ] Rare access violation in the acceptance test during thumbnailing
-      (about 1 run in 15, not reproduced in isolation); under investigation.
-      The test logs a backtrace on a fault, and the app writes
-      `logs/crash-<ms>.txt` for any unhandled native exception.
+- [x] Rare access violation during thumbnailing: libwebp's encoder setup
+      races on Windows (no lock in `WEBP_DSP_INIT`); one warm-up encode
+      before parallel use fixes it. Found with the test's fault handler
+      under 4× parallel load (1 in about 50 runs before, 0 in 88 after).
 
 ## M3 Dates, places, map
 
