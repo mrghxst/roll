@@ -31,7 +31,8 @@ test('online map tiles load only after they are turned on', async ({ page }) => 
   await page.getByRole('button', { name: 'Network', exact: true }).click();
   await page.getByRole('switch', { name: 'Online map tiles' }).click();
   await page.getByTestId('nav-map').click();
-  await expect.poll(hasDetail).toBe(true);
+  // The map is built again on return; without a GPU the globe takes a while.
+  await expect.poll(hasDetail, { timeout: 20_000 }).toBe(true);
   await expect.poll(() => requests.some((u) => u.endsWith('/planet'))).toBe(true);
   // Detail sits below the items: the dots stay on top.
   const order = await page.evaluate(() => {
@@ -46,5 +47,5 @@ test('online map tiles load only after they are turned on', async ({ page }) => 
   await page.getByRole('button', { name: 'Network', exact: true }).click();
   await page.getByRole('switch', { name: 'Online map tiles' }).click();
   await page.getByTestId('nav-map').click();
-  await expect.poll(hasDetail).toBe(false);
+  await expect.poll(hasDetail, { timeout: 20_000 }).toBe(false);
 });
