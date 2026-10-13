@@ -5,7 +5,8 @@
   import { onDestroy, onMount, untrack } from 'svelte';
   import { api } from '../ipc/api';
   import type { MapPoints } from '../ipc/mappoints';
-  import { applyPalette, baseStyle, loadCountries, metresPerPixel, palette, ring } from './basemap';
+  import { app } from '../state/app.svelte';
+  import { applyPalette, baseStyle, loadCountries, metresPerPixel, palette, ring, setDetail } from './basemap';
   import { maplibre } from './maplibre';
 
   type Props = {
@@ -183,6 +184,13 @@
       (map?.getSource('rings') as GeoJSONSource | undefined)?.setData(rings());
       leafCache = new Map();
     });
+  });
+
+  // Online detail tiles follow Settings › Network.
+  $effect(() => {
+    const on = !!app.settings?.network.online_tiles;
+    if (!ready || !map) return;
+    untrack(() => setDetail(map!, on, palette(), 'heatmap'));
   });
 
   $effect(() => {

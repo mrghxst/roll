@@ -3,7 +3,7 @@
 // No text layers, so no glyphs have to be fetched.
 
 import type { FeatureCollection } from 'geojson';
-import type { Map as MlMap, StyleSpecification } from 'maplibre-gl';
+import type { LayerSpecification, Map as MlMap, StyleSpecification } from 'maplibre-gl';
 import type { GeometryCollection, Topology } from 'topojson-specification';
 
 let countries: Promise<FeatureCollection> | null = null;
@@ -24,6 +24,12 @@ export interface Palette {
   point: string;
   pointText: string;
   muted: string;
+  /** Detail tiles: roads, minor roads, buildings, parks, place names. */
+  road: string;
+  minor: string;
+  building: string;
+  green: string;
+  label: string;
 }
 
 function rgb(c: string): [number, number, number] {
@@ -52,6 +58,11 @@ export function palette(): Palette {
     point: fg,
     pointText: bg,
     muted: v('--muted', '#666666'),
+    road: mix(bg, fg, 0.28),
+    minor: mix(bg, fg, 0.16),
+    building: mix(bg, fg, 0.07),
+    green: mix(bg, fg, 0.04),
+    label: mix(bg, fg, 0.6),
   };
 }
 
@@ -72,6 +83,97 @@ export function applyPalette(map: MlMap, p: Palette) {
   map.setPaintProperty('water', 'background-color', p.water);
   map.setPaintProperty('land', 'fill-color', p.land);
   map.setPaintProperty('borders', 'line-color', p.border);
+  if (!map.getSource(DETAIL)) return;
+  for (const l of detailLayers(p)) {
+    for (const [k, v] of Object.entries(l.paint ?? {})) {
+      if (k.endsWith('color')) map.setPaintProperty(l.id, k as 'fill-color', v);
+    }
+  }
+}
+
+// Opt-in detail tiles (Settings › Network › Online map tiles): OpenFreeMap's
+// planet tiles in the OpenMapTiles schema, drawn in the same monochrome
+// style over the offline outlines. Nothing is fetched while it is off.
+
+const DETAIL = 'detail';
+const OFM = 'https://tiles.openfreemap.org';
+const FONT = ['Noto Sans Regular'];
+const ROADS = ['motorway', 'trunk', 'primary', 'secondary', 'tertiary'];
+const MINOR = ['minor', 'service', 'track', 'path'];
+
+function detailLayers(p: Palette): LayerSpecification[] {
+  const s = { source: DETAIL };
+  const width = (a: number, b: number): unknown => ['interpolate', ['exponential', 1.6], ['zoom'], 6, a, 16, b];
+  return [
+    { id: 'd-green', type: 'fill', ...s, 'source-layer': 'park', paint: { 'fill-color': p.green } },
+    { id: 'd-water', type: 'fill', ...s, 'source-layer': 'water', paint: { 'fill-color': p.water } },
+    { id: 'd-river', type: 'line', ...s, 'source-layer': 'waterway', minzoom: 8, paint: { 'line-color': p.water, 'line-width': width(0.5, 3) as number } },
+    { id: 'd-building', type: 'fill', ...s, 'source-layer': 'building', minzoom: 14, paint: { 'fill-color': p.building } },
+    {
+      id: 'd-minor',
+      type: 'line',
+      ...s,
+      'source-layer': 'transportation',
+      minzoom: 12,
+      filter: ['in', ['get', 'class'], ['literal', MINOR]],
+      paint: { 'line-color': p.minor, 'line-width': width(0.3, 4) as number },
+    },
+    {
+      id: 'd-road',
+      type: 'line',
+      ...s,
+      'source-layer': 'transportation',
+      minzoom: 5,
+      filter: ['in', ['get', 'class'], ['literal', ROADS]],
+      paint: { 'line-color': p.road, 'line-width': width(0.4, 8) as number },
+    },
+    {
+      id: 'd-rail',
+      type: 'line',
+      ...s,
+      'source-layer': 'transportation',
+      minzoom: 10,
+      filter: ['==', ['get', 'class'], 'rail'],
+      paint: { 'line-color': p.road, 'line-width': 1, 'line-dasharray': [3, 3] },
+    },
+    {
+      id: 'd-boundary',
+      type: 'line',
+      ...s,
+      'source-layer': 'boundary',
+      filter: ['all', ['<=', ['get', 'admin_level'], 4], ['!=', ['get', 'maritime'], 1]],
+      paint: { 'line-color': p.border, 'line-width': 1, 'line-dasharray': [4, 2] },
+    },
+    {
+      id: 'd-place',
+      type: 'symbol',
+      ...s,
+      'source-layer': 'place',
+      filter: ['in', ['get', 'class'], ['literal', ['city', 'town', 'village', 'suburb']]],
+      layout: {
+        'text-field': ['coalesce', ['get', 'name:latin'], ['get', 'name']],
+        'text-font': FONT,
+        'text-size': ['match', ['get', 'class'], 'city', 14, 'town', 12, 11],
+      },
+      paint: { 'text-color': p.label, 'text-halo-color': p.land, 'text-halo-width': 1.2 },
+    },
+  ];
+}
+
+/** Turn the online detail tiles on or off, below the item layers. */
+export function setDetail(map: MlMap, on: boolean, p: Palette, below?: string) {
+  const has = !!map.getSource(DETAIL);
+  if (on === has) return;
+  const layers = detailLayers(p);
+  if (!on) {
+    for (const l of layers) if (map.getLayer(l.id)) map.removeLayer(l.id);
+    map.removeSource(DETAIL);
+    return;
+  }
+  map.setGlyphs(`${OFM}/fonts/{fontstack}/{range}.pbf`);
+  map.addSource(DETAIL, { type: 'vector', url: `${OFM}/planet`, attribution: 'OpenFreeMap © OpenMapTiles © OpenStreetMap contributors' });
+  const before = below && map.getLayer(below) ? below : undefined;
+  for (const l of layers) map.addLayer(l, before);
 }
 
 /** A circle around a point as a polygon ring, for approximate locations. */
