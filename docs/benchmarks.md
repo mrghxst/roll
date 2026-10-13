@@ -83,3 +83,44 @@ files were not in the operating system's file cache this time.
 `cargo test -p roll-ai --release -- --ignored --nocapture`: brute force
 over 100,000 normalized 768-dimension rows (SigLIP 2 B/16 size), top 200,
 on the owner's PC (rayon, all cores): 12 ms.
+
+## Decision models on the CC0 set (M5), 2026-10-13
+
+`tools/cc0/build.mjs` builds 157 labelled items in `fixtures-out/cc0`:
+photos, documents and wallpapers from Openverse (CC0 and the Public Domain
+Mark, checked by eye; corrections in `tools/cc0/review.json`), plus
+screenshots, memes, social media posts and junk shots rendered from them
+and our own text. `crates/core/tests/real_models.rs` runs the decision
+model through the Library on every item and compares with the labels.
+
+Local, Ollama 0.34.4, `qwen3-vl:8b-instruct` (Q4_K_M, 6.1 GB) on an
+RTX 2080 Ti (11 GB), prompt `decide-2`:
+
+| Category | Right |
+|---|---|
+| Photos | 47 of 47 |
+| Screenshots | 25 of 25 |
+| Memes | 25 of 25 |
+| Social media | 20 of 20 |
+| Documents | 11 of 11 |
+| Junk | 12 of 15 (3 taken for photos) |
+| Wallpapers | 10 of 14 (4 space images taken for photos) |
+| **All** | **150 of 157, 95.5%**, none unsure |
+
+0.48 items per second with Ollama's default 4,096-token context: Qwen3-VL
+takes about 1,100 tokens per 512 px image, so Roll halves the batches to
+2 images per request. Nothing left the machine. A 16,384-token context
+(`OLLAMA_CONTEXT_LENGTH`, 8 images per request, all on the card) was much
+slower: stopped after 25 minutes against 5.5. The default context is the
+better setting on this card.
+
+What the runs found:
+
+- The plain `qwen3-vl:8b` tag is the thinking variant. Its reasoning used
+  up the output allowance, every answer came back empty, and none of the
+  "reasoning off" switches (`reasoning_effort`, `think`, `reasoning`) turn
+  it off through Ollama's OpenAI endpoint. The `-instruct` tags answer
+  directly; the model list now points to them and marks thinking variants.
+- With prompt `decide-1` (the spec's starting point) the same model scored
+  75%: chat and settings screenshots were taken for social media. The
+  sharper definitions and one line in the prompt (`decide-2`) fixed that.

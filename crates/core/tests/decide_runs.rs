@@ -406,13 +406,16 @@ fn model_lists_put_the_highest_quality_first() {
     assert_eq!(decide::rank_offers(offers, &providers, &measured)[0].id, "google/gemma-3-12b-it");
 
     // Local: installed and suggested, best that fits an 11 GB card first.
-    let installed = vec!["qwen3-vl:4b".to_string(), "llava:7b".to_string()];
+    let installed = vec!["qwen3-vl:4b-instruct".to_string(), "qwen3-vl:8b".to_string(), "llava:7b".to_string()];
     let local = decide::rank_local(&installed, &Default::default(), Some(11.0), &Default::default(), true);
-    assert_eq!(local[0].name, "qwen3-vl:8b");
+    assert_eq!(local[0].name, "qwen3-vl:8b-instruct", "the instruct tag, not the installed thinking one");
     assert!(local[0].best && !local[0].installed && local[0].fits == Some(true));
     assert_eq!(local[0].download_gb, Some(6.1));
     let big = local.iter().position(|m| m.name == "gemma4:26b").unwrap();
-    let small = local.iter().position(|m| m.name == "qwen3-vl:4b").unwrap();
+    let small = local.iter().position(|m| m.name == "qwen3-vl:4b-instruct").unwrap();
+    let thinking = local.iter().find(|m| m.name == "qwen3-vl:8b").unwrap();
+    assert!(thinking.installed && thinking.basis.as_deref().unwrap().starts_with("Thinking variant"));
+    assert_eq!(thinking.quality, "Good");
     assert!(big > small, "models that do not fit go last");
     assert_eq!(local.iter().find(|m| m.name == "llava:7b").unwrap().quality, "Not rated");
 }

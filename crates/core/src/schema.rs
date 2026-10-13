@@ -1,6 +1,6 @@
 //! Database migrations. Append only: never edit a shipped migration.
 
-pub const MIGRATIONS: &[&str] = &[M1, M2, M3, M4, M5, M6, M7, M8, M9, M10];
+pub const MIGRATIONS: &[&str] = &[M1, M2, M3, M4, M5, M6, M7, M8, M9, M10, M11];
 
 const M1: &str = r#"
 CREATE TABLE settings (
@@ -261,10 +261,10 @@ CREATE TABLE saved_filters (
 );
 
 INSERT INTO categories (key, name, definition, folder_template, immich_default, sort, builtin) VALUES
- ('photos', 'Photos', 'Real-life photos and videos: people, places, events, things. Includes personal photos received from friends.', '{year}/Photos', 1, 1, 1),
- ('screenshots', 'Screenshots', 'Screen captures and screen recordings from any device.', '{year}/Screenshots', 0, 2, 1),
- ('memes', 'Memes', 'Made to be funny or shared: captions over images, reaction images, comics, joke formats, stickers, GIFs.', '{year}/Memes', 0, 3, 1),
- ('social_media', 'Social media', 'Saved posts, stories, reels and pictures from apps and websites that are not memes: other people''s photos, outfits, recipes, products, news, quotes.', '{year}/Social media', 0, 4, 1),
+ ('photos', 'Photos', 'Real-life photos and videos taken with a camera: people, places, events, things, including ones received from friends. No added captions, app frames or screen interface.', '{year}/Photos', 1, 1, 1),
+ ('screenshots', 'Screenshots', 'Captures of a whole phone or computer screen: apps, chats, settings, mail, web pages, maps, games, usually with a status bar or app interface. A chat or feed captured from the screen is a screenshot.', '{year}/Screenshots', 0, 2, 1),
+ ('memes', 'Memes', 'Made to be funny or shared: an image with a caption added over or above it (even a real photo), reaction images, comics, joke formats, stickers, GIFs.', '{year}/Memes', 0, 3, 1),
+ ('social_media', 'Social media', 'A single post, story or picture saved from a social app or website, often with the app''s frame (user name, likes, caption below): other people''s photos, outfits, recipes, products, news, quotes. Not memes, not whole-screen captures of chats or settings.', '{year}/Social media', 0, 4, 1),
  ('wallpapers', 'Wallpapers', 'Backgrounds, digital art, AI-generated images and design assets with no personal content.', 'Wallpapers', 0, 5, 1),
  ('documents', 'Documents', 'Photos or scans of paper, receipts, tickets, IDs, whiteboards, notes and labels, or a screen photographed for its text.', '{year}/Documents', 0, 6, 1),
  ('junk', 'Junk', 'Accidental, black or very blurry shots, pocket shots, test shots, broken files.', '{year}/Junk', 0, 7, 1),
@@ -353,6 +353,16 @@ CREATE TABLE event_undo (
 /// Decision models (M5): measured prices and token counts per model, runs
 /// with their budget, and one row per item and run so a run resumes
 /// without sending an item twice. The model check's labelled sample.
+/// Sharper built-in definitions after the first real model run: memes
+/// were taken for photos and chat screenshots for social media. Only
+/// definitions the owner has not edited change.
+const M11: &str = r#"
+UPDATE categories SET definition = 'Real-life photos and videos taken with a camera: people, places, events, things, including ones received from friends. No added captions, app frames or screen interface.' WHERE key = 'photos' AND builtin = 1 AND definition = 'Real-life photos and videos: people, places, events, things. Includes personal photos received from friends.';
+UPDATE categories SET definition = 'Captures of a whole phone or computer screen: apps, chats, settings, mail, web pages, maps, games, usually with a status bar or app interface. A chat or feed captured from the screen is a screenshot.' WHERE key = 'screenshots' AND builtin = 1 AND definition = 'Screen captures and screen recordings from any device.';
+UPDATE categories SET definition = 'Made to be funny or shared: an image with a caption added over or above it (even a real photo), reaction images, comics, joke formats, stickers, GIFs.' WHERE key = 'memes' AND builtin = 1 AND definition = 'Made to be funny or shared: captions over images, reaction images, comics, joke formats, stickers, GIFs.';
+UPDATE categories SET definition = 'A single post, story or picture saved from a social app or website, often with the app''s frame (user name, likes, caption below): other people''s photos, outfits, recipes, products, news, quotes. Not memes, not whole-screen captures of chats or settings.' WHERE key = 'social_media' AND builtin = 1 AND definition = 'Saved posts, stories, reels and pictures from apps and websites that are not memes: other people''s photos, outfits, recipes, products, news, quotes.';
+"#;
+
 const M10: &str = r#"
 CREATE TABLE ai_models (
   -- 'openrouter' or a local server's base URL

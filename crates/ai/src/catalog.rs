@@ -66,18 +66,32 @@ pub struct LocalModel {
     pub memory_gb: f64,
 }
 
-/// Sizes from ollama.com/library (2026-10-13).
+/// Sizes from ollama.com/library (2026-10-13). Qwen3-VL's plain tags
+/// (`qwen3-vl:8b`) are its thinking variants, which reason before every
+/// answer; the `-instruct` tags answer directly and are the ones to use.
 pub const LOCAL: &[LocalModel] = &[
     LocalModel { tag: "gemma4:31b", tier: Tier(1), basis: "MMMU-Pro 76.9 (Gemma 4 model card)", download_gb: 19.0, memory_gb: 22.0 },
     LocalModel { tag: "gemma4:26b", tier: Tier(1), basis: "MMMU-Pro 73.8 (Gemma 4 model card)", download_gb: 16.0, memory_gb: 19.0 },
-    LocalModel { tag: "qwen3-vl:32b", tier: Tier(1), basis: "Qwen3-VL 32B", download_gb: 21.0, memory_gb: 24.0 },
-    LocalModel { tag: "qwen3-vl:30b", tier: Tier(1), basis: "Qwen3-VL 30B-A3B", download_gb: 20.0, memory_gb: 23.0 },
-    LocalModel { tag: "qwen3-vl:8b", tier: Tier(2), basis: "MMMU 69.6 as reported from the model card", download_gb: 6.1, memory_gb: 8.0 },
+    LocalModel { tag: "qwen3-vl:32b-instruct", tier: Tier(1), basis: "Qwen3-VL 32B", download_gb: 21.0, memory_gb: 24.0 },
+    LocalModel { tag: "qwen3-vl:30b-a3b-instruct", tier: Tier(1), basis: "Qwen3-VL 30B-A3B", download_gb: 20.0, memory_gb: 23.0 },
+    LocalModel {
+        tag: "qwen3-vl:8b-instruct",
+        tier: Tier(2),
+        basis: "MMMU 69.6 as reported from the model card",
+        download_gb: 6.1,
+        memory_gb: 8.0,
+    },
     LocalModel { tag: "gemma3:12b", tier: Tier(2), basis: "MMMU 59.6 (Gemma 3 model card)", download_gb: 8.2, memory_gb: 10.0 },
     LocalModel { tag: "gemma4:e4b", tier: Tier(2), basis: "MMMU-Pro 52.6 (Gemma 4 model card)", download_gb: 6.6, memory_gb: 8.0 },
-    LocalModel { tag: "qwen3-vl:4b", tier: Tier(3), basis: "MMMU 67.4 as reported from the model card", download_gb: 3.3, memory_gb: 5.0 },
+    LocalModel {
+        tag: "qwen3-vl:4b-instruct",
+        tier: Tier(3),
+        basis: "MMMU 67.4 as reported from the model card",
+        download_gb: 3.3,
+        memory_gb: 5.0,
+    },
     LocalModel { tag: "gemma3:4b", tier: Tier(4), basis: "MMMU 48.8 (Gemma 3 model card)", download_gb: 3.4, memory_gb: 5.0 },
-    LocalModel { tag: "qwen3-vl:2b", tier: Tier(4), basis: "Qwen3-VL 2B, the smallest", download_gb: 1.9, memory_gb: 3.0 },
+    LocalModel { tag: "qwen3-vl:2b-instruct", tier: Tier(4), basis: "Qwen3-VL 2B, the smallest", download_gb: 1.9, memory_gb: 3.0 },
 ];
 
 /// The tier of an OpenRouter model id, if Roll knows it.
@@ -86,15 +100,23 @@ pub fn cloud(id: &str) -> Option<Known> {
     CLOUD.iter().find(|(p, _, _)| id.starts_with(p)).map(|(_, t, b)| Known { tier: Tier(*t), basis: b })
 }
 
-/// What Roll knows about a local model name ("qwen3-vl:8b",
-/// "qwen3-vl:8b-instruct-q4_K_M", "Qwen3-VL-8B-Instruct-GGUF").
-pub fn local(name: &str) -> Option<&'static LocalModel> {
+/// What Roll knows about a local model name ("qwen3-vl:8b-instruct",
+/// "qwen3-vl:8b-instruct-q8_0", "Qwen3-VL-8B-Instruct-GGUF"). The second
+/// value is true for a thinking variant of a known model.
+pub fn local(name: &str) -> Option<(&'static LocalModel, bool)> {
     let n = name.to_lowercase().replace(['-', '_'], "");
-    LOCAL.iter().find(|m| {
-        let (family, size) = m.tag.split_once(':').unwrap();
+    let thinking = n.contains("thinking")
+        || n.ends_with("qwen3vl:2b")
+        || n.ends_with("qwen3vl:4b")
+        || n.ends_with("qwen3vl:8b")
+        || n.ends_with("qwen3vl:latest");
+    let n = n.replace("instruct", "").replace("thinking", "").replace("latest", "8b").replace("a3b", "");
+    LOCAL.iter().find_map(|m| {
+        let tag = m.tag.replace("-instruct", "").replace("-a3b", "");
+        let (family, size) = tag.split_once(':').unwrap();
         let family = family.replace('-', "");
         // "qwen3vl:8b…" or "qwen3vl8b…"
-        n.starts_with(&format!("{family}:{size}")) || n.contains(&format!("{family}{size}"))
+        (n.starts_with(&format!("{family}:{size}")) || n.contains(&format!("{family}{size}"))).then_some((m, thinking))
     })
 }
 
@@ -108,10 +130,14 @@ mod tests {
         assert_eq!(cloud("google/gemini-2.5-flash").unwrap().tier, Tier(1));
         assert_eq!(cloud("google/gemma-3-12b-it").unwrap().tier.label(), "Good");
         assert!(cloud("inclusionai/ling-3.0-flash-vl").is_none());
-        assert_eq!(local("qwen3-vl:8b").unwrap().download_gb, 6.1);
-        assert_eq!(local("qwen3-vl:8b-instruct-q8_0").unwrap().tag, "qwen3-vl:8b");
-        assert_eq!(local("Qwen3-VL-4B-Instruct-GGUF").unwrap().tag, "qwen3-vl:4b");
-        assert_eq!(local("gemma4:e4b").unwrap().tier, Tier(2));
+        assert_eq!(local("qwen3-vl:8b-instruct").unwrap(), (&LOCAL[4], false));
+        assert_eq!(local("qwen3-vl:8b-instruct-q8_0").unwrap().0.tag, "qwen3-vl:8b-instruct");
+        assert_eq!(local("Qwen3-VL-4B-Instruct-GGUF").unwrap(), (&LOCAL[7], false));
+        // The plain tag is the thinking variant.
+        assert_eq!(local("qwen3-vl:8b").unwrap(), (&LOCAL[4], true));
+        assert!(local("qwen3-vl:32b-thinking-q4_K_M").unwrap().1);
+        assert_eq!(local("qwen3-vl:30b-a3b-instruct").unwrap().0.tag, "qwen3-vl:30b-a3b-instruct");
+        assert_eq!(local("gemma4:e4b").unwrap().0.tier, Tier(2));
         assert!(local("llava:7b").is_none());
         // Best first.
         assert!(LOCAL.windows(2).all(|w| w[0].tier <= w[1].tier));

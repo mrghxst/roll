@@ -55,7 +55,7 @@ test('the model check compares models on labelled items', async ({ page }) => {
   await page.goto('/?setup=1&mock=800');
   await aiMode(page, 'Local');
   await page.getByTestId('nav-ai').click();
-  await page.getByTestId('local-models').locator('tr', { hasText: 'qwen3-vl:4b' }).getByRole('button', { name: 'Use' }).click();
+  await page.getByTestId('local-models').locator('tr', { hasText: 'qwen3-vl:4b-instruct' }).getByRole('button', { name: 'Use' }).click();
   await expect(page.getByTestId('ai-consent')).toContainText('Nothing leaves the machine');
 
   await page.getByTestId('check-sample').click();
@@ -64,7 +64,7 @@ test('the model check compares models on labelled items', async ({ page }) => {
   await expect(page.getByTestId('labeler')).toContainText('24 labelled');
 
   const pick = page.getByRole('group', { name: 'Models to compare' });
-  await pick.getByRole('button', { name: 'qwen3-vl:4b' }).click();
+  await pick.getByRole('button', { name: 'qwen3-vl:4b-instruct' }).click();
   await pick.getByRole('button', { name: 'gemma4:e4b' }).click();
   await page.getByTestId('check-run').click();
   const report = page.getByTestId('check-report');
@@ -75,7 +75,7 @@ test('the model check compares models on labelled items', async ({ page }) => {
 test('search words the parser leaves can go to the text model', async ({ page }) => {
   await page.goto('/?setup=1&mock=300&ai=local');
   await page.getByTestId('nav-ai').click();
-  await page.getByTestId('local-models').locator('tr', { hasText: 'qwen3-vl:4b' }).getByRole('button', { name: 'Use' }).click();
+  await page.getByTestId('local-models').locator('tr', { hasText: 'qwen3-vl:4b-instruct' }).getByRole('button', { name: 'Use' }).click();
   const search = page.getByTestId('search');
   await search.fill('funny clips from christmas cat');
   await search.press('Enter');

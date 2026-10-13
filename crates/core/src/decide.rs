@@ -12,6 +12,7 @@
 //!   a rate limit or server error; retries wait with jitter.
 
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
 use rusqlite::{Connection, OptionalExtension, params};
@@ -177,20 +178,32 @@ pub fn rank_local(
     let mut rows: Vec<(Option<u8>, LocalModelInfo)> = Vec::new();
     let mut known_tags = std::collections::HashSet::new();
     for name in installed {
-        let k = roll_ai::catalog::local(name);
-        if let Some(k) = k {
+        let found = roll_ai::catalog::local(name);
+        let k = found.map(|(k, _)| k);
+        let thinking = found.is_some_and(|(_, t)| t);
+        if let Some(k) = k
+            && !thinking
+        {
             known_tags.insert(k.tag);
         }
         let memory = k.map(|k| k.memory_gb);
+        let basis = k.map(|k| {
+            if thinking {
+                format!("Thinking variant: reasons before every answer, several times slower. {} answers directly.", k.tag)
+            } else {
+                k.basis.to_string()
+            }
+        });
         rows.push((
-            k.map(|k| k.tier.0),
+            // A thinking variant ranks one tier lower: same answers, much slower.
+            k.map(|k| k.tier.0 + u8::from(thinking)),
             LocalModelInfo {
                 name: name.clone(),
                 installed: true,
                 download_gb: sizes.get(name).map(|b| (*b as f64 / 1e9 * 10.0).round() / 10.0).or(k.map(|k| k.download_gb)),
                 memory_gb: memory,
-                quality: k.map_or("Not rated", |k| k.tier.label()).to_string(),
-                basis: k.map(|k| k.basis.to_string()),
+                quality: k.map_or("Not rated", |k| roll_ai::catalog::Tier(k.tier.0 + u8::from(thinking)).label()).to_string(),
+                basis,
                 measured: measured.get(name).copied(),
                 fits: gpu_gb.zip(memory).map(|(g, m)| m <= g),
                 best: false,
@@ -466,7 +479,7 @@ struct RunRow {
 
 enum Outcome {
     Answered { reply: Reply, verdicts: Vec<Option<Verdict>> },
-    Malformed { reply: Reply, why: String },
+    Malformed { reply: Reply, why: String, n: usize },
     Failed(String),
 }
 
@@ -516,7 +529,13 @@ fn send(p: &Provider, cats: &[CategoryDef], items: &[Item]) -> (Result<Reply, Ch
     }
 }
 
-fn run_batch(p: &Provider, cats: &[CategoryDef], ids: &[i64], image: &(dyn Fn(i64) -> Option<(Hints, Vec<u8>)> + Sync)) -> Sent {
+fn run_batch(
+    p: &Provider,
+    cats: &[CategoryDef],
+    ids: &[i64],
+    image: &(dyn Fn(i64) -> Option<(Hints, Vec<u8>)> + Sync),
+    limit: &AtomicUsize,
+) -> Sent {
     let mut items = Vec::new();
     let mut sent = Vec::new();
     let mut unreadable = Vec::new();
@@ -532,15 +551,91 @@ fn run_batch(p: &Provider, cats: &[CategoryDef], ids: &[i64], image: &(dyn Fn(i6
     if items.is_empty() {
         return Sent { ids: sent, unreadable, outcome: Outcome::Failed("no readable items".into()), throttled: false };
     }
-    let (res, throttled) = send(p, cats, &items);
-    let outcome = match res {
-        Ok(reply) => match prompt::parse(&reply.content, items.len(), cats) {
-            Ok(verdicts) => Outcome::Answered { reply, verdicts },
-            Err(why) => Outcome::Malformed { reply, why },
-        },
-        Err(e) => Outcome::Failed(e.explain()),
-    };
+    let mut throttled = false;
+    let mut parts = Vec::new();
+    let mut at = 0;
+    while at < items.len() {
+        let n = limit.load(Ordering::Relaxed).max(1).min(items.len() - at);
+        let (o, t) = answer(p, cats, &items[at..at + n], limit);
+        throttled |= t;
+        parts.push(o);
+        at += n;
+    }
+    let outcome = parts.into_iter().reduce(join).expect("at least one part");
     Sent { ids: sent, unreadable, outcome, throttled }
+}
+
+/// The server's context cannot hold the request.
+fn too_long(e: &ChatError) -> bool {
+    matches!(e, ChatError::Status { status: 400 | 413, message } if {
+        let m = message.to_lowercase();
+        m.contains("context") || m.contains("too long") || m.contains("too many tokens")
+    })
+}
+
+/// Ask about `items`; when the server's context is too small, halve the
+/// request and lower `limit` for the rest of the run.
+fn answer(p: &Provider, cats: &[CategoryDef], items: &[Item], limit: &AtomicUsize) -> (Outcome, bool) {
+    let (res, throttled) = send(p, cats, items);
+    match res {
+        Ok(reply) => match prompt::parse(&reply.content, items.len(), cats) {
+            Ok(verdicts) => (Outcome::Answered { reply, verdicts }, throttled),
+            Err(why) => (Outcome::Malformed { reply, why, n: items.len() }, throttled),
+        },
+        Err(e) if too_long(&e) && items.len() > 1 => {
+            let half = items.len() / 2;
+            limit.fetch_min(half, Ordering::Relaxed);
+            let (a, t1) = answer(p, cats, &items[..half], limit);
+            let (b, t2) = answer(p, cats, &items[half..], limit);
+            (join(a, b), throttled | t1 | t2)
+        }
+        Err(e) => (Outcome::Failed(e.explain()), throttled),
+    }
+}
+
+fn add(a: &Reply, b: &Reply) -> Reply {
+    Reply {
+        id: a.id.clone(),
+        model: a.model.clone(),
+        content: String::new(),
+        tokens_in: a.tokens_in + b.tokens_in,
+        tokens_out: a.tokens_out + b.tokens_out,
+        cost: match (a.cost, b.cost) {
+            (None, None) => None,
+            (x, y) => Some(x.unwrap_or(0.0) + y.unwrap_or(0.0)),
+        },
+    }
+}
+
+/// Two consecutive parts of one batch as one outcome. A malformed part's
+/// items count as unsure; a failed part fails the batch.
+fn join(a: Outcome, b: Outcome) -> Outcome {
+    let parts = |o: Outcome| match o {
+        Outcome::Answered { reply, verdicts } => Ok((reply, verdicts)),
+        Outcome::Malformed { reply, .. } => Ok((reply, Vec::new())),
+        Outcome::Failed(why) => Err(why),
+    };
+    match (a, b) {
+        (Outcome::Failed(w), _) | (_, Outcome::Failed(w)) => Outcome::Failed(w),
+        (x, y) => {
+            let nx = count(&x);
+            let ny = count(&y);
+            let (rx, mut vx) = parts(x).expect("not failed");
+            let (ry, mut vy) = parts(y).expect("not failed");
+            vx.resize(nx, None);
+            vy.resize(ny, None);
+            vx.extend(vy);
+            Outcome::Answered { reply: add(&rx, &ry), verdicts: vx }
+        }
+    }
+}
+
+fn count(o: &Outcome) -> usize {
+    match o {
+        Outcome::Answered { verdicts, .. } => verdicts.len(),
+        Outcome::Malformed { n, .. } => *n,
+        Outcome::Failed(_) => 0,
+    }
 }
 
 fn load_run(c: &Connection, run: i64) -> rusqlite::Result<RunRow> {
@@ -588,6 +683,8 @@ pub fn execute(db: &Db, run: i64, p: &Provider, hooks: &Hooks) -> anyhow::Result
     let mut queue: std::collections::VecDeque<Vec<i64>> = pending.chunks(row.batch).map(<[i64]>::to_vec).collect();
     let started = Instant::now();
     let mut state = "done";
+    // Items per request; lowered when a server's context is too small.
+    let limit = AtomicUsize::new(row.batch);
 
     while !queue.is_empty() {
         if !(hooks.progress)(done, total) {
@@ -620,7 +717,7 @@ pub fn execute(db: &Db, run: i64, p: &Provider, hooks: &Hooks) -> anyhow::Result
             }
         }
         let results: Vec<Sent> = std::thread::scope(|s| {
-            let handles: Vec<_> = wave.iter().map(|b| s.spawn(|| run_batch(p, &cats, b, hooks.image))).collect();
+            let handles: Vec<_> = wave.iter().map(|b| s.spawn(|| run_batch(p, &cats, b, hooks.image, &limit))).collect();
             handles.into_iter().map(|h| h.join().expect("decision batch panicked")).collect()
         });
         let throttled = results.iter().any(|r| r.throttled);
@@ -628,7 +725,7 @@ pub fn execute(db: &Db, run: i64, p: &Provider, hooks: &Hooks) -> anyhow::Result
         for mut r in results {
             // A reply that is not the JSON asked for gets one more try, if
             // the budget allows it; then its items count as unsure.
-            if let Outcome::Malformed { reply, why } = &r.outcome {
+            if let Outcome::Malformed { reply, why, .. } = &r.outcome {
                 let paid = reply.cost.unwrap_or(0.0);
                 row.spent += paid;
                 (hooks.cost)(paid);
@@ -636,7 +733,7 @@ pub fn execute(db: &Db, run: i64, p: &Provider, hooks: &Hooks) -> anyhow::Result
                 let fits = row.budget.is_none_or(|cap| row.spent + reserve(r.ids.len()) <= cap);
                 let why = why.clone();
                 r.outcome = if fits {
-                    let again = run_batch(p, &cats, &r.ids, hooks.image);
+                    let again = run_batch(p, &cats, &r.ids, hooks.image, &limit);
                     match again.outcome {
                         Outcome::Malformed { reply, .. } => Outcome::Answered { reply, verdicts: vec![None; r.ids.len()] },
                         o => o,

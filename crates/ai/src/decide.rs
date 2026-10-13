@@ -6,7 +6,7 @@ use base64::Engine;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-pub const PROMPT_VERSION: &str = "decide-1";
+pub const PROMPT_VERSION: &str = "decide-2";
 
 pub const SOURCES: [&str; 11] =
     ["instagram", "tiktok", "snapchat", "whatsapp", "telegram", "reddit", "x", "facebook", "pinterest", "youtube", "other"];
@@ -55,7 +55,10 @@ pub fn system_prompt(cats: &[CategoryDef]) -> String {
         "You sort a personal photo library. For each numbered image choose exactly one \
 category from the list, using the definitions and the hints. If none fits or \
 you can't tell, answer \"unsure\". Be calibrated: confidence is the probability \
-that your category is right. Reply with JSON only.\n\nCategories:\n",
+that your category is right. Judge what kind of image it is, not only what it \
+shows: a photo with a caption added is a meme, and a capture of a phone or \
+computer screen is a screenshot. The hints describe the file. Reply with JSON \
+only.\n\nCategories:\n",
     );
     for c in cats {
         s.push_str(&format!("- {}: {}\n", c.key, c.definition.trim()));
@@ -119,7 +122,8 @@ pub fn body(model: &str, cats: &[CategoryDef], items: &[Item], o: Options) -> Va
     let mut b = json!({
         "model": model,
         "temperature": 0,
-        "max_tokens": crate::cost::max_tokens(items.len()),
+        // Local time is free: room for a model that reasons before answering.
+        "max_tokens": if o.openrouter { crate::cost::max_tokens(items.len()) } else { 2048 + crate::cost::max_tokens(items.len()) },
         "messages": [
             {"role": "system", "content": system_prompt(cats)},
             {"role": "user", "content": content}

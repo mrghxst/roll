@@ -127,9 +127,13 @@ Milestones from PROMPT.md section 10. `[x]` done, `[~]` partly done,
       estimate within ±25% on 1,000 items, $2.43 per 100k with the default
       settings and the spec's Gemma 3 12B prices, the cap never passed,
       resume without sending an answered item again
-- [ ] The same acceptance against OpenRouter: a 1,000-item run costs
-      about $0.03 and needs the owner's go-ahead (spending, data off the
-      machine)
+- [x] Real local run (docs/benchmarks.md): qwen3-vl:8b-instruct on the
+      RTX 2080 Ti, 95.5% on the 157-item CC0 set, 0.48 items/s
+- [x] CC0 test set (PROMPT 9.1): `tools/cc0/build.mjs`, licenses in its
+      manifest, reviewed labels; more documents still to add
+- [ ] The same acceptance against OpenRouter: approved by the owner
+      (about $0.03 per 1,000 items); waiting for a short-lived key in the
+      keychain
 - [x] Natural-language search: words the offline parser leaves go to the
       text model on request ("Ask AI about these words"); its answer
       becomes filter chips, unknown places stay as words

@@ -315,3 +315,21 @@ questions. One line of reason each. Newest at the bottom of each section.
   the card go last. Cloud models show their price per 100,000 items and
   how the provider handles data (zero retention or not, the provider's
   country and privacy policy from OpenRouter's `/providers`).
+- **Batches shrink when a server's context is too small.** A 400 that says
+  the request exceeds the context halves the batch and lowers the batch
+  size for the rest of the run. Ollama's default context (4,096 tokens)
+  holds 2 Qwen3-VL images. Local requests also get 2,048 extra output
+  tokens, so a model that reasons before answering still finishes.
+- **Thinking variants rank one tier lower.** They give the same answers
+  several times slower, and Ollama cannot turn their reasoning off through
+  the OpenAI endpoint. Qwen3-VL's plain tags are thinking variants; the
+  list suggests the `-instruct` tags.
+- **Prompt `decide-2` and sharper built-in definitions.** The first real
+  run took chat screenshots for social media; the definitions now say
+  what each category looks like (a whole-screen capture, a post in an
+  app's frame, a caption added to a photo). Migration M11 updates only
+  definitions the owner has not changed.
+- **The CC0 set is built, not committed.** `tools/cc0/build.mjs` fetches
+  from Openverse (CC0 and Public Domain Mark only) and renders the rest;
+  only the script and the reviewed corrections (public image URLs) are in
+  git. Each item's source, creator and license are in its manifest.

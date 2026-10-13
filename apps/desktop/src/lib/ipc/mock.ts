@@ -753,10 +753,10 @@ const OFFERS: ModelOffer[] = (
 }));
 const LOCAL_MODELS: LocalModelInfo[] = (
   [
-    ['qwen3-vl:8b', false, 6.1, 8, 'Very good', 'MMMU 69.6 as reported from the model card', true],
+    ['qwen3-vl:8b-instruct', false, 6.1, 8, 'Very good', 'MMMU 69.6 as reported from the model card', true],
     ['gemma4:e4b', true, 6.6, 8, 'Very good', 'MMMU-Pro 52.6 (Gemma 4 model card)', true],
-    ['qwen3-vl:4b', true, 3.3, 5, 'Good', 'MMMU 67.4 as reported from the model card', true],
-    ['qwen3-vl:2b', false, 1.9, 3, 'Basic', 'Qwen3-VL 2B, the smallest', true],
+    ['qwen3-vl:4b-instruct', true, 3.3, 5, 'Good', 'MMMU 67.4 as reported from the model card', true],
+    ['qwen3-vl:2b-instruct', false, 1.9, 3, 'Basic', 'Qwen3-VL 2B, the smallest', true],
     ['gemma4:26b', false, 16, 19, 'Best', 'MMMU-Pro 73.8 (Gemma 4 model card)', false],
   ] as const
 ).map(([name, installed, download_gb, memory_gb, quality, basis, fits], k) => ({
