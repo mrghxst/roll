@@ -131,7 +131,7 @@ In active development. Working today:
 | Fixing | Camera clock and time zone fixes, places from neighbours and location history, map with time slider |
 | Import | Camera cards, WhatsApp and Google Takeout exports |
 | AI | Local and OpenRouter decision models, budget caps, model check, "ask AI" in search |
-| Sync | Immich sync with albums and shared albums (tested against a stand-in server; a real-server run is next) |
+| Sync | Immich sync with albums and shared albums, checked against a real Immich 3.3.1 |
 | Install | Per-user Windows installer with ExifTool and FFmpeg bundled |
 
 Next: local embeddings and OCR (SigLIP 2, PP-OCR), semantic search, and

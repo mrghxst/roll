@@ -24,6 +24,9 @@ cargo run -p roll-fixtures -- --stress 100000 --stress-only
 cargo test -p roll-core export_bindings    # regenerate TS bindings in src/lib/ipc/bindings
 cd apps/desktop && pnpm check && pnpm test # svelte-check, vitest
 cd apps/desktop && pnpm tauri dev          # the app; set ROLL_DATA_DIR to keep dev data apart
+powershell -File e2e/immich/server.ps1 setup|start|stop|remove   # throwaway Immich in its own WSL distro
+# then ROLL_IMMICH_URL/ROLL_IMMICH_KEY (from %LOCALAPPDATA%\RollImmichTest\credentials.json):
+cargo test -p roll-core --test immich_real -- --ignored
 ```
 
 ## Conventions and pitfalls

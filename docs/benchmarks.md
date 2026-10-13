@@ -140,3 +140,15 @@ What the runs found:
 - With prompt `decide-1` (the spec's starting point) the same model scored
   75%: chat and settings screenshots were taken for social media. The
   sharper definitions and one line in the prompt (`decide-2`) fixed that.
+
+OpenRouter, `google/gemma-4-26b-a4b-it` through a zero-data-retention
+endpoint, same prompt, 2026-10-13:
+
+| Set | Items | Right | Spent | Estimate |
+|---|---|---|---|---|
+| CC0 set | 157 | 145, 92.4% (junk 10 of 15, wallpapers 7 of 14, everything else all right) | $0.0068 | $0.0054 |
+| CC0 set and fixture library | 980 | (fixture "photos" are generated test patterns; the model calls them wallpapers, which they look like) | $0.0375 | $0.0337 |
+
+That is about $4.30 per 100,000 items, 52 s for 157 items. Estimates ran
+10–26% low on the first run with a model; Roll keeps the measured token
+counts per model, so later estimates use them.

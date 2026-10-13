@@ -44,7 +44,7 @@ Milestones from PROMPT.md section 10. `[x]` done, `[~]` partly done,
       kill during apply (`crates/core/tests/organize_acceptance.rs`)
 - [x] Explorer check through the Windows property system (docs/checks.md)
 - [ ] Photos app check by hand (docs/checks.md has the steps)
-- [ ] Immich round trip (needs Docker; see M6)
+- [x] Immich round trip (see M6)
 - [x] Rare access violation during thumbnailing: libwebp's encoder setup
       races on Windows (no lock in `WEBP_DSP_INIT`); one warm-up encode
       before parallel use fixes it. Found with the test's fault handler
@@ -131,9 +131,10 @@ Milestones from PROMPT.md section 10. `[x]` done, `[~]` partly done,
       RTX 2080 Ti, 95.5% on the 157-item CC0 set, 0.48 items/s
 - [x] CC0 test set (PROMPT 9.1): `tools/cc0/build.mjs`, licenses in its
       manifest, reviewed labels; more documents still to add
-- [ ] The same acceptance against OpenRouter: approved by the owner
-      (about $0.03 per 1,000 items); waiting for a short-lived key in the
-      keychain
+- [x] The same acceptance against OpenRouter (2026-10-13, owner's
+      short-lived key): Gemma 4 26B with zero data retention, 980 items
+      for $0.0375 (estimate within 10%, under the $0.10 cap); 92.4% on the
+      CC0 set (docs/benchmarks.md)
 - [x] Natural-language search: words the offline parser leaves go to the
       text model on request ("Ask AI about these words"); its answer
       becomes filter chips, unknown places stay as words
@@ -154,8 +155,16 @@ Milestones from PROMPT.md section 10. `[x]` done, `[~]` partly done,
       entry. Send to Immich / Keep local only on any selection. CLI script
       export without the key. Guide in docs/immich.md. Tested against a
       stand-in server (crates/core/tests/immich_sync.rs)
-- [ ] Immich round trip against a real server in Docker (9.3): waiting for
-      the owner's go-ahead to use Docker
+- [x] Immich round trip against a real server (9.3): Immich 3.3.1 in its
+      own WSL distro with Docker (`e2e/immich/server.ps1`, removable in one
+      step), `crates/core/tests/immich_real.rs`: uploads, Live Photo link,
+      tags, date, place, shared event album, no double uploads, later
+      rating, tag, description, place and date edits, trash only after
+      confirmation with the local file untouched. Found and fixed: linking
+      a known still skipped its Live Photo video, and an item sent again
+      after "Keep local only" stayed in Immich's trash
+- [ ] Round trip, rest of 9.3: the Immich CLI upload with sidecars for
+      comparison, and re-foldering the archive between syncs
 - [x] Add photos (4.11): a folder is indexed read-only as a staging set;
       source facts and items already in the library (skipped by default);
       dates against the library by day, smart offset from look-alike phone
@@ -215,7 +224,7 @@ Owner requests (2026-10-13), to build after M4–M6:
 
 ## Next
 
-M4 models: waiting for the owner's go-ahead to download SigLIP 2 (1.4 GB),
+M4 models (downloads approved by the owner on 2026-10-13): SigLIP 2 (1.4 GB),
 PP-OCRv6 small (30 MB) and GeoNames (13 MB) through the pack manager, and
 ONNX Runtime with the `ort` crate. The store and ranking they feed are
 ready.

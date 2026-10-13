@@ -341,3 +341,19 @@ questions. One line of reason each. Newest at the bottom of each section.
   that cross the 180° meridian are unwrapped before they reach MapLibre,
   or they fill the polar oceans on the globe. Box queries return nothing
   on the globe, so thumbnail pins come from the source's own features.
+- **First releases are unsigned and without the updater** (PROMPT 9.4
+  asks for Tauri updater metadata signed with the owner's minisign key).
+  There is no key yet, so `release.yml` publishes the installers and
+  SHA256SUMS as a pre-release; Windows shows SmartScreen and the Mac app
+  is signed ad hoc, not notarized. The updater follows once the owner has
+  a key.
+- **Only the Windows installer bundles ExifTool and FFmpeg.** The deb
+  depends on the distribution's packages, the AppImage and the Mac app use
+  the system's (Homebrew) tools. Roll also looks in `/opt/homebrew/bin`,
+  `/usr/local/bin` and `/usr/bin`, because apps started from the Dock or a
+  menu do not get the shell's `PATH`.
+- **The Immich round trip runs on a throwaway server in its own WSL
+  distro** (`e2e/immich/server.ps1`) rather than Docker Desktop: no
+  administrator rights, nothing added to the owner's other distros, and
+  `remove` deletes all of it. Machine learning is left out. The test
+  asserts through Immich's API and only adds data, so it can run again.
