@@ -8,6 +8,7 @@
   import { app } from '../state/app.svelte';
   import { applyPalette, baseStyle, loadCountries, metresPerPixel, palette, ring, setDetail } from './basemap';
   import { maplibre } from './maplibre';
+  import { Flag } from '../ipc/timeline';
 
   type Props = {
     points: MapPoints;
@@ -30,7 +31,6 @@
   let ready = $state(false);
   let ml: typeof import('maplibre-gl') | null = null;
   let markers = new Map<string, Marker>();
-  let leafCache = new Map<number, number>();
   let band = $state<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
   let lasso = $state<[number, number][] | null>(null);
   let dropping = $state(false);
@@ -40,10 +40,24 @@
     return Array.from({ length: points.count }, (_, i) => i);
   }
 
+  // Which item a cluster shows: favourite photos, then photos, then the
+  // rest. The score carries the id in its low 32 bits, so the cluster's
+  // maximum names its best item.
+  const ID_SPAN = 2 ** 32;
+  function score(i: number): number {
+    const f = points.flags[i]!;
+    return ((f & Flag.PHOTO ? 2 : 0) + (f & Flag.FAVORITE ? 1 : 0)) * ID_SPAN + points.ids[i]!;
+  }
+
   function collection(): FeatureCollection<Point> {
     const features: Feature<Point>[] = [];
     for (const i of indices()) {
-      features.push({ type: 'Feature', id: points.ids[i], properties: { id: points.ids[i] }, geometry: { type: 'Point', coordinates: [points.lons[i]!, points.lats[i]!] } });
+      features.push({
+        type: 'Feature',
+        id: points.ids[i],
+        properties: { id: points.ids[i], best: score(i) },
+        geometry: { type: 'Point', coordinates: [points.lons[i]!, points.lats[i]!] },
+      });
     }
     return { type: 'FeatureCollection', features };
   }
@@ -103,7 +117,14 @@
       m.addControl(new lib.AttributionControl({ compact: true, customAttribution: 'Natural Earth' }), 'bottom-left');
       if (import.meta.env.DEV) (window as unknown as { __rollMap: MlMap }).__rollMap = m;
       m.on('load', () => {
-        m.addSource('items', { type: 'geojson', data: collection(), cluster: true, clusterMaxZoom: 16, clusterRadius: 48 });
+        m.addSource('items', {
+          type: 'geojson',
+          data: collection(),
+          cluster: true,
+          clusterMaxZoom: 16,
+          clusterRadius: 48,
+          clusterProperties: { best: ['max', ['get', 'best']] },
+        });
         m.addSource('heat', { type: 'geojson', data: collection() });
         m.addSource('rings', { type: 'geojson', data: rings() });
         m.addLayer({
@@ -196,7 +217,6 @@
       (map?.getSource('items') as GeoJSONSource | undefined)?.setData(data);
       (map?.getSource('heat') as GeoJSONSource | undefined)?.setData(data);
       (map?.getSource('rings') as GeoJSONSource | undefined)?.setData(rings());
-      leafCache = new Map();
     });
   });
 
@@ -293,13 +313,7 @@
       if (seen.has(key)) continue;
       seen.add(key);
       if (markers.has(key)) continue;
-      let id = Number(p.id);
-      if (p.cluster_id != null) {
-        const cid = Number(p.cluster_id);
-        id = leafCache.get(cid) ?? (await leaves(cid, 1))[0] ?? 0;
-        leafCache.set(cid, id);
-      }
-      if (!map || !ml) return;
+      const id = p.cluster_id != null ? Number(p.best) % ID_SPAN : Number(p.id);
       const geom = f.geometry as Point;
       const node = document.createElement('button');
       node.className = 'roll-pin';

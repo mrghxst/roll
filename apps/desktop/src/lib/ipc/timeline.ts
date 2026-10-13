@@ -16,6 +16,8 @@ export const Flag = {
   PRIVATE: 128,
   EDITED: 256,
   NO_THUMB: 512,
+  /** Map points only: in Photos, preferred for a cluster's thumbnail. */
+  PHOTO: 1024,
 } as const;
 
 export interface Timeline {

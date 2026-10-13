@@ -10,7 +10,9 @@ docs/plan.md tracks milestones; docs/decisions.md records deviations.
   `crates/ai`. No Tauri dependency in `crates/*`.
 - `apps/desktop/src-tauri` thin commands + `roll://` scheme;
   `apps/desktop/src` Svelte UI. `src/lib/ipc/api.ts` picks the Tauri or mock
-  backend (`mock.ts` runs in a plain browser: `?setup=1&mock=N`).
+  backend (`mock.ts` runs in a plain browser: `?setup=1&mock=N`; add
+  `&pics=cc0` to show the CC0 test set from `tools/cc0` instead of
+  gradients, which is how the README screenshots are made).
 - `tools/fixtures` generates `fixtures-out/` (gitignored) with `manifest.json`.
 
 ## Commands

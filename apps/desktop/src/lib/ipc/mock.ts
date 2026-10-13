@@ -36,6 +36,39 @@ const N = Number(params.get('mock') ?? 2400);
 /** `?geo=1`: every item has a place, spread over Europe (map stress tests). */
 const GEO = params.get('geo') === '1';
 
+interface Picture {
+  url: string;
+  category: string;
+  aspect: number;
+}
+
+/**
+ * `?pics=cc0`: real pictures instead of gradients, from the CC0 test set
+ * the dev server serves at /__cc0/ (public domain, never the owner's
+ * library). Used for README screenshots; empty when the set is missing.
+ */
+async function loadPictures(): Promise<Map<string, Picture[]>> {
+  const out = new Map<string, Picture[]>();
+  const m = (await fetch('/__cc0/manifest.json')
+    .then((r) => (r.ok ? r.json() : null))
+    .catch(() => null)) as { items: { file: string; category: string }[] } | null;
+  const sized = await Promise.all(
+    (m?.items ?? []).map(
+      (it) =>
+        new Promise<Picture | null>((resolve) => {
+          const img = new Image();
+          img.onload = () => resolve({ url: `/__cc0/${it.file}`, category: it.category, aspect: img.naturalWidth / img.naturalHeight });
+          img.onerror = () => resolve(null);
+          img.src = `/__cc0/${it.file}`;
+        }),
+    ),
+  );
+  for (const p of sized) if (p) out.set(p.category, [...(out.get(p.category) ?? []), p]);
+  return out;
+}
+
+const PICS = params.get('pics') === 'cc0' ? await loadPictures() : null;
+
 function rng(seed: number) {
   let s = seed >>> 0 || 1;
   return () => {
@@ -73,6 +106,8 @@ interface MockAsset {
   /** "send", "local" or "default". */
   immich?: string;
   immichId?: string;
+  /** `?pics=cc0`: the picture shown for it. */
+  pic?: string;
 }
 
 let CATS: [string, string][] = [
@@ -127,6 +162,18 @@ function makeAssets(n: number): MockAsset[] {
     });
   }
   out.sort((a, b) => (a.local < b.local ? 1 : a.local > b.local ? -1 : b.id - a.id));
+  if (PICS?.size) {
+    const all = [...PICS.values()].flat();
+    const used = new Map<string, number>();
+    for (const a of out) {
+      const list = PICS.get(a.category) ?? all;
+      const k = used.get(a.category) ?? 0;
+      used.set(a.category, k + 1);
+      const p = list[k % list.length]!;
+      a.pic = p.url;
+      a.aspect = p.aspect;
+    }
+  }
   return out;
 }
 
@@ -1815,7 +1862,7 @@ export const mockApi: Api = {
       lats: Float32Array.from(list.map((a) => a.lat!)),
       lons: Float32Array.from(list.map((a) => a.lon!)),
       accs: Float32Array.from(list.map((a) => (a.id % 7 === 0 ? 5000 : 10))),
-      flags: Uint16Array.from(list.map((a) => a.flags & (Flag.VIDEO | Flag.FAVORITE))),
+      flags: Uint16Array.from(list.map((a) => (a.flags & (Flag.VIDEO | Flag.FAVORITE)) | (a.category === 'photos' ? Flag.PHOTO : 0))),
     };
   },
   reviewSummary: async () => {
@@ -1907,8 +1954,8 @@ export const mockApi: Api = {
     listeners[event].add(cb as never);
     return () => listeners[event].delete(cb as never);
   },
-  thumbUrl: (id) => svg(byId(id), 320),
-  previewUrl: (id) => svg(byId(id), 1024),
+  thumbUrl: (id) => byId(id)?.pic ?? svg(byId(id), 320),
+  previewUrl: (id) => byId(id)?.pic ?? svg(byId(id), 1024),
   fullUrl: (id) => svg(byId(id), 2048),
   videoUrl: () => '',
   showWindow: async () => undefined,

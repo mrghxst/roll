@@ -52,6 +52,9 @@ pub mod tile {
     pub const PRIVATE: u16 = 128;
     pub const EDITED: u16 = 256;
     pub const NO_THUMB: u16 = 512;
+    /// Map points only: in Photos or one of its subcategories, preferred
+    /// for a cluster's thumbnail.
+    pub const PHOTO: u16 = 1024;
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]

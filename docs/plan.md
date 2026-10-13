@@ -190,6 +190,12 @@ Milestones from PROMPT.md section 10. `[x]` done, `[~]` partly done,
 - [x] User docs: docs/user-guide.md, docs/immich.md
 - [x] Place suggestions from events: when most of an event is geotagged,
       its centre (with the radius that holds 80% of it) for the rest
+- [x] Map polish (owner, 2026-10-13): minimal globe, time slider as a
+      floating panel on the right, pins centred on their clusters and
+      showing the best item (favourite photos first), no more polar fill
+      artifacts; README with screenshots from the mock backend and the
+      CC0 set
+
 ## M7 Later
 
 Owner requests (2026-10-13), to build after M4–M6:

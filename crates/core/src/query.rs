@@ -268,7 +268,10 @@ pub const MAP_MAGIC: u32 = 0x5050_414D; // "MAPP"
 pub fn map_points(c: &Connection, q: &Query) -> rusqlite::Result<Vec<u8>> {
     let sql = where_clause(q);
     let stmt = format!(
-        "SELECT a.id, a.taken_local, a.lat, a.lon, a.loc_acc, a.kind, a.favorite FROM assets a
+        "SELECT a.id, a.taken_local, a.lat, a.lon, a.loc_acc, a.kind, a.favorite,
+                EXISTS (SELECT 1 FROM categories c WHERE c.id = a.category_id
+                        AND (c.key = 'photos' OR c.parent_id = (SELECT id FROM categories WHERE key = 'photos')))
+         FROM assets a
          WHERE a.lat IS NOT NULL AND {} ORDER BY a.taken_local, a.id",
         sql.clause
     );
@@ -289,6 +292,9 @@ pub fn map_points(c: &Connection, q: &Query) -> rusqlite::Result<Vec<u8>> {
         }
         if r.get::<_, i64>(6)? != 0 {
             f |= tile::FAVORITE;
+        }
+        if r.get::<_, bool>(7)? {
+            f |= tile::PHOTO;
         }
         flags.push(f);
     }
@@ -365,5 +371,13 @@ mod tests {
         assert_eq!(u32::from_le_bytes(bytes[12..16].try_into().unwrap()) as i64, a);
         let day_b = u32::from_le_bytes(bytes[12 + n * 4 + 4..12 + n * 4 + 8].try_into().unwrap());
         assert_eq!(day_b, 20190812);
+
+        // Map points: only a has a place; a photo is flagged for the cluster thumbnail.
+        c.execute("UPDATE assets SET category_id = (SELECT id FROM categories WHERE key = 'photos') WHERE id = ?1", [a]).unwrap();
+        let bytes = map_points(&c, &Query::default()).unwrap();
+        let n = u32::from_le_bytes(bytes[8..12].try_into().unwrap()) as usize;
+        assert_eq!(n, 1);
+        let flags = u16::from_le_bytes(bytes[12 + n * 20..12 + n * 20 + 2].try_into().unwrap());
+        assert_eq!(flags, crate::model::tile::PHOTO);
     }
 }
