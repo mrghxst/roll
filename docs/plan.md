@@ -188,6 +188,21 @@ Milestones from PROMPT.md section 10. `[x]` done, `[~]` partly done,
       its centre (with the radius that holds 80% of it) for the rest
 ## M7 Later
 
+Owner requests (2026-10-13), to build after M4–M6:
+
+- [ ] **Deduplicate identical photos in bulk.** Today Duplicates finds
+      exact copies (BLAKE3), smaller copies and look-alikes, and merges one
+      group at a time. To add: "Merge all exact copies" with a preview of
+      what is kept and where the others go, rules for which copy wins
+      (folder, original camera file), and the same across library folders
+      and imports. Originals stay untouched; the others go to Roll's trash.
+- [ ] **Pick the best shots of a series.** Bursts and look-alike series
+      are grouped, but "keep" is chosen from file facts only (camera file,
+      resolution, metadata). To add: picture quality per frame (sharpness,
+      exposure, motion blur, closed eyes, then an aesthetic score from the
+      image model), a side-by-side picker that suggests the best one or
+      two, and "keep the best, trash the rest" with undo. Never re-encode.
+
 ## Next
 
 M4 models: waiting for the owner's go-ahead to download SigLIP 2 (1.4 GB),

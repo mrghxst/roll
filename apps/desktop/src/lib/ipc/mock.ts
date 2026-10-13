@@ -3,6 +3,7 @@
 // `?setup=1` to start with a library already added.
 
 import type { ModelOffer } from './bindings/ModelOffer';
+import type { LocalModelInfo } from './bindings/LocalModelInfo';
 import type { RunInfo } from './bindings/RunInfo';
 import type { CheckItem } from './bindings/CheckItem';
 import type { CheckModel } from './bindings/CheckModel';
@@ -725,13 +726,14 @@ function simulateScan() {
 const perItem = (inM: number, outM: number) => (380 * inM + 35 * outM) / 1e6;
 const OFFERS: ModelOffer[] = (
   [
-    ['inclusionai/ling-3.0-flash-vl', 'Ling 3.0 Flash VL', 'Novita', 0.021, 0.062, true, true],
-    ['google/gemma-3-12b-it', 'Gemma 3 12B', 'DeepInfra', 0.05, 0.15, true, true],
-    ['google/gemma-4-26b-a4b-it', 'Gemma 4 26B A4B', 'Io Net', 0.048, 0.21, true, true],
-    ['google/gemini-2.5-flash-lite', 'Gemini 2.5 Flash Lite', 'Google Vertex', 0.1, 0.4, true, true],
-    ['example/keeps-data-vl', 'Example VL', null, 0.01, 0.03, false, false],
+    ['google/gemini-2.5-flash', 'Gemini 2.5 Flash', 'Google Vertex', 0.3, 2.5, true, true, 'Best', 'Gemini 2.5 Flash; strong multimodal scores in Google\'s model card'],
+    ['google/gemma-4-26b-a4b-it', 'Gemma 4 26B A4B', 'Io Net', 0.048, 0.21, true, true, 'Best', 'Gemma 4 26B A4B; MMMU-Pro 73.8 (Gemma 4 model card)'],
+    ['google/gemini-2.5-flash-lite', 'Gemini 2.5 Flash Lite', 'Google Vertex', 0.1, 0.4, true, true, 'Very good', "Gemini 2.5 Flash-Lite; Google's smallest 2.5 model"],
+    ['google/gemma-3-12b-it', 'Gemma 3 12B', 'DeepInfra', 0.05, 0.15, true, true, 'Good', 'Gemma 3 12B; MMMU 59.6 (Gemma 3 model card)'],
+    ['inclusionai/ling-3.0-flash-vl', 'Ling 3.0 Flash VL', 'Novita', 0.021, 0.062, true, true, 'Not rated', null],
+    ['example/keeps-data-vl', 'Example VL', null, 0.01, 0.03, false, false, 'Not rated', null],
   ] as const
-).map(([id, name, provider, inM, outM, zdr, structured]) => ({
+).map(([id, name, provider, inM, outM, zdr, structured, quality, basis], k) => ({
   id,
   name,
   provider,
@@ -741,8 +743,33 @@ const OFFERS: ModelOffer[] = (
   zdr,
   structured,
   per_100k_usd: perItem(inM, outM) * 100_000,
+  quality,
+  basis,
+  measured: null,
+  best: k === 0,
+  data: zdr ? 'Keeps no data: zero data retention' : "May keep requests for a while; Roll only routes to providers that say they don't collect or train on data",
+  country: provider ? 'US' : null,
+  policy_url: provider ? 'https://example.com/privacy' : null,
 }));
-const LOCAL_MODELS = ['qwen3-vl:4b', 'gemma4:e4b', 'qwen3-vl:8b'];
+const LOCAL_MODELS: LocalModelInfo[] = (
+  [
+    ['qwen3-vl:8b', false, 6.1, 8, 'Very good', 'MMMU 69.6 as reported from the model card', true],
+    ['gemma4:e4b', true, 6.6, 8, 'Very good', 'MMMU-Pro 52.6 (Gemma 4 model card)', true],
+    ['qwen3-vl:4b', true, 3.3, 5, 'Good', 'MMMU 67.4 as reported from the model card', true],
+    ['qwen3-vl:2b', false, 1.9, 3, 'Basic', 'Qwen3-VL 2B, the smallest', true],
+    ['gemma4:26b', false, 16, 19, 'Best', 'MMMU-Pro 73.8 (Gemma 4 model card)', false],
+  ] as const
+).map(([name, installed, download_gb, memory_gb, quality, basis, fits], k) => ({
+  name,
+  installed,
+  download_gb,
+  memory_gb,
+  quality,
+  basis,
+  measured: null,
+  fits,
+  best: k === 0,
+}));
 const pickedOffers = new Map<string, ModelOffer>();
 interface MockRun extends RunInfo {
   ids: number[];
@@ -1415,6 +1442,7 @@ export const mockApi: Api = {
     emit('changed', 'places');
   },
   // A stand-in for the text model: a few words it "understands".
+  openLink: async (url) => void window.open(url, '_blank', 'noopener'),
   aiSearch: async (text) => {
     const problem = aiProblem();
     if (problem) throw new Error(problem);
@@ -1440,6 +1468,7 @@ export const mockApi: Api = {
   aiStatus: async () => ({
     mode: settings.ai_mode,
     local: settings.ai_mode === 'local' ? [{ name: 'Ollama', base: 'http://127.0.0.1:11434/v1', models: LOCAL_MODELS }] : [],
+    gpu_memory_gb: 11,
     endpoint: settings.ai_mode === 'local' ? (settings.ai_local_endpoint ?? 'http://127.0.0.1:11434/v1') : null,
     model: settings.ai_decision_model,
     has_key: secrets.has('openrouter'),

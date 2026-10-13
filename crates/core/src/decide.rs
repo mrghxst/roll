@@ -55,7 +55,29 @@ impl Provider {
 pub struct LocalServer {
     pub name: String,
     pub base: String,
-    pub models: Vec<String>,
+    /// Installed models first, then suggestions to download; best first.
+    pub models: Vec<LocalModelInfo>,
+}
+
+/// A local model, installed or suggested.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct LocalModelInfo {
+    pub name: String,
+    pub installed: bool,
+    pub download_gb: Option<f64>,
+    /// Graphics memory to run it fully on the card, about.
+    pub memory_gb: Option<f64>,
+    /// "Best", "Very good", "Good", "Basic", or "Not rated".
+    pub quality: String,
+    /// Where the quality comes from.
+    pub basis: Option<String>,
+    /// Accuracy measured on the owner's items by the model check.
+    pub measured: Option<f64>,
+    /// Fits the graphics card's memory, when that is known.
+    pub fits: Option<bool>,
+    /// The highest quality in the list.
+    pub best: bool,
 }
 
 /// What the AI page shows about the configured provider.
@@ -71,6 +93,8 @@ pub struct AiStatus {
     pub model: Option<String>,
     pub has_key: bool,
     pub network_on: bool,
+    /// Graphics card memory, when it can be read.
+    pub gpu_memory_gb: Option<f64>,
     /// What is missing before a run can start, in plain words.
     pub problem: Option<String>,
 }
@@ -90,6 +114,114 @@ pub struct ModelOffer {
     pub zdr: bool,
     pub structured: bool,
     pub per_100k_usd: f64,
+    /// "Best", "Very good", "Good", "Basic", or "Not rated".
+    pub quality: String,
+    pub basis: Option<String>,
+    /// Accuracy measured on the owner's items by the model check.
+    pub measured: Option<f64>,
+    /// The highest quality in the list.
+    pub best: bool,
+    /// How the provider handles the thumbnails, in plain words.
+    pub data: String,
+    /// The provider's home country (ISO code) and privacy policy.
+    pub country: Option<String>,
+    pub policy_url: Option<String>,
+}
+
+/// Quality order: measured accuracy, then the tier, then price.
+fn quality_key(measured: Option<f64>, tier: Option<u8>, price: f64) -> (u8, i64, u8, i64) {
+    (u8::from(measured.is_none()), -(measured.unwrap_or(0.0) * 1000.0).round() as i64, tier.unwrap_or(9), (price * 1e6) as i64)
+}
+
+/// Accuracy per model from the latest model check runs.
+pub fn measured(c: &Connection) -> rusqlite::Result<HashMap<String, f64>> {
+    Ok(check_report(c)?.models.into_iter().filter(|m| m.answered >= 20).map(|m| (m.model, m.accuracy)).collect())
+}
+
+/// OpenRouter offers with quality, data handling and the best one marked.
+pub fn rank_offers(
+    offers: Vec<roll_ai::openrouter::Offer>,
+    providers: &HashMap<String, roll_ai::openrouter::ProviderInfo>,
+    measured: &HashMap<String, f64>,
+) -> Vec<ModelOffer> {
+    let mut out: Vec<(Option<u8>, ModelOffer)> = offers
+        .into_iter()
+        .map(|o| {
+            let known = roll_ai::catalog::cloud(&o.id);
+            let p = o.provider.as_deref().and_then(|n| providers.get(&n.to_lowercase()));
+            let mut m: ModelOffer = o.into();
+            m.measured = measured.get(&m.id).copied();
+            m.quality = known.as_ref().map_or("Not rated", |k| k.tier.label()).to_string();
+            m.basis = known.as_ref().map(|k| k.basis.to_string());
+            m.country = p.and_then(|p| p.headquarters.clone());
+            m.policy_url = p.and_then(|p| p.privacy_policy_url.clone());
+            (known.map(|k| k.tier.0), m)
+        })
+        .collect();
+    out.sort_by_key(|(t, m)| quality_key(m.measured, *t, m.per_100k_usd));
+    if let Some((_, first)) = out.first_mut() {
+        first.best = true;
+    }
+    out.into_iter().map(|(_, m)| m).collect()
+}
+
+/// Installed models on a local server plus the catalogue's suggestions,
+/// best first. `sizes` are installed sizes in bytes where the server says.
+pub fn rank_local(
+    installed: &[String],
+    sizes: &HashMap<String, u64>,
+    gpu_gb: Option<f64>,
+    measured: &HashMap<String, f64>,
+    ollama: bool,
+) -> Vec<LocalModelInfo> {
+    let mut rows: Vec<(Option<u8>, LocalModelInfo)> = Vec::new();
+    let mut known_tags = std::collections::HashSet::new();
+    for name in installed {
+        let k = roll_ai::catalog::local(name);
+        if let Some(k) = k {
+            known_tags.insert(k.tag);
+        }
+        let memory = k.map(|k| k.memory_gb);
+        rows.push((
+            k.map(|k| k.tier.0),
+            LocalModelInfo {
+                name: name.clone(),
+                installed: true,
+                download_gb: sizes.get(name).map(|b| (*b as f64 / 1e9 * 10.0).round() / 10.0).or(k.map(|k| k.download_gb)),
+                memory_gb: memory,
+                quality: k.map_or("Not rated", |k| k.tier.label()).to_string(),
+                basis: k.map(|k| k.basis.to_string()),
+                measured: measured.get(name).copied(),
+                fits: gpu_gb.zip(memory).map(|(g, m)| m <= g),
+                best: false,
+            },
+        ));
+    }
+    // Suggestions only where Roll can say how to get them (Ollama).
+    if ollama {
+        for k in roll_ai::catalog::LOCAL.iter().filter(|k| !known_tags.contains(k.tag)) {
+            rows.push((
+                Some(k.tier.0),
+                LocalModelInfo {
+                    name: k.tag.to_string(),
+                    installed: false,
+                    download_gb: Some(k.download_gb),
+                    memory_gb: Some(k.memory_gb),
+                    quality: k.tier.label().to_string(),
+                    basis: Some(k.basis.to_string()),
+                    measured: None,
+                    fits: gpu_gb.map(|g| k.memory_gb <= g),
+                    best: false,
+                },
+            ));
+        }
+    }
+    // Best first; models that do not fit the card go after those that do.
+    rows.sort_by_key(|(t, m)| (u8::from(m.fits == Some(false)), quality_key(m.measured, *t, 0.0), u8::from(!m.installed)));
+    if let Some((_, first)) = rows.first_mut() {
+        first.best = true;
+    }
+    rows.into_iter().map(|(_, m)| m).collect()
 }
 
 impl From<roll_ai::openrouter::Offer> for ModelOffer {
@@ -104,6 +236,17 @@ impl From<roll_ai::openrouter::Offer> for ModelOffer {
             zdr: o.zdr,
             structured: o.structured,
             per_100k_usd: o.per_100k,
+            quality: String::new(),
+            basis: None,
+            measured: None,
+            best: false,
+            data: if o.zdr {
+                "Keeps no data: zero data retention".into()
+            } else {
+                "May keep requests for a while; Roll only routes to providers that say they don't collect or train on data".into()
+            },
+            country: None,
+            policy_url: None,
         }
     }
 }

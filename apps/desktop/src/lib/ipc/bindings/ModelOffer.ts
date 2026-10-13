@@ -11,4 +11,24 @@ prompt_per_m: number, completion_per_m: number,
 /**
  * USD per image, when charged separately.
  */
-image_usd: number, zdr: boolean, structured: boolean, per_100k_usd: number, };
+image_usd: number, zdr: boolean, structured: boolean, per_100k_usd: number, 
+/**
+ * "Best", "Very good", "Good", "Basic", or "Not rated".
+ */
+quality: string, basis: string | null, 
+/**
+ * Accuracy measured on the owner's items by the model check.
+ */
+measured: number | null, 
+/**
+ * The highest quality in the list.
+ */
+best: boolean, 
+/**
+ * How the provider handles the thumbnails, in plain words.
+ */
+data: string, 
+/**
+ * The provider's home country (ISO code) and privacy policy.
+ */
+country: string | null, policy_url: string | null, };

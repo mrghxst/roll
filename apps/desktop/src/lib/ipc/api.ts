@@ -154,6 +154,8 @@ export interface Api {
   importApply(id: number, opts: ImportOptions): Promise<number>;
   /** Forget the import; the source files stay where they are. */
   importClose(id: number): Promise<void>;
+  /** Opens an https page in the browser. */
+  openLink(url: string): Promise<void>;
   /** The text model's reading of search words the parser left. */
   aiSearch(text: string): Promise<ParsedSearch>;
   /** The AI mode, local servers found on their default ports, and what is missing. */

@@ -363,3 +363,56 @@ fn the_model_check_recommends_the_cheapest_good_model() {
     assert!(c.per_100k_usd < g.per_100k_usd);
     assert!(g.recommended && !c.recommended, "the cheaper model is more than 2 points worse");
 }
+
+#[test]
+fn model_lists_put_the_highest_quality_first() {
+    use roll_ai::openrouter::Offer;
+    let offer = |id: &str, per_100k: f64, zdr: bool| Offer {
+        id: id.into(),
+        name: id.into(),
+        provider: Some("DeepInfra".into()),
+        price: PRICE,
+        zdr,
+        structured: true,
+        context_length: None,
+        per_100k,
+    };
+    let offers = vec![
+        offer("inclusionai/ling-3.0-flash-vl", 1.0, true),
+        offer("google/gemma-3-12b-it", 2.2, true),
+        offer("google/gemini-2.5-flash", 30.0, true),
+        offer("google/gemini-2.5-flash-lite", 4.8, false),
+    ];
+    let mut providers = std::collections::HashMap::new();
+    providers.insert(
+        "deepinfra".to_string(),
+        roll_ai::openrouter::ProviderInfo {
+            name: "DeepInfra".into(),
+            headquarters: Some("US".into()),
+            privacy_policy_url: Some("https://deepinfra.com/privacy".into()),
+        },
+    );
+    let ranked = decide::rank_offers(offers.clone(), &providers, &Default::default());
+    let ids: Vec<&str> = ranked.iter().map(|o| o.id.as_str()).collect();
+    assert_eq!(ids, ["google/gemini-2.5-flash", "google/gemini-2.5-flash-lite", "google/gemma-3-12b-it", "inclusionai/ling-3.0-flash-vl"]);
+    assert!(ranked[0].best && !ranked[1].best);
+    assert_eq!((ranked[0].quality.as_str(), ranked[3].quality.as_str()), ("Best", "Not rated"));
+    assert_eq!(ranked[0].country.as_deref(), Some("US"));
+    assert!(ranked[1].data.starts_with("May keep requests"));
+    assert!(ranked[0].data.starts_with("Keeps no data"));
+    // A model checked on the owner's items outranks any tier.
+    let mut measured = std::collections::HashMap::new();
+    measured.insert("google/gemma-3-12b-it".to_string(), 0.97);
+    assert_eq!(decide::rank_offers(offers, &providers, &measured)[0].id, "google/gemma-3-12b-it");
+
+    // Local: installed and suggested, best that fits an 11 GB card first.
+    let installed = vec!["qwen3-vl:4b".to_string(), "llava:7b".to_string()];
+    let local = decide::rank_local(&installed, &Default::default(), Some(11.0), &Default::default(), true);
+    assert_eq!(local[0].name, "qwen3-vl:8b");
+    assert!(local[0].best && !local[0].installed && local[0].fits == Some(true));
+    assert_eq!(local[0].download_gb, Some(6.1));
+    let big = local.iter().position(|m| m.name == "gemma4:26b").unwrap();
+    let small = local.iter().position(|m| m.name == "qwen3-vl:4b").unwrap();
+    assert!(big > small, "models that do not fit go last");
+    assert_eq!(local.iter().find(|m| m.name == "llava:7b").unwrap().quality, "Not rated");
+}

@@ -662,6 +662,15 @@ pub async fn import_close(state: State<'_, AppState>, id: i64) -> Res<()> {
 
 // Immich
 
+/// Open a web page in the browser (provider privacy policies). Only https.
+#[tauri::command]
+pub fn open_link(url: String) -> Res<()> {
+    if !url.starts_with("https://") {
+        return Err("Only https links open from Roll.".into());
+    }
+    tauri_plugin_opener::open_url(url, None::<&str>).map_err(e)
+}
+
 #[tauri::command]
 pub async fn ai_search(state: State<'_, AppState>, text: String) -> Res<roll_core::search::ParsedSearch> {
     let lib = state.lib.clone();

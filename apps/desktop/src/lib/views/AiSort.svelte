@@ -93,7 +93,17 @@
     offers.filter((o) => (!zdrOnly || o.zdr) && (!filter.trim() || `${o.id} ${o.name} ${o.provider ?? ''}`.toLowerCase().includes(filter.trim().toLowerCase()))),
   );
   const localModels = $derived(status?.local.find((l) => l.base === status?.endpoint)?.models ?? status?.local[0]?.models ?? []);
-  const choices = $derived(cloud ? offers.filter((o) => o.zdr || s?.ai_allow_non_zdr).map((o) => o.id) : localModels);
+  const bestLocal = $derived(localModels.find((m) => m.best));
+  const choices = $derived(cloud ? offers.filter((o) => o.zdr || s?.ai_allow_non_zdr).map((o) => o.id) : localModels.filter((m) => m.installed).map((m) => m.name));
+
+  async function copyPull(name: string) {
+    try {
+      await navigator.clipboard.writeText(`ollama pull ${name}`);
+      toast.show(`Copied "ollama pull ${name}". Run it in a terminal, then look again.`);
+    } catch {
+      toast.show(`Run "ollama pull ${name}" in a terminal, then look again.`);
+    }
+  }
 
   async function pick(model: string) {
     try {
@@ -222,14 +232,37 @@
         <div class="row"><Button onclick={() => void loadStatus()}><RefreshCw size={14} strokeWidth={1.5} /> Look again</Button></div>
       {:else}
         <p>
-          {status.local.map((l) => l.name).join(', ') || 'Local server'} at <span class="mono">{status.endpoint}</span>. Nothing leaves this computer. For 8–12 GB
-          of graphics memory, qwen3-vl:4b, qwen3-vl:8b or gemma4:e4b work well; for 4 GB, qwen3-vl:2b.
+          {status.local.map((l) => l.name).join(', ') || 'Local server'} at <span class="mono">{status.endpoint}</span>. Nothing leaves this computer.
+          {#if status.gpu_memory_gb}Your graphics card has {status.gpu_memory_gb} GB.{/if}
         </p>
-        <div class="chips" role="radiogroup" aria-label="Local model">
-          {#each localModels as m (m)}
-            <button class="chip" role="radio" aria-checked={status.model === m} onclick={() => void pick(m)}>{m}</button>
-          {/each}
-        </div>
+        {#if bestLocal}
+          <p class="best" data-testid="best-local">
+            Highest quality{status.gpu_memory_gb ? ' that fits your graphics card' : ''}: <strong class="mono">{bestLocal.name}</strong>
+            ({bestLocal.quality}{bestLocal.measured != null ? `, ${pct(bestLocal.measured)} on your items` : ''}{bestLocal.download_gb ? `, ${bestLocal.download_gb} GB` : ''}){bestLocal.installed ? '' : ', not downloaded yet'}.
+          </p>
+        {/if}
+        <table class="offers" data-testid="local-models">
+          <thead><tr><th>Quality</th><th>Model</th><th class="num">Download</th><th class="num">Memory</th><th></th></tr></thead>
+          <tbody>
+            {#each localModels as m (m.name)}
+              <tr class:picked={status.model === m.name}>
+                <td title={m.basis ?? 'No published figure Roll knows of. The model check measures it on your items.'}>
+                  {m.quality}{#if m.measured != null}<span class="muted"> · {pct(m.measured)} on your items</span>{/if}
+                </td>
+                <td><span class="mono">{m.name}</span>{#if m.basis}<div class="muted">{m.basis}</div>{/if}</td>
+                <td class="num mono">{m.download_gb != null ? `${m.download_gb} GB` : '—'}</td>
+                <td class="num mono">{m.memory_gb != null ? `about ${m.memory_gb} GB` : '—'}{#if m.fits === false}<div class="muted">more than your card</div>{/if}</td>
+                <td class="num">
+                  {#if !m.installed}
+                    <button class="copy mono" title="Copy the command" onclick={() => void copyPull(m.name)}>ollama pull {m.name}</button>
+                  {:else if status.model === m.name}<span class="muted">In use</span>
+                  {:else}<Button variant="ghost" onclick={() => void pick(m.name)}>Use</Button>{/if}
+                </td>
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+        <p class="muted">Quality tiers come from the models' published benchmarks; the model check below measures them on your own items. Larger models are slower.</p>
       {/if}
     {:else}
       {#if !status.has_key || !status.network_on}
@@ -239,8 +272,15 @@
         <p class="warn">{offersError}</p>
         <div class="row"><Button onclick={() => void loadOffers()}><RefreshCw size={14} strokeWidth={1.5} /> Try again</Button></div>
       {:else}
+        {#if shown[0]}
+          <p class="best" data-testid="best-cloud">
+            Highest quality: <strong>{shown[0].name}</strong> ({shown[0].quality}{shown[0].measured != null ? `, ${pct(shown[0].measured)} on your items` : ''}),
+            {usd(shown[0].per_100k_usd)} per 100,000 items, {shown[0].zdr ? 'keeps no data' : 'may keep data'}.
+          </p>
+        {/if}
         <p class="muted">
-          Image models on OpenRouter with today's prices, cheapest first. The estimate per 100,000 items assumes every item goes to the model; usually 30–50% do.
+          Image models on OpenRouter, highest quality first, with today's prices. The price per 100,000 items assumes every item goes to the model; usually
+          30–50% do.
         </p>
         <div class="row">
           <Input placeholder="Filter models" bind:value={filter} />
@@ -248,18 +288,27 @@
         </div>
         <table class="offers" data-testid="ai-offers">
           <thead>
-            <tr><th>Model</th><th>Provider</th><th class="num">In / out per M</th><th class="num">≈ per 100k</th><th></th></tr>
+            <tr><th>Quality</th><th>Model</th><th class="num">≈ per 100k</th><th>Your data</th><th></th></tr>
           </thead>
           <tbody>
             {#each shown.slice(0, 40) as o (o.id)}
               <tr class:picked={status.model === o.id}>
+                <td title={o.basis ?? 'No published figure Roll knows of. The model check measures it on your items.'}>
+                  {o.quality}{#if o.measured != null}<span class="muted"> · {pct(o.measured)} on your items</span>{/if}
+                </td>
                 <td>
                   <strong>{o.name}</strong> <span class="mono muted">{o.id}</span>
                   {#if !o.structured}<span class="badge">no JSON schema</span>{/if}
+                  {#if o.basis}<div class="muted">{o.basis}</div>{/if}
                 </td>
-                <td>{o.provider ?? '—'} {#if o.zdr}<span class="badge">keeps no data</span>{:else}<span class="badge warn">keeps data</span>{/if}</td>
-                <td class="num mono">${o.prompt_per_m.toFixed(3)} / ${o.completion_per_m.toFixed(3)}</td>
-                <td class="num mono">{usd(o.per_100k_usd)}</td>
+                <td class="num mono">{usd(o.per_100k_usd)}<div class="muted">${o.prompt_per_m.toFixed(3)} / ${o.completion_per_m.toFixed(3)} per M</div></td>
+                <td>
+                  {#if o.zdr}<span class="badge">keeps no data</span>{:else}<span class="badge warn">may keep data</span>{/if}
+                  <div class="muted">
+                    {o.provider ?? 'Any provider'}{o.country ? `, ${o.country}` : ''}
+                    {#if o.policy_url}· <button class="link" onclick={() => void api.openLink(o.policy_url!)}>privacy policy</button>{/if}
+                  </div>
+                </td>
                 <td class="num">
                   {#if status.model === o.id}<span class="muted">In use</span>{:else}<Button variant="ghost" onclick={() => void pick(o.id)}>Use</Button>{/if}
                 </td>
@@ -267,6 +316,10 @@
             {/each}
           </tbody>
         </table>
+        <p class="muted">
+          "Keeps no data" means zero data retention: the provider deletes the thumbnails after answering. Roll asks OpenRouter to skip providers that collect or
+          train on data either way.
+        </p>
       {/if}
     {/if}
   </section>
@@ -478,7 +531,6 @@
     font-family: var(--mono);
     cursor: pointer;
   }
-  .chip[aria-checked='true'],
   .chip[aria-pressed='true'] {
     background: var(--fg);
     color: var(--bg);
@@ -495,6 +547,9 @@
     color: var(--muted);
     padding: 4px 6px;
     border-bottom: 1px solid var(--border);
+  }
+  .offers th.num {
+    text-align: right;
   }
   .offers td {
     padding: 6px;
@@ -515,6 +570,28 @@
     border: 1px solid var(--border);
     border-radius: 999px;
     font-size: var(--t11, 11px);
+    color: var(--muted);
+  }
+  .best {
+    padding: 8px 10px;
+    border-left: 2px solid var(--fg);
+    background: var(--surface);
+  }
+  .copy,
+  .link {
+    padding: 2px 6px;
+    border: 1px solid var(--border);
+    border-radius: var(--r-1);
+    background: var(--bg);
+    color: var(--fg);
+    font-size: var(--t12);
+    cursor: pointer;
+  }
+  .link {
+    padding: 0;
+    border: 0;
+    background: none;
+    text-decoration: underline;
     color: var(--muted);
   }
   .badge.warn {

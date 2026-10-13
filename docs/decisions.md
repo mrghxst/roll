@@ -302,3 +302,16 @@ questions. One line of reason each. Newest at the bottom of each section.
   those words, today's date and the category names are sent. Without a
   separate text model the decision model answers. These requests cost a
   fraction of a cent and are not counted in run totals.
+- **Model lists are sorted by quality, highest first** (owner's request,
+  2026-10-13). Quality is the model check's accuracy on the owner's items
+  when there is one; otherwise a coarse tier (Best, Very good, Good,
+  Basic) from a curated table in `crates/ai/src/catalog.rs`, built from
+  the official model cards where they publish figures (Gemma 3 MMMU,
+  Gemma 4 MMMU-Pro) and reported Qwen3-VL figures. Vendors report
+  different benchmarks, so tiers are deliberately coarse and each row
+  says where its figure comes from. Models Roll does not know are "Not
+  rated" and listed after rated ones, cheapest first. Local models show
+  their download size and the graphics memory they need; ones larger than
+  the card go last. Cloud models show their price per 100,000 items and
+  how the provider handles data (zero retention or not, the provider's
+  country and privacy policy from OpenRouter's `/providers`).

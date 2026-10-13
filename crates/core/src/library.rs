@@ -1493,10 +1493,17 @@ impl Library {
 
     pub fn ai_status(&self) -> crate::decide::AiStatus {
         let s = self.settings();
+        let gpu = gpu_memory_gb();
+        let measured = crate::decide::measured(&self.db.read()).unwrap_or_default();
         let local: Vec<crate::decide::LocalServer> = if s.ai_mode == "local" {
             roll_ai::chat::detect_local()
                 .into_iter()
-                .map(|(name, base, models)| crate::decide::LocalServer { name, base, models })
+                .map(|(name, base, models)| {
+                    let ollama = name == "Ollama";
+                    let sizes = if ollama { ollama_sizes(&base) } else { Default::default() };
+                    let models = crate::decide::rank_local(&models, &sizes, gpu, &measured, ollama);
+                    crate::decide::LocalServer { name, base, models }
+                })
                 .collect()
         } else {
             Vec::new()
@@ -1511,7 +1518,16 @@ impl Library {
             _ if s.ai_decision_model.is_none() => Some("Pick a decision model.".to_string()),
             _ => None,
         };
-        crate::decide::AiStatus { mode: s.ai_mode, local, endpoint, model: s.ai_decision_model, has_key, network_on: s.network.ai, problem }
+        crate::decide::AiStatus {
+            mode: s.ai_mode,
+            local,
+            endpoint,
+            model: s.ai_decision_model,
+            has_key,
+            network_on: s.network.ai,
+            gpu_memory_gb: gpu,
+            problem,
+        }
     }
 
     /// Image-capable OpenRouter models with live prices, cheapest first.
@@ -1519,7 +1535,9 @@ impl Library {
         anyhow::ensure!(self.settings().network.ai, "The AI provider is off. Turn it on in Settings › Network.");
         let ep = roll_ai::chat::Endpoint::new(roll_ai::chat::OPENROUTER, None);
         let offers = roll_ai::openrouter::fetch(&ep, &Default::default()).map_err(|e| anyhow::anyhow!(e.explain()))?;
-        Ok(offers.into_iter().map(Into::into).collect())
+        let providers = ep.get("/providers").map(|v| roll_ai::openrouter::providers(&v)).unwrap_or_default();
+        let measured = crate::decide::measured(&self.db.read())?;
+        Ok(crate::decide::rank_offers(offers, &providers, &measured))
     }
 
     /// Use `model` for decisions. For OpenRouter, the offer's price is kept
@@ -1791,6 +1809,37 @@ pub fn folder_tree(root_id: i32, root_path: &str, counts: &[(String, i32)]) -> F
 
 fn plural(n: usize) -> String {
     if n == 1 { "1 item".into() } else { format!("{n} items") }
+}
+
+/// Installed model sizes from Ollama's own API (`/api/tags`).
+fn ollama_sizes(base: &str) -> std::collections::HashMap<String, u64> {
+    let root = base.trim_end_matches("/v1");
+    let mut ep = roll_ai::chat::Endpoint::new(root, None);
+    ep.timeout = std::time::Duration::from_secs(2);
+    ep.get("/api/tags")
+        .ok()
+        .and_then(|v| v["models"].as_array().cloned())
+        .unwrap_or_default()
+        .iter()
+        .filter_map(|m| Some((m["name"].as_str()?.to_string(), m["size"].as_u64()?)))
+        .collect()
+}
+
+/// The graphics card's memory in GB, from `nvidia-smi` when there is one.
+fn gpu_memory_gb() -> Option<f64> {
+    static GPU: std::sync::OnceLock<Option<f64>> = std::sync::OnceLock::new();
+    *GPU.get_or_init(|| {
+        let mut cmd = std::process::Command::new("nvidia-smi");
+        cmd.args(["--query-gpu=memory.total", "--format=csv,noheader,nounits"]);
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            cmd.creation_flags(0x0800_0000);
+        }
+        let out = cmd.output().ok()?;
+        let mib: f64 = String::from_utf8_lossy(&out.stdout).lines().filter_map(|l| l.trim().parse::<f64>().ok()).fold(0.0, f64::max);
+        (mib > 0.0).then(|| (mib / 1024.0 * 10.0).round() / 10.0)
+    })
 }
 
 #[cfg(test)]

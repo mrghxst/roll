@@ -18,6 +18,10 @@ local: Array<LocalServer>,
  */
 endpoint: string | null, model: string | null, has_key: boolean, network_on: boolean, 
 /**
+ * Graphics card memory, when it can be read.
+ */
+gpu_memory_gb: number | null, 
+/**
  * What is missing before a run can start, in plain words.
  */
 problem: string | null, };

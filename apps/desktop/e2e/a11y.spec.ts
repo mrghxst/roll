@@ -50,7 +50,7 @@ for (const scheme of ['light', 'dark'] as const) {
     await page.emulateMedia({ colorScheme: scheme });
     await page.goto('/?setup=1&mock=300&ai=local');
     await page.getByTestId('nav-ai').click();
-    await page.getByRole('radiogroup', { name: 'Local model' }).getByRole('radio', { name: 'qwen3-vl:4b' }).click();
+    await page.getByTestId('local-models').locator('tr', { hasText: 'qwen3-vl:4b' }).getByRole('button', { name: 'Use' }).click();
     await page.getByTestId('check-sample').click();
     await page.getByTestId('labeler').waitFor();
     await page.waitForTimeout(300);

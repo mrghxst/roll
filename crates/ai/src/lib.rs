@@ -1,6 +1,7 @@
 //! Local AI (embeddings, the Private guard) and the decision models: an
 //! OpenAI-compatible client, the decision prompt and cost math.
 
+pub mod catalog;
 pub mod chat;
 pub mod cost;
 pub mod decide;

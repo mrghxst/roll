@@ -74,6 +74,31 @@ pub fn offers(models: &Value, zdr: &Value, a: &Assumptions) -> Vec<Offer> {
     out
 }
 
+/// Where a provider is and its privacy policy, from `GET /providers`.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct ProviderInfo {
+    pub name: String,
+    pub headquarters: Option<String>,
+    pub privacy_policy_url: Option<String>,
+}
+
+pub fn providers(v: &Value) -> HashMap<String, ProviderInfo> {
+    v["data"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|p| {
+            let name = p["name"].as_str()?.to_string();
+            let info = ProviderInfo {
+                name: name.clone(),
+                headquarters: p["headquarters"].as_str().map(String::from),
+                privacy_policy_url: p["privacy_policy_url"].as_str().map(String::from),
+            };
+            Some((name.to_lowercase(), info))
+        })
+        .collect()
+}
+
 /// Fetch both lists and build the offers. Needs no key.
 pub fn fetch(ep: &Endpoint, a: &Assumptions) -> Result<Vec<Offer>, ChatError> {
     let models = ep.get("/models")?;

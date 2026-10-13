@@ -16,9 +16,10 @@ test('a cloud run shows the estimate and consent first, then records its proposa
 
   await page.getByTestId('nav-ai').click();
   const offers = page.getByTestId('ai-offers');
-  // Cheapest first; providers that keep data are hidden.
-  await expect(offers.locator('tbody tr').first()).toContainText('ling-3.0-flash-vl');
-  await expect(offers).not.toContainText('keeps data');
+  // Highest quality first; providers that keep data are hidden.
+  await expect(offers.locator('tbody tr').first()).toContainText('gemini-2.5-flash');
+  await expect(page.getByTestId('best-cloud')).toContainText('Highest quality: Gemini 2.5 Flash');
+  await expect(offers).not.toContainText('may keep data');
   await offers.locator('tr', { hasText: 'google/gemma-3-12b-it' }).getByRole('button', { name: 'Use' }).click();
 
   const consent = page.getByTestId('ai-consent');
@@ -54,7 +55,7 @@ test('the model check compares models on labelled items', async ({ page }) => {
   await page.goto('/?setup=1&mock=800');
   await aiMode(page, 'Local');
   await page.getByTestId('nav-ai').click();
-  await page.getByRole('radiogroup', { name: 'Local model' }).getByRole('radio', { name: 'qwen3-vl:4b' }).click();
+  await page.getByTestId('local-models').locator('tr', { hasText: 'qwen3-vl:4b' }).getByRole('button', { name: 'Use' }).click();
   await expect(page.getByTestId('ai-consent')).toContainText('Nothing leaves the machine');
 
   await page.getByTestId('check-sample').click();
@@ -74,7 +75,7 @@ test('the model check compares models on labelled items', async ({ page }) => {
 test('search words the parser leaves can go to the text model', async ({ page }) => {
   await page.goto('/?setup=1&mock=300&ai=local');
   await page.getByTestId('nav-ai').click();
-  await page.getByRole('radiogroup', { name: 'Local model' }).getByRole('radio', { name: 'qwen3-vl:4b' }).click();
+  await page.getByTestId('local-models').locator('tr', { hasText: 'qwen3-vl:4b' }).getByRole('button', { name: 'Use' }).click();
   const search = page.getByTestId('search');
   await search.fill('funny clips from christmas cat');
   await search.press('Enter');
