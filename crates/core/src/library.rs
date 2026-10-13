@@ -1030,6 +1030,7 @@ impl Library {
         let source = match items.first().map(|s| s.source) {
             Some("track") => "from location history",
             Some("neighbors") => "from your photos",
+            Some("event") => "from the event",
             _ => "from the folder name",
         };
         let label = format!("Set the location of {} {source}", plural(items.len()));

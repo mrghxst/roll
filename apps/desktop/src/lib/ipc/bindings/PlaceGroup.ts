@@ -5,7 +5,7 @@
  */
 export type PlaceGroup = { key: string, 
 /**
- * "track", "neighbors" or "name".
+ * "track", "neighbors", "event" or "name".
  */
 source: string, 
 /**

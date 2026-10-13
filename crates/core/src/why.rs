@@ -27,7 +27,7 @@ pub fn location_source(source: &str) -> &'static str {
         "sidecar" => "the XMP sidecar",
         "takeout" => "the Google Takeout sidecar",
         "neighbors" => "photos taken around the same time",
-        "history" => "your location history",
+        "history" | "track" => "your location history",
         "event" => "other photos of the same event",
         "name" => "the folder or file name",
         "manual" => "a manual change",

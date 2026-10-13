@@ -44,7 +44,7 @@
     return `${da} ${MONTHS[ma - 1]} ${ya} – ${db} ${MONTHS[mb - 1]} ${yb}`;
   }
 
-  const SOURCES: Record<string, string> = { track: 'From location history', neighbors: 'From your photos', name: 'From the folder name' };
+  const SOURCES: Record<string, string> = { track: 'From location history', neighbors: 'From your photos', event: 'From the event', name: 'From the folder name' };
 
   async function accept(g: PlaceGroup) {
     busy = g.key;

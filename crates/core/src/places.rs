@@ -150,7 +150,7 @@ pub struct LocationResult {
 #[ts(export)]
 pub struct PlaceGroup {
     pub key: String,
-    /// "track", "neighbors" or "name".
+    /// "track", "neighbors", "event" or "name".
     pub source: String,
     /// "lake-garda-2019.gpx", "41 of your photos", "the folder “Italy 2019”".
     pub evidence: String,
@@ -311,6 +311,8 @@ pub fn suggest_in(c: &Connection, gaz: Option<&Gazetteer>, window_min: i64, scop
         st.query_map([], |r| r.get(0))?.collect::<Result<_, _>>()?
     };
 
+    let by_event = event_places(c)?;
+
     let opts = Options { window_ms: window_min.max(1) * 60_000, ..Default::default() };
     // (source kind, source index or name key, suggestion)
     let mut found: Vec<(&Candidate, &'static str, String, Place)> = Vec::new();
@@ -336,6 +338,10 @@ pub fn suggest_in(c: &Connection, gaz: Option<&Gazetteer>, window_min: i64, scop
                 continue;
             }
         }
+        if let Some((name, p)) = by_event.get(&cand.id) {
+            found.push((cand, "event", name.clone(), *p));
+            continue;
+        }
         if let Some(g) = gaz {
             let hit = name_cache.entry(cand.dir.clone()).or_insert_with(|| {
                 // The innermost folder that names a place.
@@ -359,7 +365,7 @@ pub fn suggest_in(c: &Connection, gaz: Option<&Gazetteer>, window_min: i64, scop
         let t = if cand.local != i64::MIN { cand.local } else { cand.utc };
         let fits = |g: &Acc| {
             g.kind == kind && g.key == key && {
-                if kind == "name" {
+                if kind == "name" || kind == "event" {
                     true
                 } else {
                     let (la, lo) = centroid(&g.items);
@@ -367,7 +373,11 @@ pub fn suggest_in(c: &Connection, gaz: Option<&Gazetteer>, window_min: i64, scop
                 }
             }
         };
-        let idx = if kind == "name" { groups.iter().position(fits) } else { groups.last().filter(|g| fits(g)).map(|_| groups.len() - 1) };
+        let idx = if kind == "name" || kind == "event" {
+            groups.iter().position(fits)
+        } else {
+            groups.last().filter(|g| fits(g)).map(|_| groups.len() - 1)
+        };
         match idx {
             Some(i) => {
                 groups[i].items.push((cand, place));
@@ -400,6 +410,7 @@ pub fn suggest_in(c: &Connection, gaz: Option<&Gazetteer>, window_min: i64, scop
         let evidence = match g.kind {
             "track" => g.key.clone(),
             "neighbors" => "your geotagged photos taken around the same time".to_string(),
+            "event" => format!("the event “{}”", g.key),
             _ => {
                 let dir = g.items[0].0.dir.rsplit('/').next().unwrap_or("").to_string();
                 format!("the folder “{dir}”")
@@ -408,6 +419,7 @@ pub fn suggest_in(c: &Connection, gaz: Option<&Gazetteer>, window_min: i64, scop
         let why_base = match g.kind {
             "track" => format!("Interpolated from {}", g.key),
             "neighbors" => "From your photos taken just before and after".to_string(),
+            "event" => format!("From the event “{}”, where most items have a place", g.key),
             _ => format!("From the folder name, {}", g.key),
         };
         let suggested: Vec<Suggested> = g
@@ -419,6 +431,7 @@ pub fn suggest_in(c: &Connection, gaz: Option<&Gazetteer>, window_min: i64, scop
                 source: match g.kind {
                     "track" => "track",
                     "neighbors" => "neighbors",
+                    "event" => "event",
                     _ => "name",
                 },
                 why: format!("{why_base}, ±{}.", radius(p.accuracy_m)),
@@ -442,6 +455,57 @@ pub fn suggest_in(c: &Connection, gaz: Option<&Gazetteer>, window_min: i64, scop
     // Largest groups first.
     out.sort_by(|a, b| b.count.cmp(&a.count).then(a.from_local.cmp(&b.from_local)));
     Ok((out, by_key))
+}
+
+/// Items without a place in events where most items have one: the event's
+/// centre, with the radius that holds 80% of its located items. Events
+/// spread over more than 25 km (a road trip) have no useful centre.
+fn event_places(c: &Connection) -> rusqlite::Result<HashMap<i64, (String, Place)>> {
+    struct Member {
+        event: i64,
+        name: String,
+        asset: i64,
+        at: Option<(f64, f64)>,
+        trusted: bool,
+    }
+    let mut st = c.prepare(
+        "SELECT e.id, e.name, a.id, a.lat, a.lon,
+                a.lat IS NOT NULL AND coalesce(a.loc_source, 'file') IN ('file', 'manual', 'sidecar', 'takeout')
+         FROM events e JOIN event_assets ea ON ea.event_id = e.id JOIN assets a ON a.id = ea.asset_id
+         WHERE e.state IN ('proposed', 'confirmed') AND a.trashed_at IS NULL AND a.missing != 1
+         ORDER BY e.id",
+    )?;
+    let rows: Vec<Member> = st
+        .query_map([], |r| {
+            let lat: Option<f64> = r.get(3)?;
+            let lon: Option<f64> = r.get(4)?;
+            Ok(Member { event: r.get(0)?, name: r.get(1)?, asset: r.get(2)?, at: lat.zip(lon), trusted: r.get(5)? })
+        })?
+        .collect::<Result<_, _>>()?;
+    let mut out = HashMap::new();
+    for ev in rows.chunk_by(|a, b| a.event == b.event) {
+        let located: Vec<(f64, f64)> = ev.iter().filter(|m| m.trusted).filter_map(|m| m.at).collect();
+        if located.len() < 3 || located.len() * 2 <= ev.len() {
+            continue;
+        }
+        let median = |mut v: Vec<f64>| {
+            v.sort_by(f64::total_cmp);
+            v[v.len() / 2]
+        };
+        let lat = median(located.iter().map(|p| p.0).collect());
+        let lon = median(located.iter().map(|p| p.1).collect());
+        let mut dist: Vec<f64> = located.iter().map(|p| distance_m(lat, lon, p.0, p.1)).collect();
+        dist.sort_by(f64::total_cmp);
+        let spread = dist[(dist.len() * 4 / 5).min(dist.len() - 1)];
+        if spread > 25_000.0 {
+            continue;
+        }
+        let place = Place { lat, lon, accuracy_m: spread.max(500.0) };
+        for m in ev.iter().filter(|m| m.at.is_none()) {
+            out.insert(m.asset, (m.name.clone(), place));
+        }
+    }
+    Ok(out)
 }
 
 fn centroid(items: &[(&Candidate, Place)]) -> (f64, f64) {
@@ -715,5 +779,41 @@ mod tests {
         assert_eq!(offset_label(330), "UTC+5:30");
         assert_eq!(radius(42.0), "40 m");
         assert_eq!(radius(4_600.0), "5 km");
+    }
+
+    #[test]
+    fn events_lend_their_centre() {
+        let db = Db::memory().unwrap();
+        let c = db.write();
+        c.execute("INSERT INTO events (name, state, created_at) VALUES ('Lisbon 2022', 'confirmed', 0)", []).unwrap();
+        let ev = c.last_insert_rowid();
+        // Four located phone photos in Lisbon, two camera photos without a
+        // place, days apart so no neighbour is close enough in time.
+        let spots = [(38.711, -9.139), (38.713, -9.136), (38.708, -9.141), (38.715, -9.133)];
+        let mut cams = Vec::new();
+        for i in 0..6 {
+            let a = insert_asset(&c, &format!("Dump/IMG_{i}.JPG"));
+            set_date(&c, a, &format!("2022-05-0{}T12:00:00", i + 1), Some(60));
+            if let Some((lat, lon)) = spots.get(i) {
+                c.execute("UPDATE assets SET lat = ?2, lon = ?3, loc_source = 'file' WHERE id = ?1", params![a, lat, lon]).unwrap();
+            } else {
+                cams.push(a);
+            }
+            c.execute("INSERT INTO event_assets (event_id, asset_id) VALUES (?1, ?2)", [ev, a]).unwrap();
+        }
+        let (groups, by_key) = suggest(&c, None, 30).unwrap();
+        assert_eq!(groups.len(), 1, "{groups:?}");
+        let g = &groups[0];
+        assert_eq!((g.source.as_str(), g.count, g.evidence.as_str()), ("event", 2, "the event “Lisbon 2022”"));
+        assert!((g.lat - 38.711).abs() < 0.005 && (g.lon + 9.139).abs() < 0.005);
+        assert!((500.0..1_000.0).contains(&g.accuracy_m), "{}", g.accuracy_m);
+        accept(&c, &by_key[&g.key], "Set the location of 2 items from the event").unwrap();
+        let src: String = c.query_row("SELECT loc_source FROM assets WHERE id = ?1", [cams[0]], |r| r.get(0)).unwrap();
+        assert_eq!(src, "event");
+
+        // Three of six located is not most: nothing to lend.
+        c.execute("UPDATE assets SET lat = NULL, lon = NULL, loc_source = NULL WHERE id IN (?1, ?2)", params![cams[0], cams[1]]).unwrap();
+        c.execute("UPDATE assets SET lat = NULL, lon = NULL, loc_source = NULL WHERE lat > 38.714", []).unwrap();
+        assert!(suggest(&c, None, 30).unwrap().0.iter().all(|g| g.source != "event"));
     }
 }
