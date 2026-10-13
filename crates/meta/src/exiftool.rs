@@ -29,8 +29,12 @@ pub enum ExifToolError {
 
 pub type Result<T> = std::result::Result<T, ExifToolError>;
 
-/// Finds ExifTool: `ROLL_EXIFTOOL`, next to the app, on `PATH`, or the
-/// per-user Windows install location.
+/// Where Homebrew and Linux packages put command-line tools.
+pub const SYSTEM_DIRS: &[&str] = if cfg!(windows) { &[] } else { &["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin"] };
+
+/// Finds ExifTool: `ROLL_EXIFTOOL`, next to the app, on `PATH`, the
+/// usual install folders (apps started from the Dock or a menu do not get
+/// Homebrew's `PATH`), or the per-user Windows install location.
 pub fn locate() -> Option<PathBuf> {
     if let Some(p) = std::env::var_os("ROLL_EXIFTOOL").map(PathBuf::from)
         && p.is_file()
@@ -48,7 +52,7 @@ pub fn locate() -> Option<PathBuf> {
         }
     }
     if let Some(paths) = std::env::var_os("PATH") {
-        for dir in std::env::split_paths(&paths) {
+        for dir in std::env::split_paths(&paths).chain(SYSTEM_DIRS.iter().map(PathBuf::from)) {
             let cand = dir.join(exe_name);
             if cand.is_file() {
                 return Some(cand);

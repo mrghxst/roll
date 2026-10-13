@@ -21,7 +21,8 @@ fn exe_name(base: &str) -> String {
     if cfg!(windows) { format!("{base}.exe") } else { base.to_string() }
 }
 
-/// `ROLL_FFMPEG`, next to the app, or `PATH`.
+/// `ROLL_FFMPEG`, next to the app, `PATH`, or the usual install folders
+/// (apps started from the Dock or a menu do not get Homebrew's `PATH`).
 pub fn locate(base: &str) -> Option<PathBuf> {
     let env = format!("ROLL_{}", base.to_uppercase());
     if let Some(p) = std::env::var_os(env).map(PathBuf::from)
@@ -39,7 +40,11 @@ pub fn locate(base: &str) -> Option<PathBuf> {
             }
         }
     }
-    std::env::split_paths(&std::env::var_os("PATH")?).map(|d| d.join(&name)).find(|p| p.is_file())
+    let system: &[&str] = if cfg!(windows) { &[] } else { &["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin"] };
+    std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default())
+        .chain(system.iter().map(PathBuf::from))
+        .map(|d| d.join(&name))
+        .find(|p| p.is_file())
 }
 
 #[derive(Debug, Clone)]
