@@ -78,8 +78,16 @@ questions. One line of reason each. Newest at the bottom of each section.
   `world-atlas` package, public domain, 0.7 MB) instead of a Protomaps
   PMTiles world file. Getting the PMTiles extract means downloading from a
   build server, which needs the owner's go-ahead; the outlines need nothing
-  and match the monochrome style. Detailed online tiles are still to come
-  as an opt-in.
+  and match the monochrome style.
+- **Online detail tiles use Roll's own style over OpenFreeMap's planet
+  tiles** (OpenMapTiles schema: water, parks, roads, rail, buildings,
+  boundaries, place names in Noto Sans from OpenFreeMap's font server)
+  instead of one of OpenFreeMap's ready-made styles, so they match the
+  monochrome palette and follow the theme. They draw over the offline
+  outlines, below the items. The CSP allows `https://tiles.openfreemap.org`
+  for `connect-src` at all times; the map only asks it while Settings ›
+  Network › Online map tiles is on. Offline regions remain a later
+  milestone.
 - **Place names install from GeoNames files the owner picks** (Settings
   has no download yet): `cities500.txt`, `admin1CodesASCII.txt` and
   `countryInfo.txt`. A download with consent comes with the pack manager
@@ -236,3 +244,20 @@ questions. One line of reason each. Newest at the bottom of each section.
 - **Albums are shared as viewers.** The people the owner picks can see and
   download, not change the album.
 
+## Installer
+
+- **The installer is per-user NSIS only** (no MSI): it needs no
+  administrator rights. It installs to `%LOCALAPPDATA%\Programs\Roll`, not
+  Tauri's default `%LOCALAPPDATA%\Roll`, which is the data folder section 7
+  fixes; `src-tauri/windows/hooks.nsh` changes the default. Tauri's
+  uninstaller option "Delete the application data" removes
+  `%LOCALAPPDATA%\io.github.mrghxst.roll`, which Roll does not use, so
+  uninstalling always keeps the library database.
+- **Bundled tools come from pinned downloads at build time**, not from the
+  repository: ExifTool 13.59 (Windows 64-bit package from SourceForge, the
+  checksum from exiftool.org) and BtbN's LGPL shared FFmpeg 8.1 build
+  (GitHub's asset digest). `ffplay.exe` is left out. The normal
+  `tauri.conf.json` bundles nothing, so `pnpm tauri build` without
+  `src-tauri/tauri.bundle.json` still works for development.
+- **The installer is not signed and has no updater yet.** Signing needs a
+  certificate (money) and releases need the owner's go-ahead (9.4).

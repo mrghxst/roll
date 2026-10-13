@@ -14,3 +14,4 @@ test-results/
 .DS_Store
 Thumbs.db
 /apps/desktop/src-tauri/gen/
+/apps/desktop/src-tauri/bundle-tools/

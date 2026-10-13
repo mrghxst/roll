@@ -2,8 +2,12 @@
 
 A local photo and video library that sorts itself.
 
-> **Status: blueprint.** There's no code yet. [PROMPT.md](PROMPT.md) is the
-> full spec, written to be handed to Claude Code.
+> **Status: in development.** The library, sorting rules, duplicates, dates,
+> places, events, organize with undo, Add photos (camera cards, WhatsApp and
+> Google Takeout exports) and the Immich sync work. Local AI models
+> (embeddings, OCR) and the AI decision step are not wired in yet.
+> [docs/plan.md](docs/plan.md) tracks what is done; [PROMPT.md](PROMPT.md)
+> is the full spec.
 
 Roll turns a phone dump of 100,000+ photos and videos into a library sorted by
 year:
@@ -40,17 +44,30 @@ can undo every change.
 Tauri 2, Rust, Svelte 5, SQLite, ONNX Runtime, ExifTool, FFmpeg and MapLibre.
 Windows first, then Linux and macOS.
 
-## Build it with Claude Code
+## Build and run
+
+Needs Rust (stable), Node.js with pnpm, and on the PATH ExifTool and FFmpeg
+for development builds.
 
 ```bash
 git clone https://github.com/mrghxst/roll
+cd roll/apps/desktop
+pnpm install
+pnpm tauri dev
 ```
 
-Open Claude Code in the `roll` folder and paste the contents of
-[PROMPT.md](PROMPT.md), or say "Build Roll as specified in PROMPT.md".
+The Windows installer bundles ExifTool and FFmpeg:
 
-The research behind the spec (AI prices, Immich compatibility and a survey of
-a real library) is in [docs/research.md](docs/research.md).
+```powershell
+pwsh scripts/fetch-tools.ps1
+cd apps/desktop; pnpm tauri build --config src-tauri/tauri.bundle.json
+```
+
+[docs/user-guide.md](docs/user-guide.md) explains the app,
+[docs/immich.md](docs/immich.md) the Immich side, and
+[CLAUDE.md](CLAUDE.md) the layout and commands for working on it. The
+research behind the spec (AI prices, Immich compatibility and a survey of a
+real library) is in [docs/research.md](docs/research.md).
 
 ## License
 

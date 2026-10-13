@@ -32,7 +32,7 @@
         "style-src": "'self' 'unsafe-inline'",
         "font-src": "'self' data:",
         "worker-src": "'self' blob:",
-        "connect-src": "'self' ipc: http://ipc.localhost roll: http://roll.localhost"
+        "connect-src": "'self' ipc: http://ipc.localhost roll: http://roll.localhost https://tiles.openfreemap.org"
       }
     }
   },
@@ -44,7 +44,7 @@
     "copyright": "MIT",
     "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns", "icons/icon.ico"],
     "windows": {
-      "nsis": { "installMode": "currentUser" }
+      "nsis": { "installMode": "currentUser", "installerHooks": "./windows/hooks.nsh" }
     }
   }
 }

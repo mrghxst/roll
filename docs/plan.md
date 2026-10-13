@@ -69,8 +69,9 @@ Milestones from PROMPT.md section 10. `[x]` done, `[~]` partly done,
 - [x] Acceptance: the +1 y 2 h camera set fixed with one reference (4
       actions in the UI test), 500 photos placed from one GPX in one
       accepted suggestion, 100k points at 60 fps on the owner's GPU
-- [ ] Opt-in online detail tiles (OpenFreeMap), place names download with
-      consent (with the M4 pack manager), event centroids (M6)
+- [x] Opt-in online detail tiles (OpenFreeMap, own monochrome style,
+      nothing fetched while off; tested with the host intercepted), place
+      names download with consent (M4 pack manager)
 ## M4 Local AI
 
 - [x] Review: proposals per category, most doubtful first, keys 1–9, X,
@@ -145,7 +146,13 @@ Milestones from PROMPT.md section 10. `[x]` done, `[~]` partly done,
 - [x] Accessibility: axe (WCAG 2.1 A/AA) over every view in Playwright,
       light and dark; the photo grid is a multi-select listbox with
       dated item labels and an active descendant; contrast and labels fixed
-- [ ] Windows installer, user docs
+- [x] Windows installer: per-user NSIS with ExifTool 13.59 and an LGPL
+      FFmpeg 8.1 (pinned checksums, `scripts/fetch-tools.ps1`), installed
+      to `%LOCALAPPDATA%\Programs\Roll`; installed, run and uninstalled
+      silently (docs/checks.md); the pages by hand are pending
+- [x] User docs: docs/user-guide.md, docs/immich.md
+- [x] Place suggestions from events: when most of an event is geotagged,
+      its centre (with the radius that holds 80% of it) for the rest
 ## M7 Later
 
 ## Next

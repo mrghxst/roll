@@ -85,3 +85,29 @@ UI tests (`e2e/places.spec.ts`, mock backend): map pins and tray, drag
 and drop onto the map, accepting a suggestion with the time zone
 follow-up, "Set location…" by search and by coordinates, "Change date…",
 and the four-step camera fix. Map speed: docs/benchmarks.md.
+
+## M6 Windows installer
+
+`scripts/fetch-tools.ps1` then
+`pnpm tauri build --config src-tauri/tauri.bundle.json` (2026-10-13):
+
+- `Roll_0.1.0_x64-setup.exe`, 66 MB, per-user NSIS installer. 7-Zip's
+  listing shows `roll-desktop.exe`, `exiftool\exiftool.exe` with its
+  `exiftool_files`, and `ffmpeg\` with `ffmpeg.exe`, `ffprobe.exe` and the
+  LGPL DLLs (no `ffplay.exe`).
+- Tauri's per-user default folder is `%LOCALAPPDATA%\Roll`, which is
+  Roll's data folder. `src-tauri/windows/hooks.nsh` moves the default to
+  `%LOCALAPPDATA%\Programs\Roll`. A silent install (`/S`) put the app, the
+  tools and `uninstall.exe` there, nothing in `%LOCALAPPDATA%\Roll`, and
+  added a Start menu entry.
+- The installed copy, started with `PATH` reduced to `C:\Windows` and an
+  empty data folder, reported ExifTool and FFmpeg from its own folder
+  (`app_info` over WebView2's DevTools port).
+- `uninstall.exe /S` removed the folder, the shortcut and the registry
+  entry.
+- One build attempt failed with rustc exiting `STATUS_ACCESS_VIOLATION`
+  while compiling `roll-desktop` with thin LTO; the retry passed. If it
+  repeats, close other builds or set `CARGO_PROFILE_RELEASE_LTO=false`.
+
+By hand, pending: the installer's pages (the directory page should show
+`...\Programs\Roll`), and starting Roll from the Start menu.
