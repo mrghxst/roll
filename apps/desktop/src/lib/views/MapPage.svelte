@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Flame, ListOrdered, X } from '@lucide/svelte';
+  import { Flame, ListOrdered, Maximize, X } from '@lucide/svelte';
   import Grid from '../grid/Grid.svelte';
   import { api } from '../ipc/api';
   import { emptyMapPoints, type MapPoints } from '../ipc/mappoints';
@@ -22,6 +22,7 @@
   let side = $state<{ title: string; ids: number[] } | null>(null);
   let tray = $state<{ ids: number[]; total: number }>({ ids: [], total: 0 });
   let fitKey = $state('');
+  let mapView: ReturnType<typeof MapView> | undefined = $state();
 
   $effect(() => {
     void app.revision;
@@ -80,12 +81,10 @@
 </script>
 
 <div class="page">
-  {#if range}
-    <TimeSlider {days} from={range.from} to={range.to} onchange={(from, to) => (range = { from, to })} />
-  {/if}
   <div class="center">
     <div class="mapwrap">
       <MapView
+        bind:this={mapView}
         {points}
         {visible}
         {heatmap}
@@ -99,9 +98,13 @@
       />
       <div class="tools">
         <span class="count mono">{n(visible?.length ?? points.count)} on the map</span>
+        <IconButton label="Show everything in the time range" onclick={() => mapView?.fitAll()} disabled={!points.count}><Maximize size={16} strokeWidth={1.5} /></IconButton>
         <IconButton label={heatmap ? 'Show clusters' : 'Show a heatmap'} active={heatmap} onclick={() => (heatmap = !heatmap)}><Flame size={16} strokeWidth={1.5} /></IconButton>
-        <span class="hint">Shift+drag selects a rectangle, Alt+drag draws a lasso.</span>
       </div>
+      <p class="hint">Shift+drag selects a rectangle, Alt+drag draws a lasso.</p>
+      {#if range}
+        <TimeSlider {days} from={range.from} to={range.to} onchange={(from, to) => (range = { from, to })} />
+      {/if}
     </div>
     <Tray ids={tray.ids} total={tray.total} />
   </div>
@@ -143,14 +146,27 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 4px 4px 4px 10px;
+    padding: 3px 3px 3px 10px;
     border: 1px solid var(--border);
-    border-radius: var(--r-sheet);
-    background: var(--bg);
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--bg) 88%, transparent);
+    backdrop-filter: blur(12px);
+    box-shadow: 0 4px 18px rgba(0, 0, 0, 0.08);
     font-size: var(--t12);
   }
   .hint {
+    position: absolute;
+    top: 18px;
+    left: 50%;
+    z-index: 1;
+    margin: 0;
+    padding: 3px 10px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--bg) 80%, transparent);
     color: var(--muted);
+    font-size: 11px;
+    transform: translateX(-50%);
+    pointer-events: none;
   }
   .side {
     display: flex;

@@ -38,10 +38,12 @@ palette brings it back.
 
 - **Timeline:** everything by month and day. The scrubber on the right jumps
   through years. Ctrl+wheel changes the tile size.
-- **Folders, Map, Events:** the same items by folder, by place (with a time
-  slider) and by event. The map works offline with country outlines;
-  Settings › Network › Online map tiles adds streets and place names from
-  OpenFreeMap.
+- **Folders, Map, Events:** the same items by folder, by place and by
+  event. The map is a globe that flattens as you zoom in. The time slider
+  on its right picks the period: drag the handles or the range, click a
+  year, scroll to zoom the time axis, or press play. It works offline
+  with country outlines; Settings › Network › Online map tiles adds
+  streets and place names from OpenFreeMap.
 - **Search** (top bar, or press /): words like `videos summer 2019 italy`, file names or
   tags. Roll turns what it understands into filter chips. The filter panel
   adds categories, cameras, places, ratings and more. When AI is on,

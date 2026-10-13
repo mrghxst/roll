@@ -65,13 +65,15 @@
 
   function colors() {
     const p = palette();
+    if (el) el.style.background = p.space;
     if (!map) return;
     applyPalette(map, p);
     map.setPaintProperty('clusters', 'circle-color', p.point);
     map.setPaintProperty('clusters', 'circle-stroke-color', p.land);
     map.setPaintProperty('dots', 'circle-color', p.point);
     map.setPaintProperty('dots', 'circle-stroke-color', p.land);
-    map.setPaintProperty('rings', 'line-color', p.muted);
+    map.setPaintProperty('rings', 'line-color', p.point);
+    map.setPaintProperty('rings-fill', 'fill-color', p.point);
   }
 
   onMount(() => {
@@ -81,21 +83,24 @@
       if (cancelled || !el) return;
       ml = lib;
       const p = palette();
+      el.style.background = p.space;
       const m = new lib.Map({
         container: el,
         style: baseStyle(world, p),
-        center: [10, 45],
-        zoom: 3,
-        minZoom: 0.5,
+        center: [10, 30],
+        zoom: 1.6,
+        minZoom: 0,
         maxZoom: 18,
         boxZoom: false,
         dragRotate: false,
         pitchWithRotate: false,
         touchPitch: false,
-        attributionControl: { compact: true, customAttribution: 'Natural Earth' },
+        attributionControl: false,
         fadeDuration: 0,
       });
       m.touchZoomRotate.disableRotation();
+      // Bottom left: the time slider takes the right side.
+      m.addControl(new lib.AttributionControl({ compact: true, customAttribution: 'Natural Earth' }), 'bottom-left');
       if (import.meta.env.DEV) (window as unknown as { __rollMap: MlMap }).__rollMap = m;
       m.on('load', () => {
         m.addSource('items', { type: 'geojson', data: collection(), cluster: true, clusterMaxZoom: 16, clusterRadius: 48 });
@@ -112,7 +117,15 @@
             'heatmap-color': ['interpolate', ['linear'], ['heatmap-density'], 0, 'rgba(0,0,0,0)', 0.3, '#7a7a7a', 0.7, '#3d3d3d', 1, '#000000'],
           },
         });
-        m.addLayer({ id: 'rings', type: 'line', source: 'rings', paint: { 'line-color': p.muted, 'line-width': 1, 'line-dasharray': [3, 3] } });
+        // Approximate places: a faint disc with a dashed edge, once it is big enough to read.
+        m.addLayer({ id: 'rings-fill', type: 'fill', source: 'rings', minzoom: 6, paint: { 'fill-color': p.point, 'fill-opacity': 0.04 } });
+        m.addLayer({
+          id: 'rings',
+          type: 'line',
+          source: 'rings',
+          minzoom: 6,
+          paint: { 'line-color': p.point, 'line-opacity': 0.35, 'line-width': 1, 'line-dasharray': [2, 2] },
+        });
         m.addLayer({
           id: 'clusters',
           type: 'circle',
@@ -121,8 +134,9 @@
           layout: { visibility: heatmap ? 'none' : 'visible' },
           paint: {
             'circle-color': p.point,
-            'circle-opacity': 0.85,
-            'circle-radius': ['step', ['get', 'point_count'], 10, 10, 13, 100, 16, 1000, 20],
+            'circle-opacity': 0.9,
+            // Smaller than a pin, which sits right on top of the biggest ones.
+            'circle-radius': ['step', ['get', 'point_count'], 7, 10, 9, 100, 11, 1000, 13],
             'circle-stroke-width': 2,
             'circle-stroke-color': p.land,
           },
@@ -133,7 +147,7 @@
           source: 'items',
           filter: ['!', ['has', 'point_count']],
           layout: { visibility: heatmap ? 'none' : 'visible' },
-          paint: { 'circle-color': p.point, 'circle-radius': 5, 'circle-stroke-width': 1.5, 'circle-stroke-color': p.land },
+          paint: { 'circle-color': p.point, 'circle-radius': 4.5, 'circle-stroke-width': 1.5, 'circle-stroke-color': p.land },
         });
         for (const layer of ['clusters', 'dots']) {
           m.on('click', layer, (e) => {
@@ -203,10 +217,10 @@
 
   $effect(() => {
     void fitKey;
-    if (ready) untrack(fit);
+    if (ready) untrack(() => fit());
   });
 
-  function fit() {
+  function fit(duration = 0) {
     if (!map || !points.count) return;
     let [s, w, n, e] = [90, 180, -90, -180];
     for (const i of indices()) {
@@ -221,7 +235,7 @@
         [w, s],
         [e, n],
       ],
-      { padding: 60, maxZoom: 12, duration: 0 },
+      { padding: 80, maxZoom: 12, duration },
     );
   }
 
@@ -251,15 +265,31 @@
       markers.clear();
       return;
     }
-    const features = map.queryRenderedFeatures({ layers: ['clusters', 'dots'] });
+    // queryRenderedFeatures with a box finds nothing on the globe, so take
+    // the source's clusters and keep those on screen and facing us.
+    const canvas = map.getCanvas();
+    const [w, h] = [canvas.clientWidth, canvas.clientHeight];
+    const c = map.getCenter();
+    const keyOf = (f: { properties: Record<string, unknown> | null }) => {
+      const p = f.properties ?? {};
+      return p.cluster_id != null ? `c${p.cluster_id}` : `p${p.id}`;
+    };
+    const unique = new Map<string, ReturnType<MlMap['querySourceFeatures']>[number]>();
+    for (const f of map.querySourceFeatures('items')) {
+      const [lon, lat] = (f.geometry as Point).coordinates as [number, number];
+      if (!facing(c.lat, c.lng, lat, lon)) continue;
+      const s = map.project([lon, lat]);
+      if (s.x < 0 || s.y < 0 || s.x > w || s.y > h) continue;
+      unique.set(keyOf(f), f);
+    }
     const seen = new Set<string>();
-    const list = features
+    const list = [...unique.values()]
       .map((f) => ({ f, n: Number(f.properties?.point_count ?? 1) }))
       .sort((a, b) => b.n - a.n)
       .slice(0, 36);
     for (const { f, n } of list) {
       const p = f.properties ?? {};
-      const key = p.cluster_id != null ? `c${p.cluster_id}` : `p${p.id}`;
+      const key = keyOf(f);
       if (seen.has(key)) continue;
       seen.add(key);
       if (markers.has(key)) continue;
@@ -279,7 +309,8 @@
         ev.stopPropagation();
         void open(f);
       });
-      const mk = new ml.Marker({ element: node, anchor: 'bottom' }).setLngLat(geom.coordinates as [number, number]).addTo(map);
+      // Centred on the cluster, which it covers.
+      const mk = new ml.Marker({ element: node, anchor: 'center' }).setLngLat(geom.coordinates as [number, number]).addTo(map);
       markers.set(key, mk);
     }
     for (const [k, mk] of markers) {
@@ -288,6 +319,11 @@
         markers.delete(k);
       }
     }
+  }
+
+  /** Show every point in the time window. */
+  export function fitAll() {
+    fit(600);
   }
 
   export function flyTo(lat: number, lon: number, zoom = 11) {
@@ -327,28 +363,38 @@
     return hit;
   }
 
+  /** False for points on the far side of the globe, which project onto the visible side. */
+  function facing(cLat: number, cLon: number, lat: number, lon: number) {
+    const r = Math.PI / 180;
+    const cos = Math.sin(cLat * r) * Math.sin(lat * r) + Math.cos(cLat * r) * Math.cos(lat * r) * Math.cos((lon - cLon) * r);
+    return cos > 0.05;
+  }
+
   function onpointerup() {
     if (!map || (!band && !lasso)) return;
     map.dragPan.enable();
     const picked: number[] = [];
-    if (band) {
-      const [x0, x1] = [Math.min(band.x0, band.x1), Math.max(band.x0, band.x1)];
-      const [y0, y1] = [Math.min(band.y0, band.y1), Math.max(band.y0, band.y1)];
-      const a = map.unproject([x0, y1]);
-      const b = map.unproject([x1, y0]);
-      for (const i of indices()) {
-        const la = points.lats[i]!;
-        const lo = points.lons[i]!;
-        if (la >= a.lat && la <= b.lat && lo >= a.lng && lo <= b.lng) picked.push(points.ids[i]!);
-      }
-    } else if (lasso && lasso.length > 2) {
-      const poly = lasso;
+    // Both in screen space, so they are right on the globe too.
+    const poly: [number, number][] | null = band
+      ? [
+          [band.x0, band.y0],
+          [band.x1, band.y0],
+          [band.x1, band.y1],
+          [band.x0, band.y1],
+        ]
+      : lasso && lasso.length > 2
+        ? lasso
+        : null;
+    if (poly) {
       const xs = poly.map((p) => p[0]);
       const ys = poly.map((p) => p[1]);
       const [minX, maxX, minY, maxY] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
+      const c = map.getCenter();
       for (const i of indices()) {
-        const s = map.project([points.lons[i]!, points.lats[i]!]);
-        if (s.x >= minX && s.x <= maxX && s.y >= minY && s.y <= maxY && inside(poly, s.x, s.y)) picked.push(points.ids[i]!);
+        const [la, lo] = [points.lats[i]!, points.lons[i]!];
+        if (!facing(c.lat, c.lng, la, lo)) continue;
+        const s = map.project([lo, la]);
+        if (s.x >= minX && s.x <= maxX && s.y >= minY && s.y <= maxY && (band || inside(poly, s.x, s.y))) picked.push(points.ids[i]!);
       }
     }
     band = null;
@@ -436,16 +482,19 @@
     stroke-width: 1;
     stroke-dasharray: 4 3;
   }
-  /* MapLibre positions markers absolutely; that also anchors the badge. */
+  /* MapLibre positions markers absolutely (and sets their transform); that
+     also anchors the badge. */
   :global(.roll-pin) {
     display: block;
-    width: 44px;
-    height: 44px;
-    padding: 2px;
-    border: 0;
-    border-radius: 6px;
-    background: var(--bg);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+    width: 46px;
+    height: 46px;
+    padding: 0;
+    border: 2px solid var(--bg);
+    border-radius: 11px;
+    background: var(--surface);
+    box-shadow:
+      0 1px 2px rgba(0, 0, 0, 0.18),
+      0 6px 16px rgba(0, 0, 0, 0.16);
     cursor: pointer;
   }
   :global(.roll-pin img) {
@@ -453,23 +502,47 @@
     width: 100%;
     height: 100%;
     object-fit: cover;
-    border-radius: 4px;
-    background: var(--surface);
+    border-radius: 9px;
+    transition: transform 150ms var(--ease);
+  }
+  :global(.roll-pin:hover img) {
+    transform: scale(1.06);
+  }
+  :global(.roll-pin:focus-visible) {
+    outline: 2px solid var(--fg);
+    outline-offset: 2px;
   }
   :global(.roll-pin span) {
     position: absolute;
-    top: -8px;
-    right: -8px;
-    min-width: 20px;
+    right: -9px;
+    bottom: -9px;
+    min-width: 22px;
     height: 20px;
     padding: 0 5px;
+    border: 2px solid var(--bg);
     border-radius: 10px;
     background: var(--fg);
     color: var(--bg);
-    font: 600 11px/20px var(--mono);
+    font: 600 10px/16px var(--mono);
     text-align: center;
   }
-  :global(.maplibregl-ctrl-attrib) {
+  /* The attribution and the canvas in the app's colours. */
+  :global(.maplibregl-ctrl-attrib.maplibregl-compact) {
+    margin: 0 0 10px 10px !important;
     font-size: 10px;
+    border: 1px solid var(--border);
+    background: var(--bg) !important;
+    color: var(--muted);
+  }
+  :global(.maplibregl-ctrl-attrib a) {
+    color: var(--muted) !important;
+  }
+  :global(:root[data-theme='dark'] .maplibregl-ctrl-attrib-button) {
+    filter: invert(1);
+  }
+  @media (prefers-color-scheme: dark) {
+    :global(:root:not([data-theme='light']) .maplibregl-ctrl-attrib-button) {
+      filter: invert(1);
+    }
   }
 </style>

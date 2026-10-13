@@ -64,6 +64,22 @@ The budget (60 fps) holds on the owner's PC. Thumbnail pins are DOM nodes
 and are rebuilt only once the map rests; rebuilding them every frame cost
 about 17 ms. The CI test asserts a looser 34 ms because CI has no GPU.
 
+### Globe, 2026-10-13
+
+The same run with the globe projection. Locally the perf project now runs
+in Edge on the graphics card (the WebView2 engine); without vsync in
+headless mode the frames are shorter than a 60 Hz refresh:
+
+| Renderer | Projection | Median frame | 95th percentile |
+|---|---|---|---|
+| Edge, RTX 2080 Ti, Direct3D 11 | globe | 4.2 ms | 5.7 ms |
+| Edge, RTX 2080 Ti, Direct3D 11 | flat | 3.6 ms | 3.8 ms |
+| Headless software WebGL (SwiftShader) | globe | 90.9 ms | 128.1 ms |
+| Headless software WebGL (SwiftShader) | flat | 24.3 ms | 35.0 ms |
+
+The globe's subdivided tiles cost little on a GPU and a lot in software,
+so CI keeps its loose 200 ms limit.
+
 ## Search (M4), 2026-10-11
 
 100,000 stress items, release build, `cargo run --release -p roll-core

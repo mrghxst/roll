@@ -1,9 +1,10 @@
 // The offline basemap: Natural Earth country outlines (public domain, via
-// the world-atlas package) in a monochrome style that follows the theme.
-// No text layers, so no glyphs have to be fetched.
+// the world-atlas package) on a globe, in a monochrome style that follows
+// the theme. No text layers, so no glyphs have to be fetched. MapLibre
+// flattens the globe to Web Mercator as you zoom in.
 
 import type { FeatureCollection } from 'geojson';
-import type { LayerSpecification, Map as MlMap, StyleSpecification } from 'maplibre-gl';
+import type { LayerSpecification, Map as MlMap, SkySpecification, StyleSpecification } from 'maplibre-gl';
 import type { GeometryCollection, Topology } from 'topojson-specification';
 
 let countries: Promise<FeatureCollection> | null = null;
@@ -12,15 +13,45 @@ let countries: Promise<FeatureCollection> | null = null;
 export function loadCountries(): Promise<FeatureCollection> {
   countries ??= Promise.all([import('topojson-client'), import('world-atlas/countries-50m.json')]).then(([topo, data]) => {
     const t = ((data as { default?: unknown }).default ?? data) as Topology<{ countries: GeometryCollection }>;
-    return topo.feature(t, t.objects.countries) as FeatureCollection;
+    const fc = topo.feature(t, t.objects.countries) as FeatureCollection;
+    for (const f of fc.features) {
+      const g = f.geometry;
+      if (g.type === 'Polygon') g.coordinates = g.coordinates.map(unwrap);
+      else if (g.type === 'MultiPolygon') g.coordinates = g.coordinates.map((poly) => poly.map(unwrap));
+    }
+    return fc;
   });
   return countries;
 }
 
+/**
+ * Rings that cross the 180° meridian jump from +180 to −180 in one edge.
+ * Flat, that edge runs off the side of the map; on the globe it is a
+ * circle around the pole that fills the ocean. Continue such rings past
+ * ±180 instead (MapLibre wraps them). A ring around a pole (Antarctica)
+ * cannot be unwrapped and stays as it is.
+ */
+export function unwrap(ring: number[][]): number[][] {
+  let shift = 0;
+  const out = ring.map((p, i) => {
+    if (i > 0) {
+      const d = p[0]! - ring[i - 1]![0]!;
+      if (d > 180) shift -= 360;
+      else if (d < -180) shift += 360;
+    }
+    return shift ? [p[0]! + shift, ...p.slice(1)] : p;
+  });
+  return shift === 0 ? out : ring;
+}
+
 export interface Palette {
+  /** Outside the globe. */
+  space: string;
   water: string;
   land: string;
   border: string;
+  /** The thin glow around the globe. */
+  glow: string;
   point: string;
   pointText: string;
   muted: string;
@@ -51,29 +82,48 @@ export function palette(): Palette {
   const v = (n: string, d: string) => css.getPropertyValue(n).trim() || d;
   const bg = v('--bg', '#ffffff');
   const fg = v('--fg', '#000000');
+  const dark = rgb(bg).reduce((a, b) => a + b, 0) < 384;
+  // Land is the lighter surface in both themes, water a step towards the
+  // background, so the globe reads as a globe and not as a hole.
+  const land = dark ? mix(bg, fg, 0.13) : bg;
+  const water = dark ? mix(bg, fg, 0.05) : mix(bg, fg, 0.075);
   return {
-    water: mix(bg, fg, 0.1),
-    land: bg,
-    border: mix(bg, fg, 0.3),
+    space: dark ? bg : mix(bg, fg, 0.02),
+    water,
+    land,
+    border: dark ? mix(bg, fg, 0.26) : mix(bg, fg, 0.22),
+    glow: dark ? mix(bg, fg, 0.35) : mix(bg, fg, 0.12),
     point: fg,
     pointText: bg,
     muted: v('--muted', '#666666'),
-    road: mix(bg, fg, 0.28),
-    minor: mix(bg, fg, 0.16),
-    building: mix(bg, fg, 0.07),
-    green: mix(bg, fg, 0.04),
-    label: mix(bg, fg, 0.6),
+    road: mix(land, fg, 0.28),
+    minor: mix(land, fg, 0.16),
+    building: mix(land, fg, 0.07),
+    green: mix(land, water, 0.5),
+    label: mix(land, fg, 0.6),
+  };
+}
+
+/** A soft rim of light around the globe that fades out as you zoom in. */
+function sky(p: Palette): SkySpecification {
+  return {
+    'sky-color': p.space,
+    'horizon-color': p.glow,
+    'fog-color': p.space,
+    'atmosphere-blend': ['interpolate', ['linear'], ['zoom'], 0, 0.55, 4, 0.35, 7, 0],
   };
 }
 
 export function baseStyle(world: FeatureCollection, p: Palette): StyleSpecification {
   return {
     version: 8,
+    projection: { type: 'globe' },
+    sky: sky(p),
     sources: { countries: { type: 'geojson', data: world } },
     layers: [
       { id: 'water', type: 'background', paint: { 'background-color': p.water } },
       { id: 'land', type: 'fill', source: 'countries', paint: { 'fill-color': p.land } },
-      { id: 'borders', type: 'line', source: 'countries', paint: { 'line-color': p.border, 'line-width': ['interpolate', ['linear'], ['zoom'], 0, 0.4, 6, 1] } },
+      { id: 'borders', type: 'line', source: 'countries', paint: { 'line-color': p.border, 'line-width': ['interpolate', ['linear'], ['zoom'], 0, 0.3, 6, 0.9] } },
     ],
   };
 }
@@ -83,6 +133,7 @@ export function applyPalette(map: MlMap, p: Palette) {
   map.setPaintProperty('water', 'background-color', p.water);
   map.setPaintProperty('land', 'fill-color', p.land);
   map.setPaintProperty('borders', 'line-color', p.border);
+  map.setSky(sky(p));
   if (!map.getSource(DETAIL)) return;
   for (const l of detailLayers(p)) {
     for (const [k, v] of Object.entries(l.paint ?? {})) {

@@ -27,12 +27,14 @@
   }
 </script>
 
-<section class="tray" aria-label="Items without a location">
-  <header>
-    <span>No location in this range <span class="mono muted">({n(total)})</span></span>
-    <span class="hint">{picked.size ? `${n(picked.size)} picked · ` : ''}Drag onto the map to place them. Ctrl+click picks several.</span>
-    <button class="all" onclick={() => (picked = new Set(ids))} disabled={!ids.length}>Pick all shown</button>
-  </header>
+<section class="tray" class:none={!ids.length} aria-label="Items without a location">
+  {#if ids.length}
+    <header>
+      <span>No location in this range <span class="mono muted">({n(total)})</span></span>
+      <span class="hint">{picked.size ? `${n(picked.size)} picked · ` : ''}Drag onto the map to place them. Ctrl+click picks several.</span>
+      <button class="all" onclick={() => (picked = new Set(ids))}>Pick all shown</button>
+    </header>
+  {/if}
   <div class="strip" data-testid="tray">
     {#each ids as id (id)}
       <button class="thumb" class:picked={picked.has(id)} draggable="true" ondragstart={(e) => dragstart(e, id)} onclick={(e) => click(e, id)} aria-pressed={picked.has(id)} aria-label="Item {id}">
@@ -51,6 +53,17 @@
     height: 124px;
     border-top: 1px solid var(--border);
     background: var(--bg);
+  }
+  /* Nothing to place: one quiet line instead of an empty strip. */
+  .tray.none {
+    height: auto;
+  }
+  .tray.none .strip {
+    padding: 0 12px;
+  }
+  .tray.none .empty {
+    margin: 8px 0;
+    font-size: var(--t12);
   }
   header {
     display: flex;

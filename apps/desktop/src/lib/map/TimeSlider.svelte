@@ -94,12 +94,33 @@
   });
   const max = $derived(Math.max(1, ...bins.map((b) => b.n)));
 
+  // Year labels sit on the time axis at the middle of each year; when
+  // years are short on screen only every second, fifth or tenth shows.
   const years = $derived.by(() => {
-    const out: number[] = [];
-    const a = new Date(domain.lo * 86_400_000).getUTCFullYear();
-    const b = new Date(domain.hi * 86_400_000).getUTCFullYear();
-    for (let y = b; y >= a; y--) out.push(y);
-    return out;
+    const out: { y: number; mid: number; start: number }[] = [];
+    const a = new Date(v.lo * 86_400_000).getUTCFullYear();
+    const b = new Date(v.hi * 86_400_000).getUTCFullYear();
+    const per = (365 / (v.hi + 1 - v.lo)) * height;
+    const every = [1, 2, 5, 10, 20].find((n) => per * n >= 16) ?? 50;
+    for (let y = b; y >= a; y--) {
+      const s = Math.floor(Date.UTC(y, 0, 1) / 86_400_000);
+      const e = Math.floor(Date.UTC(y + 1, 0, 1) / 86_400_000) - 1;
+      const mid = (Math.max(s, v.lo) + Math.min(e, v.hi)) / 2;
+      out.push({ y, mid, start: s });
+    }
+    return { list: out.filter((x) => x.y % every === 0 || every === 1), ticks: out.map((x) => x.start).filter((s) => s > v.lo) };
+  });
+
+  // Everything is selected when the range covers the first and last item.
+  const whole = $derived.by(() => {
+    let lo = Infinity;
+    let hi = -Infinity;
+    for (const d of days) {
+      if (!d) continue;
+      lo = Math.min(lo, d);
+      hi = Math.max(hi, d);
+    }
+    return lo === Infinity || (from <= dayIndex(lo) && to >= dayIndex(hi));
   });
 
   // Newest at the top.
@@ -190,41 +211,65 @@
 </script>
 
 <div class="slider" aria-label="Time range">
-  <div class="years" role="group" aria-label="Years">
-    {#each years as y (y)}
-      <button class:on={new Date(from * 86_400_000).getUTCFullYear() <= y && new Date(to * 86_400_000).getUTCFullYear() >= y} onclick={() => pickYear(y)}>{y}</button>
-    {/each}
-  </div>
-  <div
-    class="track"
-    bind:this={track}
-    bind:clientHeight={height}
-    onwheel={wheel}
-    onpointerdown={(e) => down(e, 'new')}
-    onpointermove={move}
-    onpointerup={() => (drag = null)}
-    role="slider"
-    tabindex="0"
-    aria-valuemin={domain.lo}
-    aria-valuemax={domain.hi}
-    aria-valuenow={from}
-    aria-valuetext="{label(from)} to {label(to)}"
-    aria-label="Drag to choose the time range; scroll to zoom"
-    onkeydown={(e) => {
-      const step = weekly ? 7 : 30;
-      if (e.key === 'ArrowUp') onchange(...clamp(from + step, to + step));
-      else if (e.key === 'ArrowDown') onchange(...clamp(from - step, to - step));
-    }}
-  >
-    {#each bins as b (b.start)}
-      <div class="bar" style:top="{yOf(b.end + 1)}px" style:height="{Math.max(1, yOf(b.start) - yOf(b.end + 1) - 1)}px" style:width="{(b.n / max) * 100}%" class:in={b.end >= from && b.start <= to}></div>
-    {/each}
-    <div class="range" style:top="{yOf(to + 1)}px" style:height="{Math.max(4, yOf(from) - yOf(to + 1))}px" onpointerdown={(e) => down(e, 'move')} role="presentation">
-      <div class="handle top" onpointerdown={(e) => down(e, 'to')} role="presentation"></div>
-      <div class="handle bottom" onpointerdown={(e) => down(e, 'from')} role="presentation"></div>
+  <header>
+    <span class="dates mono" aria-live="polite">
+      <span>{label(to)}</span>
+      <span>{label(from)}</span>
+    </span>
+    {#if !whole || view}
+      <button
+        class="all"
+        onclick={() => {
+          view = null;
+          onchange(domain.lo, domain.hi);
+        }}>All</button
+      >
+    {/if}
+  </header>
+  <div class="body">
+    <div class="years" role="group" aria-label="Years">
+      {#each years.list as y (y.y)}
+        <button
+          style:top="{yOf(y.mid)}px"
+          class:on={new Date(from * 86_400_000).getUTCFullYear() <= y.y && new Date(to * 86_400_000).getUTCFullYear() >= y.y && !whole}
+          onclick={() => pickYear(y.y)}>{y.y}</button
+        >
+      {/each}
+    </div>
+    <div
+      class="track"
+      bind:this={track}
+      bind:clientHeight={height}
+      onwheel={wheel}
+      onpointerdown={(e) => down(e, 'new')}
+      onpointermove={move}
+      onpointerup={() => (drag = null)}
+      role="slider"
+      tabindex="0"
+      aria-valuemin={domain.lo}
+      aria-valuemax={domain.hi}
+      aria-valuenow={from}
+      aria-valuetext="{label(from)} to {label(to)}"
+      aria-label="Drag to choose the time range; scroll to zoom"
+      onkeydown={(e) => {
+        const step = weekly ? 7 : 30;
+        if (e.key === 'ArrowUp') onchange(...clamp(from + step, to + step));
+        else if (e.key === 'ArrowDown') onchange(...clamp(from - step, to - step));
+      }}
+    >
+      {#each years.ticks as s (s)}
+        <div class="tick" style:top="{yOf(s)}px"></div>
+      {/each}
+      {#each bins as b (b.start)}
+        <div class="bar" style:max-width="88%" style:top="{yOf(b.end + 1)}px" style:height="{Math.max(1, yOf(b.start) - yOf(b.end + 1) - 1)}px" style:width="{(b.n / max) * 100}%" class:in={b.end >= from && b.start <= to}></div>
+      {/each}
+      <div class="range" style:top="{yOf(to + 1)}px" style:height="{Math.max(6, yOf(from) - yOf(to + 1))}px" onpointerdown={(e) => down(e, 'move')} role="presentation">
+        <div class="handle top" onpointerdown={(e) => down(e, 'to')} role="presentation"></div>
+        <div class="handle bottom" onpointerdown={(e) => down(e, 'from')} role="presentation"></div>
+      </div>
     </div>
   </div>
-  <div class="foot">
+  <footer>
     <button class="play" onclick={togglePlay} aria-label={playing ? 'Pause' : 'Play through time'}>
       {#if playing}<Pause size={14} strokeWidth={1.5} />{:else}<Play size={14} strokeWidth={1.5} />{/if}
     </button>
@@ -234,91 +279,147 @@
       <option value={2}>2×</option>
       <option value={4}>4×</option>
     </select>
-  </div>
-  <div class="dates mono" aria-live="polite">
-    <span>{label(to)}</span>
-    <span>{label(from)}</span>
-  </div>
+  </footer>
 </div>
 
 <style>
+  /* A floating card on the right of the map. */
   .slider {
-    display: grid;
-    grid-template-columns: 44px 1fr;
-    grid-template-rows: 1fr auto auto;
-    width: 148px;
-    height: 100%;
-    border-right: 1px solid var(--border);
-    background: var(--bg);
-    user-select: none;
-  }
-  .years {
-    grid-row: 1 / 2;
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    bottom: 10px;
+    z-index: 2;
     display: flex;
     flex-direction: column;
-    gap: 2px;
-    padding: 8px 4px;
-    overflow-y: auto;
+    width: 140px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--bg) 88%, transparent);
+    backdrop-filter: blur(12px);
+    box-shadow: 0 4px 18px rgba(0, 0, 0, 0.08);
+    user-select: none;
+  }
+  header {
+    display: flex;
+    align-items: flex-start;
+    gap: 4px;
+    padding: 8px 8px 6px 10px;
+    border-bottom: 1px solid var(--border);
+  }
+  .dates {
+    display: grid;
+    flex: 1;
+    gap: 1px;
+    color: var(--fg);
+    font-size: 11px;
+    line-height: 15px;
+  }
+  .dates span:last-child {
+    color: var(--muted);
+  }
+  .all {
+    padding: 1px 6px;
+    border: 1px solid var(--border);
+    border-radius: var(--r-1);
+    background: var(--bg);
+    color: var(--fg);
+    font-size: 11px;
+    cursor: pointer;
+  }
+  .all:hover {
+    border-color: var(--border-strong);
+  }
+  .body {
+    display: grid;
+    flex: 1;
+    grid-template-columns: 38px 1fr;
+    min-height: 0;
+    padding: 10px 10px 10px 0;
+  }
+  .years {
+    position: relative;
   }
   .years button {
-    padding: 2px 0;
+    position: absolute;
+    right: 4px;
+    padding: 0 3px;
     border: 0;
     border-radius: var(--r-1);
     background: transparent;
     color: var(--muted);
-    font: 500 11px var(--mono);
+    font: 500 10px/14px var(--mono);
+    transform: translateY(-50%);
     cursor: pointer;
   }
   .years button:hover {
     color: var(--fg);
   }
   .years button.on {
-    background: var(--fg);
-    color: var(--bg);
+    color: var(--fg);
+    font-weight: 600;
   }
   .track {
     position: relative;
-    margin: 8px 8px 8px 0;
-    border-left: 1px solid var(--border);
+    border-left: 1px solid var(--border-strong);
     cursor: crosshair;
     outline: none;
     touch-action: none;
   }
   .track:focus-visible {
+    border-radius: 2px;
     box-shadow: 0 0 0 2px var(--fg);
+  }
+  .tick {
+    position: absolute;
+    left: -4px;
+    right: 0;
+    border-top: 1px dashed var(--border);
   }
   .bar {
     position: absolute;
     left: 0;
-    background: var(--border-strong);
+    border-radius: 0 2px 2px 0;
+    background: color-mix(in srgb, var(--fg) 16%, transparent);
   }
   .bar.in {
-    background: var(--fg);
+    background: color-mix(in srgb, var(--fg) 50%, transparent);
   }
   .range {
     position: absolute;
-    left: -4px;
-    right: 0;
+    left: -3px;
+    right: -3px;
     border: 1px solid var(--fg);
-    border-radius: 3px;
-    background: color-mix(in srgb, var(--fg) 6%, transparent);
+    border-radius: 5px;
+    background: color-mix(in srgb, var(--fg) 4%, transparent);
     cursor: grab;
   }
   .handle {
     position: absolute;
     left: 0;
     right: 0;
-    height: 8px;
+    height: 12px;
     cursor: ns-resize;
   }
+  .handle::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 18px;
+    height: 4px;
+    border: 1px solid var(--bg);
+    border-radius: 2px;
+    background: var(--fg);
+    transform: translate(-50%, -50%);
+  }
   .handle.top {
-    top: -4px;
+    top: -6px;
   }
   .handle.bottom {
-    bottom: -4px;
+    bottom: -6px;
   }
-  .foot {
-    grid-column: 1 / 3;
+  footer {
     display: flex;
     align-items: center;
     gap: 6px;
@@ -337,19 +438,12 @@
     cursor: pointer;
   }
   select {
+    flex: 1;
     height: 28px;
     border: 1px solid var(--border);
     border-radius: var(--r-btn);
     background: var(--bg);
     color: var(--fg);
     font-size: var(--t12);
-  }
-  .dates {
-    grid-column: 1 / 3;
-    display: grid;
-    gap: 2px;
-    padding: 6px 8px 8px;
-    color: var(--muted);
-    font-size: 11px;
   }
 </style>

@@ -333,3 +333,11 @@ questions. One line of reason each. Newest at the bottom of each section.
   from Openverse (CC0 and Public Domain Mark only) and renders the rest;
   only the script and the reviewed corrections (public image URLs) are in
   git. Each item's source, creator and license are in its manifest.
+- **The map is a globe and the time slider sits on the right** (PROMPT 4.7
+  says left). The owner suggested both (2026-10-13). The slider is a
+  floating panel over the right edge of the map, so the app's sidebar is
+  the only column on the left; year labels sit on the time axis. MapLibre
+  flattens the globe to Web Mercator as you zoom in. Natural Earth rings
+  that cross the 180° meridian are unwrapped before they reach MapLibre,
+  or they fill the polar oceans on the globe. Box queries return nothing
+  on the globe, so thumbnail pins come from the source's own features.
