@@ -127,16 +127,18 @@ impl Client {
     }
 
     /// Which files the server already has: client id → Immich asset id.
+    /// Roll asks only about files it wants in Immich, so any of them in
+    /// Immich's trash (an earlier "Keep local only") are restored.
     pub fn existing(&self, items: &[(String, String)]) -> anyhow::Result<HashMap<String, String>> {
         let assets: Vec<Value> = items.iter().map(|(id, sum)| json!({"id": id, "checksum": sum})).collect();
         let v: Value = Self::json(self.send("POST", "/assets/bulk-upload-check", &json!({ "assets": assets }))?)?;
-        Ok(v["results"]
-            .as_array()
-            .into_iter()
-            .flatten()
-            .filter(|r| r["action"] == "reject" && r["reason"] == "duplicate")
-            .filter_map(|r| Some((r["id"].as_str()?.to_string(), r["assetId"].as_str()?.to_string())))
-            .collect())
+        let dups: Vec<&Value> =
+            v["results"].as_array().into_iter().flatten().filter(|r| r["action"] == "reject" && r["reason"] == "duplicate").collect();
+        let trashed: Vec<&str> = dups.iter().filter(|r| r["isTrashed"] == true).filter_map(|r| r["assetId"].as_str()).collect();
+        if !trashed.is_empty() {
+            self.send("POST", "/trash/restore/assets", &json!({ "ids": trashed }))?;
+        }
+        Ok(dups.iter().filter_map(|r| Some((r["id"].as_str()?.to_string(), r["assetId"].as_str()?.to_string()))).collect())
     }
 
     /// Upload one file (with its sidecar). Returns the asset id.
@@ -511,6 +513,18 @@ pub type Check<'a> = &'a dyn Fn(usize, usize) -> bool;
 /// and whether it was already on the server.
 fn push_file(db: &Db, client: &Client, id: i64, known: &HashMap<String, String>) -> anyhow::Result<(String, bool)> {
     if let Some(existing) = known.get(&id.to_string()) {
+        // The server has the still; note its Live Photo video too, so it
+        // follows the still later (for example to Immich's trash).
+        let f = file_info(&db.read(), id)?;
+        if let Some(m) = f.motion {
+            let have: Option<String> = db.read().query_row("SELECT immich_id FROM assets WHERE id = ?1", [m], |r| r.get(0))?;
+            if have.is_none() {
+                let msum = sha1_base64(&file_info(&db.read(), m)?.path)?;
+                if let Some(v) = client.existing(&[(m.to_string(), msum)])?.get(&m.to_string()) {
+                    db.write().execute("UPDATE assets SET immich_id = ?2 WHERE id = ?1", params![m, v])?;
+                }
+            }
+        }
         return Ok((existing.clone(), true));
     }
     let f = file_info(&db.read(), id)?;

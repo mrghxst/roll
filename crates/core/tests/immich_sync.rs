@@ -211,6 +211,12 @@ fn handle(st: &Mutex<State>, req: &Request) -> (u16, Value) {
             }
             (204, Value::Null)
         }
+        ("POST", ["trash", "restore", "assets"]) => {
+            for id in ids(&body) {
+                s.assets.get_mut(&id).unwrap().trashed = false;
+            }
+            (200, json!({"count": 1}))
+        }
         ("DELETE", ["assets"]) => {
             assert_eq!(body["force"], json!(false), "never a permanent delete");
             for id in ids(&body) {
@@ -436,4 +442,11 @@ fn sync_uploads_updates_albums_and_removes() {
     assert_eq!(immich_id(&lib, gone), None);
     assert_eq!(std::fs::read(&file).unwrap(), before);
     assert!(Path::new(&file).exists());
+
+    // Sent again later: linked to the same asset and restored from the trash.
+    lib.edit(&[gone], &EditAction::Immich { mode: "send".into() }).unwrap();
+    let r = immich::sync(&lib.db, &client, false, &|_, _| true).unwrap();
+    assert_eq!((r.uploaded, r.linked), (0, 1), "{r:?}");
+    assert_eq!(immich_id(&lib, gone).as_deref(), Some(iid.as_str()));
+    assert!(!server.lock().assets[&iid].trashed);
 }
