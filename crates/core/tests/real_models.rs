@@ -172,6 +172,13 @@ fn openrouter() {
     s.ai_budget_usd = budget;
     lib.save_settings(&s).unwrap();
     let offers = lib.ai_offers().unwrap();
+    // ROLL_REAL_OPENROUTER=list prints the offers (best first) and spends nothing.
+    if model == "list" {
+        for o in &offers {
+            println!("{:<10} {:<45} ${:>6.2}/100k  {}", o.quality, o.id, o.per_100k_usd, o.data);
+        }
+        return;
+    }
     let offer = offers.iter().find(|o| o.id == model).unwrap_or_else(|| panic!("{model} is not offered"));
     println!("offer: {} · {} · ${:.2} per 100k · {}", offer.name, offer.quality, offer.per_100k_usd, offer.data);
     lib.ai_pick(&model, Some(offer)).unwrap();
