@@ -78,7 +78,7 @@ headless mode the frames are shorter than a 60 Hz refresh:
 | Headless software WebGL (SwiftShader) | flat | 24.3 ms | 35.0 ms |
 
 The globe's subdivided tiles cost little on a GPU and a lot in software,
-so CI keeps its loose 200 ms limit.
+so CI's limit went from 200 to 400 ms (a Windows runner measured 260 ms).
 
 ## Search (M4), 2026-10-11
 

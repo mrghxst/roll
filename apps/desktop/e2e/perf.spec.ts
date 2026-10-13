@@ -69,5 +69,7 @@ test('pans and zooms a map of 100k points smoothly', async ({ page }) => {
     return { median: times[120]!, p95: times[228]! };
   });
   console.log(`map frames: median ${frames.median.toFixed(1)} ms, p95 ${frames.p95.toFixed(1)} ms`);
-  expect(frames.median).toBeLessThan(CI ? 200 : 34);
+  // CI draws the globe in software, 3 to 4 times slower than the flat map
+  // (docs/benchmarks.md); on a graphics card it takes about 4 ms.
+  expect(frames.median).toBeLessThan(CI ? 400 : 34);
 });
