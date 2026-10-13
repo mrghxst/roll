@@ -193,6 +193,7 @@ pub fn run() {
             commands::import_apply,
             commands::import_close,
             commands::ai_status,
+            commands::ai_search,
             commands::ai_offers,
             commands::ai_pick,
             commands::ai_plan,

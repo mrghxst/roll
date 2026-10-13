@@ -663,6 +663,12 @@ pub async fn import_close(state: State<'_, AppState>, id: i64) -> Res<()> {
 // Immich
 
 #[tauri::command]
+pub async fn ai_search(state: State<'_, AppState>, text: String) -> Res<roll_core::search::ParsedSearch> {
+    let lib = state.lib.clone();
+    blocking(move || lib.ai_search(&text)).await
+}
+
+#[tauri::command]
 pub async fn ai_status(state: State<'_, AppState>) -> Res<AiStatus> {
     let lib = state.lib.clone();
     blocking(move || Ok(lib.ai_status())).await

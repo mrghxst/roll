@@ -1,10 +1,12 @@
 <script lang="ts">
-  import { Command, Info, ListFilter, Search, X } from '@lucide/svelte';
+  import { Bot, Command, Info, ListFilter, Search, X } from '@lucide/svelte';
   import type { Snippet } from 'svelte';
   import { api, emptyQuery } from '../ipc/api';
+  import type { ParsedSearch } from '../ipc/bindings/ParsedSearch';
   import type { Query } from '../ipc/bindings/Query';
   import { app } from '../state/app.svelte';
   import { selection } from '../state/selection.svelte';
+  import { toast } from '../state/toast.svelte';
   import IconButton from '../ui/IconButton.svelte';
   import Kbd from '../ui/Kbd.svelte';
   import { n } from '../util/format';
@@ -15,12 +17,16 @@
   let input: HTMLInputElement | undefined = $state();
   let text = $state(app.filters.text ?? '');
   let timer = 0;
+  /** Words the parser left, offered to the text model when AI is on. */
+  let askable = $state<string | null>(null);
+  let asking = $state(false);
 
   $effect(() => {
     text = app.filters.text ?? '';
   });
 
   function oninput() {
+    askable = null;
     clearTimeout(timer);
     timer = window.setTimeout(() => {
       app.filters = { ...app.filters, text: text.trim() || null };
@@ -33,10 +39,31 @@
     if (!t) return;
     clearTimeout(timer);
     const p = await api.parseSearch(t);
+    askable = app.settings && app.settings.ai_mode !== 'off' && p.rest.trim() ? p.rest.trim() : null;
     if (!p.understood.length) {
       app.filters = { ...app.filters, text: t };
       return;
     }
+    apply(p);
+  }
+
+  /** The text model reads the leftover words; its filters become chips. */
+  async function ask() {
+    if (!askable || asking) return;
+    asking = true;
+    try {
+      const p = await api.aiSearch(askable);
+      askable = null;
+      if (!p.understood.length) toast.show('The model found no filters in those words. They stay as search text.');
+      else apply(p);
+    } catch (e) {
+      toast.error(e);
+    } finally {
+      asking = false;
+    }
+  }
+
+  function apply(p: ParsedSearch) {
     const empty = emptyQuery();
     const next: Partial<Query> = { ...app.filters };
     for (const [k, v] of Object.entries(p.query) as [keyof Query, unknown][]) {
@@ -95,6 +122,18 @@
       spellcheck="false"
       data-testid="search"
     />
+    {#if askable}
+      <button
+        class="ask"
+        disabled={asking}
+        onclick={() => void ask()}
+        title={app.settings?.ai_mode === 'openrouter' ? 'Sends these words, not your photos, to OpenRouter' : 'Asks the local model'}
+        data-testid="ask-ai"
+      >
+        <Bot size={14} strokeWidth={1.5} />
+        {asking ? 'Asking…' : 'Ask AI about these words'}
+      </button>
+    {/if}
   </div>
   <IconButton label="Filters" active={app.filtersOpen} onclick={() => (app.filtersOpen = !app.filtersOpen)} data-testid="filters-toggle">
     <ListFilter size={16} strokeWidth={1.5} />
@@ -199,6 +238,23 @@
   }
   .chip button:hover {
     color: var(--fg);
+    background: var(--surface);
+  }
+  .ask {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    height: 22px;
+    padding: 0 8px;
+    border: 1px dashed var(--border);
+    border-radius: var(--r-1);
+    background: transparent;
+    color: var(--fg);
+    font-size: var(--t12);
+    white-space: nowrap;
+    cursor: pointer;
+  }
+  .ask:hover {
     background: var(--surface);
   }
   .spacer {

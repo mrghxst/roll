@@ -130,7 +130,10 @@ Milestones from PROMPT.md section 10. `[x]` done, `[~]` partly done,
 - [ ] The same acceptance against OpenRouter: a 1,000-item run costs
       about $0.03 and needs the owner's go-ahead (spending, data off the
       machine)
-- [ ] Natural-language queries through the text model, optional reranking
+- [x] Natural-language search: words the offline parser leaves go to the
+      text model on request ("Ask AI about these words"); its answer
+      becomes filter chips, unknown places stay as words
+- [ ] Optional reranking (Qwen3-VL-Reranker or the decision model)
 ## M6 Events, Immich, polish
 
 - [x] Events: detection (4 h / 12 h gaps, 50 km from home, 8 items,

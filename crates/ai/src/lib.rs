@@ -6,4 +6,5 @@ pub mod cost;
 pub mod decide;
 pub mod openrouter;
 pub mod privacy;
+pub mod query;
 pub mod vectors;

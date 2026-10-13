@@ -70,3 +70,16 @@ test('the model check compares models on labelled items', async ({ page }) => {
   await expect(report.locator('tbody tr')).toHaveCount(2, { timeout: 15_000 });
   await expect(report).toContainText('Recommended');
 });
+
+test('search words the parser leaves can go to the text model', async ({ page }) => {
+  await page.goto('/?setup=1&mock=300&ai=local');
+  await page.getByTestId('nav-ai').click();
+  await page.getByRole('radiogroup', { name: 'Local model' }).getByRole('radio', { name: 'qwen3-vl:4b' }).click();
+  const search = page.getByTestId('search');
+  await search.fill('funny clips from christmas cat');
+  await search.press('Enter');
+  await page.getByTestId('ask-ai').click();
+  await expect(page.getByRole('button', { name: 'Remove filter #memes' })).toBeVisible();
+  await expect(search).toHaveValue('cat');
+  await expect(page.getByTestId('ask-ai')).toBeHidden();
+});

@@ -56,6 +56,59 @@ pub fn reindex(c: &Connection, ids: Option<&[i64]>, place: &dyn Fn(f64, f64) -> 
     Ok(rows.len())
 }
 
+/// [south, west, north, east] around a place, sized by what it is.
+fn place_box(hit: &roll_geo::gazetteer::Hit) -> Vec<f64> {
+    let r_km = match hit.kind {
+        Kind::City => 15.0,
+        Kind::Region => 120.0,
+        Kind::Country => 450.0,
+    };
+    let dlat = r_km / 111.0;
+    let dlon = r_km / (111.0 * hit.lat.to_radians().cos().max(0.05));
+    vec![hit.lat - dlat, hit.lon - dlon, hit.lat + dlat, hit.lon + dlon]
+}
+
+/// Filters from a text model's reading of a search (see
+/// `roll_ai::query`), with labels for the chips. A place the gazetteer
+/// does not know stays in the words.
+pub fn from_text_query(tq: &roll_ai::query::TextQuery, gaz: Option<&Gazetteer>, names: &[(String, String)]) -> ParsedSearch {
+    let mut q = Query::default();
+    let mut understood = Vec::new();
+    let mut rest = tq.words.clone();
+    for c in &tq.categories {
+        q.categories.push(c.clone());
+        understood.push(names.iter().find(|(k, _)| k == c).map_or(c.clone(), |(_, n)| n.clone()));
+    }
+    for m in &tq.media {
+        q.media.push(m.clone());
+        understood.push(if m == "video" { "Videos".into() } else { "Photos and no videos".into() });
+    }
+    if tq.from.is_some() || tq.to.is_some() {
+        q.from_local = tq.from.as_ref().map(|d| format!("{d}T00:00:00"));
+        q.to_local = tq.to.as_ref().map(|d| format!("{d}T00:00:00"));
+        understood.push(match (&tq.from, &tq.to) {
+            (Some(f), Some(t)) => format!("From {f} to before {t}"),
+            (Some(f), None) => format!("From {f}"),
+            (None, Some(t)) => format!("Before {t}"),
+            _ => unreachable!(),
+        });
+    }
+    if let Some(p) = &tq.place {
+        match gaz.and_then(|g| g.in_text(&fold(p))) {
+            Some(hit) => {
+                q.bbox = Some(place_box(&hit));
+                understood.push(format!("Near {}", hit.name));
+            }
+            None => rest = format!("{rest} {p}").trim().to_string(),
+        }
+    }
+    if tq.favorite == Some(true) {
+        q.favorite = Some(true);
+        understood.push("Favorites".into());
+    }
+    ParsedSearch { query: q, rest, understood }
+}
+
 /// What the parser understood, for chips the owner can edit.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]
@@ -278,14 +331,7 @@ pub fn parse(c: &Connection, text: &str, gaz: Option<&Gazetteer>, today: NaiveDa
         let rest: Vec<(usize, &str)> = words.iter().enumerate().filter(|(k, _)| !used[*k]).map(|(k, w)| (k, *w)).collect();
         let text: String = rest.iter().map(|(_, w)| *w).collect::<Vec<_>>().join(" ");
         if let Some(hit) = g.in_text(&text) {
-            let r_km = match hit.kind {
-                Kind::City => 15.0,
-                Kind::Region => 120.0,
-                Kind::Country => 450.0,
-            };
-            let dlat = r_km / 111.0;
-            let dlon = r_km / (111.0 * hit.lat.to_radians().cos().max(0.05));
-            q.bbox = Some(vec![hit.lat - dlat, hit.lon - dlon, hit.lat + dlat, hit.lon + dlon]);
+            q.bbox = Some(place_box(&hit));
             let name = fold(&hit.name);
             for (k, w) in &rest {
                 if name.split(' ').any(|p| p == *w) {
@@ -394,5 +440,25 @@ mod tests {
         assert!(ids("nothing").is_empty());
         // Accents fold: "Zürich" finds "zurich".
         assert_eq!(fts_match("Zürich").as_deref(), Some("\"zurich\"*"));
+    }
+
+    #[test]
+    fn text_model_answers_become_chips() {
+        let names = vec![("photos".to_string(), "Photos".to_string()), ("memes".to_string(), "Memes".to_string())];
+        let tq = roll_ai::query::TextQuery {
+            categories: vec!["memes".into()],
+            media: vec!["video".into()],
+            from: Some("2025-12-24".into()),
+            to: Some("2025-12-27".into()),
+            place: Some("Atlantis".into()),
+            favorite: Some(true),
+            words: "cat".into(),
+        };
+        let p = from_text_query(&tq, None, &names);
+        assert_eq!(p.query.categories, ["memes"]);
+        assert_eq!(p.query.from_local.as_deref(), Some("2025-12-24T00:00:00"));
+        assert_eq!(p.query.favorite, Some(true));
+        assert_eq!(p.rest, "cat Atlantis", "an unknown place stays a word");
+        assert_eq!(p.understood, ["Memes", "Videos", "From 2025-12-24 to before 2025-12-27", "Favorites"]);
     }
 }

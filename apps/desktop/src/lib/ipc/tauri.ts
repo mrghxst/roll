@@ -88,6 +88,7 @@ export const tauriApi: Api = {
   parseSearch: (text) => invoke('parse_search', { text }),
   dupeGroups: () => invoke('dupe_groups'),
   mergeDupes: (keep, others) => invoke('merge_dupes', { keep, others }),
+  aiSearch: (text) => invoke('ai_search', { text }),
   aiStatus: () => invoke('ai_status'),
   aiOffers: () => invoke('ai_offers'),
   aiPick: (model, offer) => invoke('ai_pick', { model, offer }),

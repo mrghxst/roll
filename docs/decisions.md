@@ -297,3 +297,8 @@ questions. One line of reason each. Newest at the bottom of each section.
 - **The acceptance numbers come from a stand-in server** that charges by
   token counts like OpenRouter. The real 1,000-item check needs the
   owner's go-ahead to spend money and send thumbnails.
+- **Search asks the text model only on request.** After Enter, words the
+  offline parser left show an "Ask AI about these words" button; only
+  those words, today's date and the category names are sent. Without a
+  separate text model the decision model answers. These requests cost a
+  fraction of a cent and are not counted in run totals.

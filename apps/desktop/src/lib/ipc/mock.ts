@@ -1414,6 +1414,29 @@ export const mockApi: Api = {
     tracks = tracks.filter((t) => t.id !== id);
     emit('changed', 'places');
   },
+  // A stand-in for the text model: a few words it "understands".
+  aiSearch: async (text) => {
+    const problem = aiProblem();
+    if (problem) throw new Error(problem);
+    const query = { ...emptyQuery() };
+    const understood: string[] = [];
+    const rest: string[] = [];
+    const year = new Date().getFullYear() - 1;
+    for (const w of text.toLowerCase().split(/\s+/).filter(Boolean)) {
+      if (w === 'christmas') {
+        query.from_local = `${year}-12-24T00:00:00`;
+        query.to_local = `${year}-12-27T00:00:00`;
+        understood.push(`From ${year}-12-24 to before ${year}-12-27`);
+      } else if (w === 'clips' || w === 'footage') {
+        query.media = ['video'];
+        understood.push('Videos');
+      } else if (w === 'funny') {
+        query.categories = ['memes'];
+        understood.push('Memes');
+      } else if (!['the', 'at', 'of', 'from', 'last'].includes(w)) rest.push(w);
+    }
+    return { query, rest: rest.join(' '), understood };
+  },
   aiStatus: async () => ({
     mode: settings.ai_mode,
     local: settings.ai_mode === 'local' ? [{ name: 'Ollama', base: 'http://127.0.0.1:11434/v1', models: LOCAL_MODELS }] : [],

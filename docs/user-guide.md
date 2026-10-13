@@ -44,7 +44,9 @@ palette brings it back.
   OpenFreeMap.
 - **Search** (top bar, or press /): words like `videos summer 2019 italy`, file names or
   tags. Roll turns what it understands into filter chips. The filter panel
-  adds categories, cameras, places, ratings and more.
+  adds categories, cameras, places, ratings and more. When AI is on,
+  words Roll did not understand can go to the AI model ("Ask AI about
+  these words"); only those words are sent, never photos.
 - **Command palette:** Ctrl+K. Every view and action is there.
 - **Viewer:** double-click a tile or press Enter. Arrow keys move, 1–5
   rate (0 clears), F favorites, T tags, Del moves to Roll's trash, Esc

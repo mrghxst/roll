@@ -434,6 +434,31 @@ impl Library {
         crate::search::parse(&self.db.read(), text, gaz.as_deref(), chrono::Local::now().date_naive())
     }
 
+    /// Ask the text model (the decision model unless one is set) about
+    /// the words the offline parser left. Sends only `text`, today's date
+    /// and the category names.
+    pub fn ai_search(&self, text: &str) -> anyhow::Result<crate::search::ParsedSearch> {
+        let s = self.settings();
+        let model = s
+            .ai_text_model
+            .clone()
+            .filter(|m| !m.trim().is_empty())
+            .or(s.ai_decision_model.clone())
+            .ok_or_else(|| anyhow::anyhow!("Pick a model in Sort with AI first."))?;
+        let ep = self.ai_endpoint()?;
+        let names: Vec<(String, String)> = {
+            let c = self.db.read();
+            let mut st = c.prepare("SELECT key, name FROM categories ORDER BY sort, id")?;
+            st.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?.collect::<Result<_, _>>()?
+        };
+        let today = chrono::Local::now().date_naive().format("%Y-%m-%d").to_string();
+        let body = roll_ai::query::body(&model, text, &today, &names, ep.is_openrouter());
+        let reply = ep.complete(&body).map_err(|e| anyhow::anyhow!(e.explain()))?;
+        let tq = roll_ai::query::parse(&reply.content, &names).map_err(|e| anyhow::anyhow!("The model's answer could not be used: {e}"))?;
+        let gaz = self.gaz();
+        Ok(crate::search::from_text_query(&tq, gaz.as_deref(), &names))
+    }
+
     /// Refresh the search index rows of items that changed.
     fn reindex(&self, ids: &[i64]) {
         // Big changes (a first scan) are cheaper as one rebuild in the background.
@@ -1377,6 +1402,32 @@ impl Library {
                 let model =
                     model.map(String::from).or(s.ai_decision_model).ok_or_else(|| anyhow::anyhow!("Pick a decision model first."))?;
                 self.ai_provider_for(&base, &model)
+            }
+            _ => anyhow::bail!("AI is off. Choose Local or OpenRouter in Settings › AI."),
+        }
+    }
+
+    /// The server for one-off requests (search), without a price.
+    fn ai_endpoint(&self) -> anyhow::Result<roll_ai::chat::Endpoint> {
+        use roll_ai::chat::{Endpoint, OPENROUTER};
+        let s = self.settings();
+        match s.ai_mode.as_str() {
+            "openrouter" => {
+                anyhow::ensure!(s.network.ai, "The AI provider is off. Turn it on in Settings › Network.");
+                let key =
+                    crate::secrets::get("openrouter").ok_or_else(|| anyhow::anyhow!("Add an OpenRouter API key in Settings › AI."))?;
+                Ok(Endpoint::new(OPENROUTER, Some(key)))
+            }
+            "local" => {
+                let base = match s.ai_local_endpoint.filter(|e| !e.trim().is_empty()) {
+                    Some(b) => b,
+                    None => roll_ai::chat::detect_local()
+                        .into_iter()
+                        .next()
+                        .map(|(_, b, _)| b)
+                        .ok_or_else(|| anyhow::anyhow!("No local AI server found. Start Ollama, LM Studio or llama-server."))?,
+                };
+                Ok(Endpoint::new(&base, None))
             }
             _ => anyhow::bail!("AI is off. Choose Local or OpenRouter in Settings › AI."),
         }
