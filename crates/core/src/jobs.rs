@@ -38,6 +38,10 @@ pub enum JobSpec {
     Immich {
         remove: bool,
     },
+    /// A decision run (`ai_runs.id`), or a model check run.
+    Decide {
+        run: i64,
+    },
 }
 
 impl JobSpec {
@@ -52,6 +56,7 @@ impl JobSpec {
             JobSpec::Hash => "hash",
             JobSpec::Index => "index",
             JobSpec::Immich { .. } => "immich",
+            JobSpec::Decide { .. } => "decide",
         }
     }
     pub fn priority(&self) -> i64 {
@@ -64,6 +69,7 @@ impl JobSpec {
             JobSpec::Hash => 30,
             JobSpec::Index => 22,
             JobSpec::Immich { .. } => 40,
+            JobSpec::Decide { .. } => 45,
         }
     }
     pub fn label(&self) -> String {
@@ -77,6 +83,7 @@ impl JobSpec {
             JobSpec::Hash => "Checking files for duplicates".into(),
             JobSpec::Index => "Preparing search".into(),
             JobSpec::Immich { .. } => "Syncing with Immich".into(),
+            JobSpec::Decide { .. } => "Sorting uncertain items with AI".into(),
         }
     }
 }

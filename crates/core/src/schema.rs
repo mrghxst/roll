@@ -1,6 +1,6 @@
 //! Database migrations. Append only: never edit a shipped migration.
 
-pub const MIGRATIONS: &[&str] = &[M1, M2, M3, M4, M5, M6, M7, M8, M9];
+pub const MIGRATIONS: &[&str] = &[M1, M2, M3, M4, M5, M6, M7, M8, M9, M10];
 
 const M1: &str = r#"
 CREATE TABLE settings (
@@ -350,6 +350,65 @@ CREATE TABLE event_undo (
 "#;
 
 /// Immich users an event's album is shared with (JSON array of user ids).
+/// Decision models (M5): measured prices and token counts per model, runs
+/// with their budget, and one row per item and run so a run resumes
+/// without sending an item twice. The model check's labelled sample.
+const M10: &str = r#"
+CREATE TABLE ai_models (
+  -- 'openrouter' or a local server's base URL
+  provider TEXT NOT NULL,
+  model TEXT NOT NULL,
+  -- JSON price, USD per token, image and request
+  price TEXT,
+  -- measured averages from earlier runs
+  input_per_item REAL,
+  output_per_item REAL,
+  updated_at INTEGER NOT NULL,
+  PRIMARY KEY (provider, model)
+);
+CREATE TABLE ai_runs (
+  id INTEGER PRIMARY KEY,
+  -- 'decide' (proposals for Review) or 'check' (the model check)
+  kind TEXT NOT NULL,
+  provider TEXT NOT NULL,
+  model TEXT NOT NULL,
+  prompt_version TEXT NOT NULL,
+  batch_size INTEGER NOT NULL,
+  items INTEGER NOT NULL,
+  estimate_usd REAL NOT NULL,
+  budget_usd REAL,
+  spent_usd REAL NOT NULL DEFAULT 0,
+  -- 'ready', 'running', 'stopped', 'capped', 'done', 'failed'
+  state TEXT NOT NULL,
+  note TEXT,
+  seconds REAL NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL,
+  finished_at INTEGER
+);
+CREATE TABLE ai_items (
+  run_id INTEGER NOT NULL REFERENCES ai_runs(id) ON DELETE CASCADE,
+  asset_id INTEGER NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
+  -- 0 pending, 1 sent, 2 done, 3 failed
+  state INTEGER NOT NULL DEFAULT 0,
+  cost REAL,
+  tokens_in INTEGER,
+  tokens_out INTEGER,
+  -- the model's answer (JSON), NULL for unsure
+  verdict TEXT,
+  error TEXT,
+  at INTEGER,
+  PRIMARY KEY (run_id, asset_id)
+);
+CREATE INDEX ai_items_asset ON ai_items(asset_id);
+CREATE TABLE ai_check (
+  asset_id INTEGER PRIMARY KEY REFERENCES assets(id) ON DELETE CASCADE,
+  -- the owner's category key; NULL until labelled
+  truth TEXT,
+  labeled_at INTEGER
+);
+ALTER TABLE assets ADD COLUMN caption TEXT;
+"#;
+
 const M9: &str = r#"
 ALTER TABLE events ADD COLUMN immich_share TEXT NOT NULL DEFAULT '[]';
 "#;

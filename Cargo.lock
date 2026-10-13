@@ -3610,12 +3610,14 @@ name = "roll-ai"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "base64 0.23.1",
  "half",
  "rayon",
  "serde",
  "serde_json",
  "thiserror 2.0.21",
  "tracing",
+ "ureq",
 ]
 
 [[package]]

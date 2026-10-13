@@ -15,24 +15,30 @@ pub fn guard(c: &Connection, asset: i64, text: &str) -> rusqlite::Result<Option<
     if found.is_empty() {
         return Ok(None);
     }
+    let why = found.iter().map(|f| f.why.as_str()).collect::<Vec<_>>().join("; ");
+    Ok(mark(c, asset, &why, "guard")?.then_some(why))
+}
+
+/// Mark `asset` Private with a reason (`source` is "guard" or "model").
+/// Returns false when it already was, or the owner decided otherwise.
+pub fn mark(c: &Connection, asset: i64, why: &str, source: &str) -> rusqlite::Result<bool> {
     let owner_decided: bool = c.query_row(
         "SELECT EXISTS(SELECT 1 FROM field_history WHERE asset_id = ?1 AND field = 'private' AND source = 'manual')",
         [asset],
         |r| r.get(0),
     )?;
     if owner_decided {
-        return Ok(None);
+        return Ok(false);
     }
-    let why = found.iter().map(|f| f.why.as_str()).collect::<Vec<_>>().join("; ");
-    let change = Change { field: "private", value: json!(true), source: "guard", source_ref: None, conf: None, why: Some(why.clone()) };
+    let change = Change { field: "private", value: json!(true), source, source_ref: None, conf: None, why: Some(why.to_string()) };
     if !edits::set(c, None, asset, &change)? {
-        return Ok(None);
+        return Ok(false);
     }
     c.execute(
-        "UPDATE asset_tags SET source = 'guard' WHERE asset_id = ?1 AND tag_id = (SELECT id FROM tags WHERE path = ?2)",
-        params![asset, tags::PRIVATE],
+        "UPDATE asset_tags SET source = ?3 WHERE asset_id = ?1 AND tag_id = (SELECT id FROM tags WHERE path = ?2)",
+        params![asset, tags::PRIVATE, source],
     )?;
-    Ok(Some(why))
+    Ok(true)
 }
 
 /// Run the guard over the descriptions of `ids` (all items when `None`).

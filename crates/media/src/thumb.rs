@@ -87,6 +87,29 @@ pub fn preview(img: &RgbImage) -> Vec<u8> {
     webp(&crate::decode::fit(img.clone(), PREVIEW_LONG), 80.0)
 }
 
+/// What a decision model sees: at most 512 px, JPEG quality 80. The image
+/// crate's encoder writes no EXIF, so no metadata goes along.
+pub fn ai_jpeg(img: &RgbImage) -> Vec<u8> {
+    let small = crate::decode::fit(img.clone(), 512);
+    let mut out = Vec::new();
+    image::codecs::jpeg::JpegEncoder::new_with_quality(&mut out, 80).encode_image(&small).expect("jpeg encode");
+    out
+}
+
+/// Video keyframes side by side, scaled to a common height.
+pub fn strip(frames: &[RgbImage]) -> Option<RgbImage> {
+    let h = frames.iter().map(|f| f.height()).min()?;
+    let scaled: Vec<RgbImage> = frames.iter().map(|f| resize(f, (f.width() * h / f.height().max(1)).max(1), h)).collect();
+    let w = scaled.iter().map(|f| f.width()).sum();
+    let mut out = RgbImage::new(w, h);
+    let mut x = 0;
+    for f in &scaled {
+        image::imageops::replace(&mut out, f, x as i64, 0);
+        x += f.width();
+    }
+    Some(out)
+}
+
 /// A full-size JPEG for formats the WebView cannot show (HEIC, RAW).
 pub fn full_jpeg(img: &RgbImage) -> Vec<u8> {
     let mut out = Vec::new();

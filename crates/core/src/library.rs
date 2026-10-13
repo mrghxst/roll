@@ -244,6 +244,40 @@ impl Library {
                 }
                 Ok(())
             }
+            JobSpec::Decide { run } => {
+                let (provider, model, kind): (String, String, String) =
+                    self.db.read().query_row("SELECT provider, model, kind FROM ai_runs WHERE id = ?1", [*run], |r| {
+                        Ok((r.get(0)?, r.get(1)?, r.get(2)?))
+                    })?;
+                let p = self.ai_provider_for(&provider, &model)?;
+                let image = |id: i64| self.ai_image(id);
+                let state = crate::decide::execute(
+                    &self.db,
+                    *run,
+                    &p,
+                    &crate::decide::Hooks { progress: &|d, t| ctx.progress(d, t), cost: &|usd| ctx.add_cost(usd), image: &image },
+                )?;
+                if kind == "decide" {
+                    let ids: Vec<i64> = {
+                        let c = self.db.read();
+                        let mut st = c.prepare("SELECT asset_id FROM ai_items WHERE run_id = ?1 AND state = 2")?;
+                        st.query_map([*run], |r| r.get(0))?.collect::<Result<_, _>>()?
+                    };
+                    self.reindex(&ids);
+                    self.emit(LibEvent::Changed("assets"));
+                    self.emit(LibEvent::Changed("review"));
+                }
+                self.emit(LibEvent::Changed("ai"));
+                match state.as_str() {
+                    "failed" => {
+                        let note: Option<String> =
+                            self.db.read().query_row("SELECT note FROM ai_runs WHERE id = ?1", [*run], |r| r.get(0))?;
+                        anyhow::bail!("{}", note.unwrap_or_else(|| "The decision run failed.".into()))
+                    }
+                    "capped" => anyhow::bail!("The run stopped at its budget. Raise the budget and start it again to continue."),
+                    _ => Ok(()),
+                }
+            }
             JobSpec::Recover => {
                 if journal::recover(&self.db, &self.tools())? > 0 {
                     self.emit(LibEvent::Changed("assets"));
@@ -1320,6 +1354,207 @@ impl Library {
     /// an option.
     pub fn immich_script(&self, windows: bool) -> anyhow::Result<String> {
         Ok(crate::immich::cli_script(&self.db.read(), windows)?)
+    }
+
+    // Decision models
+
+    /// The server and model for runs, from the settings.
+    fn ai_provider(&self, model: Option<&str>) -> anyhow::Result<crate::decide::Provider> {
+        let s = self.settings();
+        match s.ai_mode.as_str() {
+            "openrouter" => {
+                let model =
+                    model.map(String::from).or(s.ai_decision_model).ok_or_else(|| anyhow::anyhow!("Pick a decision model first."))?;
+                self.ai_provider_for("openrouter", &model)
+            }
+            "local" => {
+                let base = match s.ai_local_endpoint.filter(|e| !e.trim().is_empty()) {
+                    Some(b) => b,
+                    None => roll_ai::chat::detect_local().into_iter().next().map(|(_, b, _)| b).ok_or_else(|| {
+                        anyhow::anyhow!("No local AI server found. Start Ollama, LM Studio or llama-server, or enter its address.")
+                    })?,
+                };
+                let model =
+                    model.map(String::from).or(s.ai_decision_model).ok_or_else(|| anyhow::anyhow!("Pick a decision model first."))?;
+                self.ai_provider_for(&base, &model)
+            }
+            _ => anyhow::bail!("AI is off. Choose Local or OpenRouter in Settings › AI."),
+        }
+    }
+
+    fn ai_provider_for(&self, provider: &str, model: &str) -> anyhow::Result<crate::decide::Provider> {
+        use roll_ai::chat::{Endpoint, OPENROUTER};
+        let s = self.settings();
+        if provider == "openrouter" {
+            anyhow::ensure!(s.network.ai, "The AI provider is off. Turn it on in Settings › Network.");
+            let key = crate::secrets::get("openrouter").ok_or_else(|| anyhow::anyhow!("Add an OpenRouter API key in Settings › AI."))?;
+            let (price, upstream) = crate::decide::saved_price(&self.db.read(), "openrouter", model)?
+                .ok_or_else(|| anyhow::anyhow!("Pick {model} again in the model list so Roll knows its price."))?;
+            return Ok(crate::decide::Provider {
+                endpoint: Endpoint::new(OPENROUTER, Some(key)),
+                name: "openrouter".into(),
+                label: "OpenRouter".into(),
+                model: model.into(),
+                price,
+                upstream,
+                allow_non_zdr: s.ai_allow_non_zdr,
+            });
+        }
+        let label = roll_ai::chat::LOCAL_SERVERS
+            .iter()
+            .find(|(_, b)| provider.starts_with(&b[..b.len() - 3]))
+            .map(|(n, _)| n.to_string())
+            .unwrap_or_else(|| "the local server".into());
+        let mut endpoint = Endpoint::new(provider, None);
+        // Local models are slower per request.
+        endpoint.timeout = std::time::Duration::from_secs(600);
+        Ok(crate::decide::Provider {
+            endpoint,
+            name: provider.into(),
+            label,
+            model: model.into(),
+            price: Default::default(),
+            upstream: None,
+            allow_non_zdr: true,
+        })
+    }
+
+    /// The JPEG a decision model sees (512 px, no metadata) and its hints.
+    fn ai_image(&self, id: i64) -> Option<(roll_ai::decide::Hints, Vec<u8>)> {
+        let input = thumbs::load_input(&self.db, id).ok()??;
+        let (make, screenshot): (Option<String>, i64) =
+            self.db.read().query_row("SELECT make, screenshot FROM assets WHERE id = ?1", [id], |r| Ok((r.get(0)?, r.get(1)?))).ok()?;
+        let img = if input.video {
+            let frames = self.ffmpeg.as_ref()?.keyframes(&input.path, input.duration_ms, 512).ok()?;
+            thumb::strip(&frames)?
+        } else {
+            decode::decode(thumbs::source(&input), self.ffmpeg.as_ref(), Some(512)).ok()?
+        };
+        let hints = roll_ai::decide::Hints {
+            camera: make.is_some(),
+            screenshot_marker: screenshot != 0,
+            width: input.width,
+            height: input.height,
+            video_secs: input.video.then(|| input.duration_ms.unwrap_or(0) as f64 / 1000.0),
+        };
+        Some((hints, thumb::ai_jpeg(&img)))
+    }
+
+    pub fn ai_status(&self) -> crate::decide::AiStatus {
+        let s = self.settings();
+        let local: Vec<crate::decide::LocalServer> = if s.ai_mode == "local" {
+            roll_ai::chat::detect_local()
+                .into_iter()
+                .map(|(name, base, models)| crate::decide::LocalServer { name, base, models })
+                .collect()
+        } else {
+            Vec::new()
+        };
+        let endpoint = s.ai_local_endpoint.clone().filter(|e| !e.trim().is_empty()).or_else(|| local.first().map(|l| l.base.clone()));
+        let has_key = crate::secrets::has("openrouter");
+        let problem = match s.ai_mode.as_str() {
+            "openrouter" if !has_key => Some("Add an OpenRouter API key in Settings › AI.".to_string()),
+            "openrouter" if !s.network.ai => Some("The AI provider is off in Settings › Network.".to_string()),
+            "local" if endpoint.is_none() => Some("No local AI server found. Start Ollama, LM Studio or llama-server.".to_string()),
+            "off" => Some("AI is off. Choose Local or OpenRouter in Settings › AI.".to_string()),
+            _ if s.ai_decision_model.is_none() => Some("Pick a decision model.".to_string()),
+            _ => None,
+        };
+        crate::decide::AiStatus { mode: s.ai_mode, local, endpoint, model: s.ai_decision_model, has_key, network_on: s.network.ai, problem }
+    }
+
+    /// Image-capable OpenRouter models with live prices, cheapest first.
+    pub fn ai_offers(&self) -> anyhow::Result<Vec<crate::decide::ModelOffer>> {
+        anyhow::ensure!(self.settings().network.ai, "The AI provider is off. Turn it on in Settings › Network.");
+        let ep = roll_ai::chat::Endpoint::new(roll_ai::chat::OPENROUTER, None);
+        let offers = roll_ai::openrouter::fetch(&ep, &Default::default()).map_err(|e| anyhow::anyhow!(e.explain()))?;
+        Ok(offers.into_iter().map(Into::into).collect())
+    }
+
+    /// Use `model` for decisions. For OpenRouter, the offer's price is kept
+    /// for estimates.
+    pub fn ai_pick(&self, model: &str, offer: Option<&crate::decide::ModelOffer>) -> anyhow::Result<()> {
+        if let Some(o) = offer {
+            let price = roll_ai::cost::Price {
+                prompt: o.prompt_per_m / 1e6,
+                completion: o.completion_per_m / 1e6,
+                image: o.image_usd,
+                request: 0.0,
+            };
+            crate::decide::save_price(&self.db.write(), "openrouter", &o.id, &price, o.provider.as_deref())?;
+        }
+        let mut s = self.settings();
+        s.ai_decision_model = Some(model.to_string());
+        self.save_settings(&s)?;
+        self.emit(LibEvent::Changed("ai"));
+        Ok(())
+    }
+
+    pub fn ai_plan(&self) -> anyhow::Result<crate::decide::DecidePlan> {
+        let p = self.ai_provider(None)?;
+        let s = self.settings();
+        Ok(crate::decide::plan(&self.db.read(), &p, s.ai_batch.clamp(1, 8) as usize, Some(s.ai_budget_usd), s.ai_allow_private_cloud)?)
+    }
+
+    /// Start a run over the uncertain items; returns its id.
+    pub fn ai_start(&self, budget: Option<f64>) -> anyhow::Result<i64> {
+        let p = self.ai_provider(None)?;
+        let s = self.settings();
+        let budget = budget.or(Some(s.ai_budget_usd)).filter(|b| *b > 0.0);
+        let (ids, _, _) = crate::decide::candidates(&self.db.read(), &p, s.ai_allow_private_cloud)?;
+        anyhow::ensure!(!ids.is_empty(), "Nothing is uncertain: every item is decided or proposed with 95% or more.");
+        let run = crate::decide::create(&self.db.write(), "decide", &p, &ids, s.ai_batch.clamp(1, 8) as usize, budget)?;
+        self.jobs.enqueue(JobSpec::Decide { run })?;
+        self.emit(LibEvent::Changed("ai"));
+        Ok(run)
+    }
+
+    /// Continue a stopped or capped run, optionally with a new budget.
+    pub fn ai_resume(&self, run: i64, budget: Option<f64>) -> anyhow::Result<()> {
+        if let Some(b) = budget {
+            self.db.write().execute("UPDATE ai_runs SET budget_usd = ?2 WHERE id = ?1", params![run, b])?;
+        }
+        self.jobs.enqueue(JobSpec::Decide { run })?;
+        self.emit(LibEvent::Changed("ai"));
+        Ok(())
+    }
+
+    pub fn ai_runs(&self) -> anyhow::Result<Vec<crate::decide::RunInfo>> {
+        Ok(crate::decide::runs(&self.db.read(), 20)?)
+    }
+
+    /// Pick a new sample of about 150 items for the model check.
+    pub fn ai_check_sample(&self) -> anyhow::Result<usize> {
+        let n = crate::decide::check_sample(&self.db.write(), 150)?;
+        self.emit(LibEvent::Changed("ai"));
+        Ok(n)
+    }
+
+    pub fn ai_check_items(&self) -> anyhow::Result<Vec<crate::decide::CheckItem>> {
+        Ok(crate::decide::check_items(&self.db.read())?)
+    }
+
+    pub fn ai_check_label(&self, asset: i64, key: Option<&str>) -> anyhow::Result<()> {
+        crate::decide::check_label(&self.db.write(), asset, key)
+    }
+
+    /// Run up to 3 models on the labelled sample.
+    pub fn ai_check_start(&self, models: &[String]) -> anyhow::Result<()> {
+        anyhow::ensure!(!models.is_empty() && models.len() <= 3, "Pick one to three models.");
+        let ids = crate::decide::labeled(&self.db.read())?;
+        anyhow::ensure!(ids.len() >= 20, "Label at least 20 items first.");
+        let s = self.settings();
+        for m in models {
+            let p = self.ai_provider(Some(m))?;
+            let run = crate::decide::create(&self.db.write(), "check", &p, &ids, s.ai_batch.clamp(1, 8) as usize, Some(s.ai_budget_usd))?;
+            self.jobs.enqueue(JobSpec::Decide { run })?;
+        }
+        self.emit(LibEvent::Changed("ai"));
+        Ok(())
+    }
+
+    pub fn ai_check_report(&self) -> anyhow::Result<crate::decide::CheckReport> {
+        Ok(crate::decide::check_report(&self.db.read())?)
     }
 
     // Duplicates

@@ -34,6 +34,9 @@ pub struct Settings {
     pub ai_decision_model: Option<String>,
     pub ai_text_model: Option<String>,
     pub ai_budget_usd: f64,
+    /// Items per request: 8, or 4 and 1 when the model check shows that
+    /// batching hurts a model.
+    pub ai_batch: i32,
     pub ai_allow_private_cloud: bool,
     pub ai_allow_non_zdr: bool,
     pub immich_url: Option<String>,
@@ -73,6 +76,7 @@ impl Default for Settings {
             ai_decision_model: None,
             ai_text_model: None,
             ai_budget_usd: 5.0,
+            ai_batch: 8,
             ai_allow_private_cloud: false,
             ai_allow_non_zdr: false,
             immich_url: None,
