@@ -75,16 +75,14 @@ later fixes, albums and shared albums.
 ## How an item gets sorted
 
 ```mermaid
-flowchart LR
-  A[Phone dump<br/>camera card<br/>WhatsApp, Takeout] --> B[Scan<br/>metadata, hashes]
-  B --> C[Rules<br/>and file signals]
-  C -->|sure| R[Category]
-  C -->|unsure| D[Local models<br/>embeddings, OCR]
-  D -->|sure| R
-  D -->|unsure| E[Vision model<br/>local or OpenRouter]
-  E --> V[Review]
-  V --> R
-  R --> T[Metadata tags]
+flowchart TD
+  A[Phone dump, camera card,<br/>WhatsApp or Takeout export] --> B[Rules and file signals]
+  B -->|unsure| C[Local models]
+  C -->|unsure| D[Vision model,<br/>local or OpenRouter]
+  D --> E[Your review]
+  B -->|sure| T[Standard metadata tags]
+  C -->|sure| T
+  E --> T
   T --> F[Year folders]
   T --> I[Immich]
 ```
