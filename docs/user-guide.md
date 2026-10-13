@@ -68,6 +68,15 @@ Wallpapers, Documents, Junk or Unsorted, plus your own.
   or higher" takes the rest, and a small audit keeps an eye on precision.
 - **Discover** groups undecided images that share a source (same size and
   encoder, usually one app): one decision sorts the whole group.
+- **Sort with AI** (when AI is on in Settings › AI) sends what is still
+  uncertain to a decision model, which proposes a category, a short
+  caption (searchable) and whether an item shows a private document. The
+  proposals wait in Review. With OpenRouter you see the estimate and
+  exactly what is sent (512 px thumbnails without metadata) before
+  anything goes, and the run stops before it would pass its budget. A
+  stopped run continues where it stopped, without paying twice for items
+  already answered. The **model check** compares up to three models on
+  about 150 of your own items and recommends the cheapest good one.
 - **Duplicates** finds exact copies, smaller copies (the WhatsApp copy of a
   camera photo), look-alikes and bursts, and suggests which to keep. Merging
   keeps the best one and moves the others to Roll's trash.

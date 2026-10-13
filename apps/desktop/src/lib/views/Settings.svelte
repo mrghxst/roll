@@ -201,6 +201,25 @@
           <Input type="number" min="0.1" step="0.5" mono value={s.ai_budget_usd} onchange={(e) => save({ ai_budget_usd: Number(e.currentTarget.value) || 5 })} />
         </label>
       {/if}
+      {#if s.ai_mode !== 'off'}
+        <div class="field">
+          <span>Items per request</span>
+          <Segmented
+            label="Items per request"
+            options={[
+              { value: '8', label: '8' },
+              { value: '4', label: '4' },
+              { value: '1', label: '1' },
+            ]}
+            value={String(s.ai_batch)}
+            onchange={(v) => save({ ai_batch: Number(v) })}
+          />
+          <span class="muted">Fewer items per request costs more. Use 4 or 1 only when the model check shows a model does worse with 8.</span>
+        </div>
+        <div class="row">
+          <Button variant="ghost" onclick={() => app.go('ai')}>Open Sort with AI</Button>
+        </div>
+      {/if}
       <div class="toggle">
         <Switch label="Allow Private items in cloud models" checked={s.ai_allow_private_cloud} onchange={(v) => save({ ai_allow_private_cloud: v })} />
         <div><strong>Allow Private items in cloud models</strong><p class="muted">Off: items tagged Private never leave this computer.</p></div>

@@ -26,6 +26,7 @@ export type View =
   | 'events'
   | 'add'
   | 'immich'
+  | 'ai'
   | 'guide'
   | 'history'
   | 'trash'
@@ -85,6 +86,7 @@ class AppState {
   thumbsRevision = $state(0);
   historyRevision = $state(0);
   importsRevision = $state(0);
+  aiRevision = $state(0);
   /** The import the Add photos view shows. */
   importing = $state<number | null>(null);
 
@@ -117,6 +119,7 @@ class AppState {
       else if (what === 'history') this.historyRevision++;
       else if (what === 'packs') void this.loadPacks();
       else if (what === 'imports') this.importsRevision++;
+      else if (what === 'ai') this.aiRevision++;
       else void this.refresh();
     });
     this.ready = true;

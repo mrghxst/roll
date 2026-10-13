@@ -44,6 +44,21 @@ test('no accessibility problems in first run', async ({ page }) => {
   expect(r.violations.map((v) => `${v.id}: ${v.help} — ${v.nodes[0]?.target.join(' ')}`)).toEqual([]);
 });
 
+// Sort with AI with the labelling panel open, light and dark.
+for (const scheme of ['light', 'dark'] as const) {
+  test(`no accessibility problems in sort with AI, ${scheme}`, async ({ page }) => {
+    await page.emulateMedia({ colorScheme: scheme });
+    await page.goto('/?setup=1&mock=300&ai=local');
+    await page.getByTestId('nav-ai').click();
+    await page.getByRole('radiogroup', { name: 'Local model' }).getByRole('radio', { name: 'qwen3-vl:4b' }).click();
+    await page.getByTestId('check-sample').click();
+    await page.getByTestId('labeler').waitFor();
+    await page.waitForTimeout(300);
+    const r = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze();
+    expect(r.violations.map((v) => `${v.id}: ${v.help} — ${v.nodes.length} × ${v.nodes[0]?.target.join(' ')}`)).toEqual([]);
+  });
+}
+
 // The dark theme has its own colors: the same check on a few busy views.
 for (const nav of ['nav-timeline', 'nav-add', 'nav-immich', 'nav-settings']) {
   test(`no accessibility problems in ${nav.slice(4)}, dark`, async ({ page }) => {

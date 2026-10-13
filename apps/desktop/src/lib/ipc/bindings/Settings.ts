@@ -13,7 +13,12 @@ theme: string, row_height: number,
 /**
  * "off", "local" or "openrouter".
  */
-ai_mode: string, ai_local_endpoint: string | null, ai_decision_model: string | null, ai_text_model: string | null, ai_budget_usd: number, ai_allow_private_cloud: boolean, ai_allow_non_zdr: boolean, immich_url: string | null, network: Network, 
+ai_mode: string, ai_local_endpoint: string | null, ai_decision_model: string | null, ai_text_model: string | null, ai_budget_usd: number, 
+/**
+ * Items per request: 8, or 4 and 1 when the model check shows that
+ * batching hurts a model.
+ */
+ai_batch: number, ai_allow_private_cloud: boolean, ai_allow_non_zdr: boolean, immich_url: string | null, network: Network, 
 /**
  * CPU threads for background work; `None` uses all but two.
  */

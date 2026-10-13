@@ -7,6 +7,7 @@ use roll_core::Library;
 use roll_core::actions::EditAction;
 use roll_core::categories::CategoryPatch;
 use roll_core::datefix::{Candidate, DateFix, DatePreview, DateSet};
+use roll_core::decide::{AiStatus, CheckItem, CheckReport, DecidePlan, ModelOffer, RunInfo};
 use roll_core::discover::Cluster;
 use roll_core::dupes::DupeGroup;
 use roll_core::events::EventInfo;
@@ -660,6 +661,78 @@ pub async fn import_close(state: State<'_, AppState>, id: i64) -> Res<()> {
 }
 
 // Immich
+
+#[tauri::command]
+pub async fn ai_status(state: State<'_, AppState>) -> Res<AiStatus> {
+    let lib = state.lib.clone();
+    blocking(move || Ok(lib.ai_status())).await
+}
+
+#[tauri::command]
+pub async fn ai_offers(state: State<'_, AppState>) -> Res<Vec<ModelOffer>> {
+    let lib = state.lib.clone();
+    blocking(move || lib.ai_offers()).await
+}
+
+#[tauri::command]
+pub async fn ai_pick(state: State<'_, AppState>, model: String, offer: Option<ModelOffer>) -> Res<()> {
+    let lib = state.lib.clone();
+    blocking(move || lib.ai_pick(&model, offer.as_ref())).await
+}
+
+#[tauri::command]
+pub async fn ai_plan(state: State<'_, AppState>) -> Res<DecidePlan> {
+    let lib = state.lib.clone();
+    blocking(move || lib.ai_plan()).await
+}
+
+#[tauri::command]
+pub async fn ai_start(state: State<'_, AppState>, budget: Option<f64>) -> Res<i64> {
+    let lib = state.lib.clone();
+    blocking(move || lib.ai_start(budget)).await
+}
+
+#[tauri::command]
+pub async fn ai_resume(state: State<'_, AppState>, run: i64, budget: Option<f64>) -> Res<()> {
+    let lib = state.lib.clone();
+    blocking(move || lib.ai_resume(run, budget)).await
+}
+
+#[tauri::command]
+pub async fn ai_runs(state: State<'_, AppState>) -> Res<Vec<RunInfo>> {
+    let lib = state.lib.clone();
+    blocking(move || lib.ai_runs()).await
+}
+
+#[tauri::command]
+pub async fn ai_check_sample(state: State<'_, AppState>) -> Res<usize> {
+    let lib = state.lib.clone();
+    blocking(move || lib.ai_check_sample()).await
+}
+
+#[tauri::command]
+pub async fn ai_check_items(state: State<'_, AppState>) -> Res<Vec<CheckItem>> {
+    let lib = state.lib.clone();
+    blocking(move || lib.ai_check_items()).await
+}
+
+#[tauri::command]
+pub async fn ai_check_label(state: State<'_, AppState>, id: i64, key: Option<String>) -> Res<()> {
+    let lib = state.lib.clone();
+    blocking(move || lib.ai_check_label(id, key.as_deref())).await
+}
+
+#[tauri::command]
+pub async fn ai_check_start(state: State<'_, AppState>, models: Vec<String>) -> Res<()> {
+    let lib = state.lib.clone();
+    blocking(move || lib.ai_check_start(&models)).await
+}
+
+#[tauri::command]
+pub async fn ai_check_report(state: State<'_, AppState>) -> Res<CheckReport> {
+    let lib = state.lib.clone();
+    blocking(move || lib.ai_check_report()).await
+}
 
 #[tauri::command]
 pub async fn immich_status(state: State<'_, AppState>) -> Res<ImmichStatus> {

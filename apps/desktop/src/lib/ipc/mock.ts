@@ -2,6 +2,10 @@
 // Playwright tests. URL parameters: `?mock=N` items (default 2400),
 // `?setup=1` to start with a library already added.
 
+import type { ModelOffer } from './bindings/ModelOffer';
+import type { RunInfo } from './bindings/RunInfo';
+import type { CheckItem } from './bindings/CheckItem';
+import type { CheckModel } from './bindings/CheckModel';
 import type { Api, Events } from './api';
 import { emptyQuery } from './query';
 import type { AssetDetail } from './bindings/AssetDetail';
@@ -144,6 +148,7 @@ const defaults: Settings = {
   ai_decision_model: null,
   ai_text_model: null,
   ai_budget_usd: 5,
+  ai_batch: 8,
   ai_allow_private_cloud: false,
   ai_allow_non_zdr: false,
   immich_url: null,
@@ -168,7 +173,13 @@ const defaults: Settings = {
 
 const setup = params.get('setup') === '1';
 // `?guide=1` keeps the first guide open after setup.
-let settings: Settings = { ...defaults, first_run_done: setup, guide_done: setup && params.get('guide') !== '1' };
+// `?ai=local` starts with local AI on.
+let settings: Settings = {
+  ...defaults,
+  first_run_done: setup,
+  guide_done: setup && params.get('guide') !== '1',
+  ai_mode: params.get('ai') === 'local' ? 'local' : defaults.ai_mode,
+};
 let roots: RootInfo[] = setup ? [{ id: 1, path: 'C:\\Users\\Example\\Pictures', kind: 'library', count: N }] : [];
 let assets: MockAsset[] = setup ? makeAssets(N) : [];
 let jobs: JobInfo[] = [];
@@ -706,6 +717,128 @@ function simulateScan() {
     }
   };
   setTimeout(step, 100);
+}
+
+// Decision models: a simulated OpenRouter catalogue, a local Ollama when
+// the mode is local, and runs that answer 64 items per tick.
+
+const perItem = (inM: number, outM: number) => (380 * inM + 35 * outM) / 1e6;
+const OFFERS: ModelOffer[] = (
+  [
+    ['inclusionai/ling-3.0-flash-vl', 'Ling 3.0 Flash VL', 'Novita', 0.021, 0.062, true, true],
+    ['google/gemma-3-12b-it', 'Gemma 3 12B', 'DeepInfra', 0.05, 0.15, true, true],
+    ['google/gemma-4-26b-a4b-it', 'Gemma 4 26B A4B', 'Io Net', 0.048, 0.21, true, true],
+    ['google/gemini-2.5-flash-lite', 'Gemini 2.5 Flash Lite', 'Google Vertex', 0.1, 0.4, true, true],
+    ['example/keeps-data-vl', 'Example VL', null, 0.01, 0.03, false, false],
+  ] as const
+).map(([id, name, provider, inM, outM, zdr, structured]) => ({
+  id,
+  name,
+  provider,
+  prompt_per_m: inM,
+  completion_per_m: outM,
+  image_usd: 0,
+  zdr,
+  structured,
+  per_100k_usd: perItem(inM, outM) * 100_000,
+}));
+const LOCAL_MODELS = ['qwen3-vl:4b', 'gemma4:e4b', 'qwen3-vl:8b'];
+const pickedOffers = new Map<string, ModelOffer>();
+interface MockRun extends RunInfo {
+  ids: number[];
+  timer?: ReturnType<typeof setTimeout>;
+  jobId: number;
+}
+let aiRunList: MockRun[] = [];
+let aiSeq = 0;
+let checkItemsList: CheckItem[] = [];
+
+function aiProblem(model?: string): string | null {
+  const s = settings;
+  if (s.ai_mode === 'off') return 'AI is off. Choose Local or OpenRouter in Settings › AI.';
+  if (s.ai_mode === 'openrouter' && !secrets.has('openrouter')) return 'Add an OpenRouter API key in Settings › AI.';
+  if (s.ai_mode === 'openrouter' && !s.network.ai) return 'The AI provider is off in Settings › Network.';
+  if (!(model ?? s.ai_decision_model)) return 'Pick a decision model.';
+  return null;
+}
+
+function aiPrice(model: string): number {
+  if (settings.ai_mode !== 'openrouter') return 0;
+  const o = pickedOffers.get(model) ?? OFFERS.find((x) => x.id === model);
+  return o ? perItem(o.prompt_per_m, o.completion_per_m) : 0;
+}
+
+const uncertain = () => assets.filter((a) => !a.trashed && !a.staged && a.review < 2 && a.conf < 0.95 && !(a.tags.includes('Private') && settings.ai_mode === 'openrouter' && !settings.ai_allow_private_cloud));
+
+function startMockRun(kind: string, model: string, ids: number[], budget: number | null): MockRun {
+  const price = aiPrice(model);
+  const cloud = settings.ai_mode === 'openrouter';
+  const run: MockRun = {
+    id: ++aiSeq,
+    kind,
+    provider: cloud ? 'openrouter' : 'http://127.0.0.1:11434/v1',
+    model,
+    state: 'running',
+    items: ids.length,
+    done: 0,
+    failed: 0,
+    unsure: 0,
+    proposed: 0,
+    estimate_usd: price * ids.length,
+    budget_usd: cloud ? budget : null,
+    spent_usd: 0,
+    seconds: 0,
+    note: null,
+    created_at: Date.now(),
+    ids,
+    jobId: 1000 + aiSeq,
+  };
+  aiRunList.unshift(run);
+  continueMockRun(run);
+  return run;
+}
+
+function continueMockRun(run: MockRun) {
+  const price = aiPrice(run.model);
+  const job: JobInfo = { id: run.jobId, kind: 'decide', label: 'Sorting uncertain items with AI', state: 'running', done: run.done, total: run.items, rate: 400, eta_secs: null, cost_usd: run.spent_usd, error: null };
+  jobs = [job, ...jobs.filter((j) => j.id !== run.jobId)];
+  run.state = 'running';
+  const step = () => {
+    // Reserve a batch's worst case (about three items' worth) before sending.
+    const batch = run.ids.slice(run.done, run.done + 64);
+    let n = 0;
+    for (const id of batch) {
+      if (run.budget_usd != null && run.spent_usd + price * 3 > run.budget_usd) break;
+      run.spent_usd += price * (0.85 + ((id * 37) % 30) / 100);
+      run.done++;
+      n++;
+      const a = byId(id);
+      if (!a) continue;
+      if (id % 10 === 9) {
+        run.unsure++;
+        continue;
+      }
+      run.proposed++;
+      if (run.kind === 'decide') {
+        a.review = 1;
+        a.conf = 0.86 + (id % 13) / 100;
+      }
+    }
+    run.seconds += 0.15;
+    job.done = run.done;
+    job.cost_usd = run.spent_usd;
+    const capped = n < batch.length;
+    if (run.done >= run.items || capped) {
+      run.state = capped ? 'capped' : 'done';
+      job.state = capped ? 'failed' : 'done';
+      job.error = capped ? 'The run stopped at its budget. Raise the budget and start it again to continue.' : null;
+      assets = [...assets];
+      emit('changed', 'assets');
+    } else run.timer = setTimeout(step, 150);
+    emit('jobs', [...jobs]);
+    emit('changed', 'ai');
+  };
+  run.timer = setTimeout(step, 150);
 }
 
 export const mockApi: Api = {
@@ -1280,6 +1413,133 @@ export const mockApi: Api = {
   deleteTrack: async (id) => {
     tracks = tracks.filter((t) => t.id !== id);
     emit('changed', 'places');
+  },
+  aiStatus: async () => ({
+    mode: settings.ai_mode,
+    local: settings.ai_mode === 'local' ? [{ name: 'Ollama', base: 'http://127.0.0.1:11434/v1', models: LOCAL_MODELS }] : [],
+    endpoint: settings.ai_mode === 'local' ? (settings.ai_local_endpoint ?? 'http://127.0.0.1:11434/v1') : null,
+    model: settings.ai_decision_model,
+    has_key: secrets.has('openrouter'),
+    network_on: settings.network.ai,
+    problem: aiProblem(),
+  }),
+  aiOffers: async () => {
+    if (!settings.network.ai) throw new Error('The AI provider is off. Turn it on in Settings › Network.');
+    return OFFERS;
+  },
+  aiPick: async (model, offer) => {
+    if (offer) pickedOffers.set(model, offer);
+    settings = { ...settings, ai_decision_model: model };
+    emit('changed', 'settings');
+    emit('changed', 'ai');
+  },
+  aiPlan: async () => {
+    const problem = aiProblem();
+    if (problem) throw new Error(problem);
+    const model = settings.ai_decision_model!;
+    const cloud = settings.ai_mode === 'openrouter';
+    const done = new Set(aiRunList.filter((r) => r.kind === 'decide' && r.model === model).flatMap((r) => r.ids.slice(0, r.done)));
+    const all = assets.filter((a) => !a.trashed && !a.staged && a.review < 2 && a.conf < 0.95);
+    const items = uncertain().filter((a) => !done.has(a.id));
+    const price = aiPrice(model);
+    const offer = pickedOffers.get(model) ?? OFFERS.find((o) => o.id === model);
+    const n = items.length.toLocaleString('en-US');
+    return {
+      provider: cloud ? 'OpenRouter' : 'Ollama',
+      host: cloud ? 'openrouter.ai' : '127.0.0.1:11434',
+      model,
+      cloud,
+      items: items.length,
+      private_skipped: all.length - uncertain().length,
+      already_done: all.filter((a) => done.has(a.id)).length,
+      estimate_usd: price * items.length,
+      per_100k_usd: price * 100_000,
+      budget_usd: cloud ? settings.ai_budget_usd : null,
+      batch: settings.ai_batch,
+      measured: false,
+      consent: cloud
+        ? `${n} thumbnails (512 px, no metadata) will be sent to ${offer?.provider ?? 'a provider that keeps no data,'} through OpenRouter. Estimated cost $${(price * items.length).toFixed(2)}.`
+        : `${n} thumbnails go to Ollama on this computer (127.0.0.1:11434). Nothing leaves the machine.`,
+      samples: items.slice(0, 12).map((a) => a.id),
+    };
+  },
+  aiStart: async (budget) => {
+    const problem = aiProblem();
+    if (problem) throw new Error(problem);
+    const model = settings.ai_decision_model!;
+    const done = new Set(aiRunList.filter((r) => r.kind === 'decide' && r.model === model).flatMap((r) => r.ids.slice(0, r.done)));
+    const ids = uncertain()
+      .filter((a) => !done.has(a.id))
+      .map((a) => a.id);
+    if (!ids.length) throw new Error('Nothing is uncertain: every item is decided or proposed with 95% or more.');
+    return startMockRun('decide', model, ids, budget ?? settings.ai_budget_usd).id;
+  },
+  aiResume: async (id, budget) => {
+    const run = aiRunList.find((r) => r.id === id);
+    if (!run) throw new Error('Unknown run');
+    if (budget != null) run.budget_usd = budget;
+    continueMockRun(run);
+  },
+  aiRuns: async () => aiRunList.map(({ ids: _ids, timer: _t, jobId: _j, ...r }) => r),
+  aiCheckSample: async () => {
+    const byCat = new Map<string, MockAsset[]>();
+    for (const a of assets.filter((x) => !x.trashed && !x.staged)) byCat.set(a.category, [...(byCat.get(a.category) ?? []), a]);
+    const total = Math.max(1, assets.length);
+    checkItemsList = [];
+    for (const [cat, list] of [...byCat.entries()].sort()) {
+      const want = Math.min(list.length, Math.max(5, Math.round((list.length / total) * 150)));
+      for (const a of list.slice(0, want)) checkItemsList.push({ id: a.id, truth: a.review === 3 ? cat : null, proposed: cat });
+    }
+    emit('changed', 'ai');
+    return checkItemsList.length;
+  },
+  aiCheckItems: async () => [...checkItemsList].sort((a, b) => Number(a.truth != null) - Number(b.truth != null)),
+  aiCheckLabel: async (id, key) => {
+    const it = checkItemsList.find((x) => x.id === id);
+    if (it) it.truth = key;
+  },
+  aiCheckStart: async (models) => {
+    if (!models.length || models.length > 3) throw new Error('Pick one to three models.');
+    const ids = checkItemsList.filter((x) => x.truth).map((x) => x.id);
+    if (ids.length < 20) throw new Error('Label at least 20 items first.');
+    for (const m of models) startMockRun('check', m, ids, settings.ai_budget_usd);
+    emit('changed', 'ai');
+  },
+  aiCheckReport: async () => {
+    const labeled = checkItemsList.filter((x) => x.truth);
+    const local = labeled.filter((x) => (byId(x.id)?.review ?? 0) >= 1 && (byId(x.id)?.review ?? 0) < 3);
+    const latest = new Map<string, MockRun>();
+    for (const r of aiRunList.filter((r) => r.kind === 'check').reverse()) latest.set(r.model, r);
+    // Simulated accuracy: larger and pricier models are a little better.
+    const skill = (m: string) => 0.8 + (aiPrice(m) * 1e6) / 400 + (m.length % 5) / 100;
+    const models: CheckModel[] = [...latest.values()].map((r) => {
+      const answered = r.done;
+      const correct = Math.round(answered * Math.min(0.98, skill(r.model)));
+      return {
+        run: r.id,
+        provider: r.provider,
+        model: r.model,
+        state: r.state,
+        batch: settings.ai_batch,
+        answered,
+        correct,
+        unsure: r.unsure,
+        accuracy: correct / Math.max(1, answered),
+        per_100k_usd: (r.spent_usd / Math.max(1, answered)) * 100_000,
+        items_per_sec: answered / Math.max(0.15, r.seconds),
+        recommended: false,
+      };
+    });
+    const best = Math.max(0, ...models.map((m) => m.accuracy));
+    const pick = models.filter((m) => m.answered && m.accuracy >= best - 0.02).sort((a, b) => a.per_100k_usd - b.per_100k_usd)[0];
+    if (pick) pick.recommended = true;
+    return {
+      sample: checkItemsList.length,
+      labeled: labeled.length,
+      local_coverage: local.length / Math.max(1, labeled.length),
+      local_accuracy: local.length ? local.filter((x) => byId(x.id)?.category === x.truth).length / local.length : 0,
+      models,
+    };
   },
   immichStatus: async () => ({
     on: settings.network.immich,

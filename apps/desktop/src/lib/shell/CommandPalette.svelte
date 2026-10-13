@@ -31,6 +31,7 @@
       { group: 'Go to', title: 'Events', run: () => app.go('events') },
       { group: 'Go to', title: 'Add photos', run: () => app.go('add') },
       { group: 'Go to', title: 'Immich', run: () => app.go('immich') },
+      { group: 'Go to', title: 'Sort with AI', run: () => app.go('ai') },
       {
         group: 'Go to',
         title: 'Get started (the first guide)',

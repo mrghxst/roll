@@ -261,3 +261,39 @@ questions. One line of reason each. Newest at the bottom of each section.
   `src-tauri/tauri.bundle.json` still works for development.
 - **The installer is not signed and has no updater yet.** Signing needs a
   certificate (money) and releases need the owner's go-ahead (9.4).
+
+## Decision models (M5)
+
+- **A crash can cost one batch per worker twice.** Items are marked sent
+  before their request and done with the reply in one transaction. Answered
+  items are never sent again; items still marked sent after a crash go
+  again, because OpenRouter's generation id (to look up a charge) only
+  arrives with the reply. At most 8 batches are in flight. Stopping from
+  Activity waits for the batches in flight, so a stop costs nothing twice.
+- **"The cap stops the run exactly" means it is never passed.** Before a
+  batch is sent its worst case (twice the image and hint tokens, every
+  output token up to `max_tokens`) is reserved against the budget; the run
+  stops when the next batch could pass it, so it may end a few cents
+  under the cap.
+- **OpenRouter routing:** `provider: {zdr: true, data_collection: "deny",
+  require_parameters: true, sort: "price"}`; `zdr` is left out only when
+  the owner allows providers that keep data. The estimate uses the
+  cheapest ZDR endpoint's price from `/endpoints/zdr`, which `sort: "price"`
+  routes to. `reasoning: {effort: "none", exclude: true}`, retried with
+  `"minimal"` when a model rejects "none".
+- **Model answers are proposals.** They go to Review (never auto-accepted),
+  replace a rule's proposal only with higher confidence, and never touch
+  owner decisions or certain rules. Source tags (`Source/Instagram`…) are
+  added at 80% confidence or more; a "private" answer marks the item
+  Private through the same path as the text guard, so the owner's own
+  "not private" wins.
+- **Local servers need no Network switch.** They answer on the loopback
+  address; nothing leaves the machine. Detection tries Ollama (11434), LM
+  Studio (1234) and llama.cpp (8080).
+- **The model check compares batch sizes by hand.** It runs at the
+  "Items per request" setting and the report shows the batch size per
+  model; checking a model again at 4 or 1 shows whether batching hurts it.
+  There is no automatic fallback yet.
+- **The acceptance numbers come from a stand-in server** that charges by
+  token counts like OpenRouter. The real 1,000-item check needs the
+  owner's go-ahead to spend money and send thumbnails.

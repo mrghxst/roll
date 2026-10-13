@@ -1,6 +1,7 @@
 <script lang="ts">
   import {
     Activity,
+    Bot,
     Cloud,
     AtSign,
     CalendarClock,
@@ -92,6 +93,9 @@
     {#if !collapsed}<div class="section">Fix</div>{:else}<hr />{/if}
     {@render item('Review', ListChecks, app.view === 'review', () => goView('review'), app.counts.review, 'nav-review')}
     {@render item('Discover', Sparkles, app.view === 'discover', () => goView('discover'), undefined, 'nav-discover')}
+    {#if app.settings && app.settings.ai_mode !== 'off'}
+      {@render item('Sort with AI', Bot, app.view === 'ai', () => goView('ai'), undefined, 'nav-ai')}
+    {/if}
     {@render item('Duplicates', Copy, app.view === 'duplicates', () => goView('duplicates'), app.counts.duplicates, 'nav-duplicates')}
     {@render item('Dates', CalendarClock, app.view === 'dates', () => goView('dates'), app.counts.date_issues, 'nav-dates')}
     {@render item('Places', MapPin, app.view === 'places', () => goView('places'), app.counts.no_location, 'nav-places')}

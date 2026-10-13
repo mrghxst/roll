@@ -101,6 +101,36 @@ Milestones from PROMPT.md section 10. `[x]` done, `[~]` partly done,
       zero-shot and learned classifiers, Teach, embedding clusters in
       Discover, smart time offset, OCR and the Private guard
 ## M5 Decision models and cost
+
+- [x] OpenAI-compatible client for local servers (Ollama, LM Studio,
+      llama.cpp, found on their default ports, models from `/v1/models`)
+      and OpenRouter; retries with jitter on 429/5xx and timeouts
+- [x] Model picker: image-capable OpenRouter models with live prices,
+      cheapest ZDR endpoint per model, cheapest first, ZDR filter (models
+      that keep data only when the owner allows them)
+- [x] Decision prompt `decide-1` with hints (never names, paths, places or
+      dates), 512 px JPEG without metadata, video strips of 3 frames,
+      8 per request (4 or 1 in Settings), JSON schema, temperature 0,
+      reasoning off; replies checked, malformed ones retried once then
+      unsure
+- [x] Runs: estimate and consent text before each run, per-run budget
+      reserved per batch so the spend never passes it, live cost in
+      Activity, a note when costs run 20% over the estimate, adaptive
+      concurrency (4, up to 8, halved on throttling), resumable per item;
+      answers become proposals in Review, captions go into search, source
+      tags at 80% or more, private documents marked Private
+- [x] Model check: a stratified sample of about 150 items (owner-reviewed
+      ones come labelled), labelling with keys 1–9 and Enter, up to 3
+      models compared on accuracy, cost per 100k and speed, the cheapest
+      within 2 points recommended
+- [x] Acceptance against a stand-in server (`crates/core/tests/decide_runs.rs`):
+      estimate within ±25% on 1,000 items, $2.43 per 100k with the default
+      settings and the spec's Gemma 3 12B prices, the cap never passed,
+      resume without sending an answered item again
+- [ ] The same acceptance against OpenRouter: a 1,000-item run costs
+      about $0.03 and needs the owner's go-ahead (spending, data off the
+      machine)
+- [ ] Natural-language queries through the text model, optional reranking
 ## M6 Events, Immich, polish
 
 - [x] Events: detection (4 h / 12 h gaps, 50 km from home, 8 items,

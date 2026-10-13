@@ -13,6 +13,7 @@
   import Events from '../views/Events.svelte';
   import AddPhotos from '../views/AddPhotos.svelte';
   import Immich from '../views/Immich.svelte';
+  import AiSort from '../views/AiSort.svelte';
   import Guide from '../views/Guide.svelte';
   import Duplicates from '../views/Duplicates.svelte';
   import Review from '../views/Review.svelte';
@@ -152,6 +153,8 @@
           <Guide />
         {:else if app.view === 'immich'}
           <Immich />
+        {:else if app.view === 'ai'}
+          <AiSort />
         {:else if app.view === 'add'}
           <AddPhotos />
         {:else if app.view === 'events'}

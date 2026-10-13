@@ -30,6 +30,12 @@ import type { PlanOptions } from './bindings/PlanOptions';
 import type { PlanSummary } from './bindings/PlanSummary';
 import type { EventInfo } from './bindings/EventInfo';
 import type { AlbumInfo } from './bindings/AlbumInfo';
+import type { AiStatus } from './bindings/AiStatus';
+import type { CheckItem } from './bindings/CheckItem';
+import type { CheckReport } from './bindings/CheckReport';
+import type { DecidePlan } from './bindings/DecidePlan';
+import type { ModelOffer } from './bindings/ModelOffer';
+import type { RunInfo } from './bindings/RunInfo';
 import type { ImmichPlan } from './bindings/ImmichPlan';
 import type { ImmichStatus } from './bindings/ImmichStatus';
 import type { ImmichUser } from './bindings/ImmichUser';
@@ -148,6 +154,27 @@ export interface Api {
   importApply(id: number, opts: ImportOptions): Promise<number>;
   /** Forget the import; the source files stay where they are. */
   importClose(id: number): Promise<void>;
+  /** The AI mode, local servers found on their default ports, and what is missing. */
+  aiStatus(): Promise<AiStatus>;
+  /** Image-capable OpenRouter models with live prices, cheapest first. */
+  aiOffers(): Promise<ModelOffer[]>;
+  /** Use a model for decisions; an OpenRouter offer keeps its price for estimates. */
+  aiPick(model: string, offer: ModelOffer | null): Promise<void>;
+  /** The uncertain items, the estimate and the consent text. */
+  aiPlan(): Promise<DecidePlan>;
+  /** Start a decision run; returns its id. */
+  aiStart(budget: number | null): Promise<number>;
+  /** Continue a stopped or capped run. */
+  aiResume(run: number, budget: number | null): Promise<void>;
+  aiRuns(): Promise<RunInfo[]>;
+  /** A new stratified sample of about 150 items for the model check. */
+  aiCheckSample(): Promise<number>;
+  aiCheckItems(): Promise<CheckItem[]>;
+  /** The owner's category for a sample item (null clears it). */
+  aiCheckLabel(id: number, key: string | null): Promise<void>;
+  /** Runs 1–3 models on the labelled sample. */
+  aiCheckStart(models: string[]): Promise<void>;
+  aiCheckReport(): Promise<CheckReport>;
   /** Settings, and what the server says when Immich is on. */
   immichStatus(): Promise<ImmichStatus>;
   /** What a sync would do; from the library alone. */
