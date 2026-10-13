@@ -83,11 +83,12 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
-          path: dist
-          merge-multiple: true
+          path: artifacts
       - name: Checksums
-        working-directory: dist
-        run: sha256sum * > SHA256SUMS && cat SHA256SUMS
+        run: |
+          mkdir dist
+          find artifacts -type f -exec mv {} dist/ \;
+          cd dist && sha256sum * > SHA256SUMS && cat SHA256SUMS
       - name: Release
         env:
           GH_TOKEN: ${{ github.token }}

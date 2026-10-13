@@ -9,8 +9,8 @@ every change can be undone, but please try it on a copy of your photos first.
 |---|---|---|
 | Windows 10 and 11 | `Roll_*_x64-setup.exe` | Installs for your user only, no administrator needed. ExifTool and FFmpeg are included. |
 | macOS 11 or later (Apple silicon and Intel) | `Roll_*_universal.dmg` | Needs ExifTool and FFmpeg: `brew install exiftool ffmpeg`. |
-| Debian, Ubuntu and derivatives | `roll_*_amd64.deb` | Installs ExifTool and FFmpeg as dependencies. |
-| Other Linux | `roll_*_amd64.AppImage` | Needs `exiftool` and `ffmpeg` from your distribution. |
+| Debian, Ubuntu and derivatives | `Roll_*_amd64.deb` | Installs ExifTool and FFmpeg as dependencies. |
+| Other Linux | `Roll_*_amd64.AppImage` | Needs `exiftool` and `ffmpeg` from your distribution. |
 
 `SHA256SUMS` lists the checksum of every file.
 
