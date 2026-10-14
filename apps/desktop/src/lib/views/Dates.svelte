@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Check, CircleAlert } from '@lucide/svelte';
+  import { CalendarClock, Check, CircleAlert } from '@lucide/svelte';
   import { untrack } from 'svelte';
   import { api } from '../ipc/api';
   import type { AssetDetail } from '../ipc/bindings/AssetDetail';
@@ -7,6 +7,7 @@
   import type { DateFix } from '../ipc/bindings/DateFix';
   import type { DatePreview } from '../ipc/bindings/DatePreview';
   import type { DateSet } from '../ipc/bindings/DateSet';
+  import type { SmartOffset } from '../ipc/bindings/SmartOffset';
   import { app, mergeQuery } from '../state/app.svelte';
   import { undoLast } from '../state/edits';
 
@@ -34,6 +35,7 @@
   let busy = $state(false);
   let phones = $state<number[]>([]);
   let candidates = $state<Candidate[]>([]);
+  let smart = $state<SmartOffset | null>(null);
 
   $effect(() => {
     void app.revision;
@@ -48,6 +50,33 @@
   });
 
   const set = $derived(sets.find((s) => s.key === key) ?? null);
+
+  // Phone photos of the same moments, for camera sets.
+  $effect(() => {
+    const s = set;
+    smart = null;
+    if (s?.kind !== 'camera') return;
+    void api.dateSmart(s.ids).then((r) => {
+      if (set?.key === s.key) smart = r;
+    });
+  });
+
+  const smartFix = $derived<DateFix | null>(
+    set && smart
+      ? {
+          ids: set.ids,
+          mode: 'smart',
+          reference: null,
+          second: null,
+          offset_min: smart.offset_min,
+          amount: { years: 0, days: 0, hours: 0, minutes: 0, seconds: smart.seconds },
+          exact: null,
+          camera_from: null,
+          camera_to: null,
+        }
+      : null,
+  );
+  const time = (local: string) => shortLocal(local);
 
   // A new set: reset the form.
   $effect(() => {
@@ -202,6 +231,29 @@
         {#each set.reasons as r (r)}<p class="reason">{r}</p>{/each}
       </header>
 
+      {#if set.kind === 'camera' && smart && Math.abs(smart.seconds) >= 120}
+        {@const s = smart}
+        <div class="smart" data-testid="smart-offset">
+          <p>
+            Phone photos of the same moments suggest the camera clock is off by <strong>{s.label}</strong>{s.offset_min != null
+              ? `, in time zone UTC${s.offset_min >= 0 ? '+' : '−'}${Math.abs(s.offset_min / 60)}`
+              : ''}. {n(s.matched)} of {n(s.compared)} photos have a look-alike phone photo at that offset.
+          </p>
+          <div class="pairs">
+            {#each s.pairs as p (p.item)}
+              <div class="pair">
+                <img src={api.thumbUrl(p.item, 1)} alt="" />
+                <img src={api.thumbUrl(p.phone, 1)} alt="" />
+                <span class="muted">{time(p.item_local)} here, {time(p.phone_local)} on the phone</span>
+              </div>
+            {/each}
+          </div>
+          <Button variant="primary" disabled={busy} onclick={() => void apply(smartFix)} data-testid="apply-smart">
+            <CalendarClock size={14} strokeWidth={1.5} /> Shift by {s.label}
+          </Button>
+          <p class="muted">Or fix it by hand:</p>
+        </div>
+      {/if}
       {#if set.kind === 'camera'}
         <Segmented
           label="Fix"
@@ -548,5 +600,37 @@
     padding: 12px 0;
     background: var(--bg);
     border-top: 1px solid var(--border);
+  }
+  .smart {
+    display: grid;
+    gap: 10px;
+    margin-bottom: 16px;
+    padding: 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--r-sheet);
+    font-size: var(--t13);
+  }
+  .smart p {
+    margin: 0;
+  }
+  .pairs {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 8px;
+  }
+  .pair {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2px;
+    font-size: var(--t12);
+  }
+  .pair img {
+    width: 100%;
+    aspect-ratio: 4 / 3;
+    object-fit: cover;
+    border-radius: var(--r-1);
+  }
+  .pair span {
+    grid-column: 1 / -1;
   }
 </style>

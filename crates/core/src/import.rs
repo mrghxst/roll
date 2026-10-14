@@ -536,7 +536,7 @@ pub fn prepare(c: &Connection, id: i64, tz: &dyn crate::dates::TzGuess) -> anyho
 }
 
 /// Everything the Add photos steps show.
-pub fn info(c: &Connection, id: i64, now: i64, place: &PlaceOf) -> anyhow::Result<ImportInfo> {
+pub fn info(c: &Connection, id: i64, now: i64, place: &PlaceOf, index: Option<&roll_ai::vectors::Index>) -> anyhow::Result<ImportInfo> {
     let r = row(c, id)?;
     let all = items(c, r.root_id)?;
     let left: HashSet<i64> = r.left_out.iter().copied().collect();
@@ -555,7 +555,7 @@ pub fn info(c: &Connection, id: i64, now: i64, place: &PlaceOf) -> anyhow::Resul
             .unwrap_or_else(|| dated.first().map(|d| crate::events::name(d, common.as_deref())).unwrap_or_else(|| "New photos".into())),
     };
     let cameras_only: Vec<i64> = all.iter().filter(|i| !i.phone && i.local.is_some() && !left.contains(&i.id)).map(|i| i.id).collect();
-    let smart = datefix::smart_offset(c, &cameras_only)?;
+    let smart = datefix::smart_offset(c, &cameras_only, index)?;
     let no_date = all
         .iter()
         .filter(|i| i.local.is_none() || i.problems & problem::NO_DATE != 0 || matches!(i.date_source.as_deref(), Some("file_time")))

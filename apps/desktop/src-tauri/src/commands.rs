@@ -341,6 +341,12 @@ pub async fn date_apply(state: State<'_, AppState>, fix: DateFix) -> Res<usize> 
 }
 
 #[tauri::command]
+pub async fn date_smart(state: State<'_, AppState>, ids: Vec<i64>) -> Res<Option<roll_core::datefix::SmartOffset>> {
+    let lib = state.lib.clone();
+    blocking(move || lib.date_smart(&ids)).await
+}
+
+#[tauri::command]
 pub async fn date_candidates(state: State<'_, AppState>, ids: Vec<i64>) -> Res<Vec<Candidate>> {
     let lib = state.lib.clone();
     blocking(move || lib.date_candidates(&ids)).await

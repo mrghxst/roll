@@ -1521,8 +1521,17 @@ impl Library {
     pub fn import_info(&self, id: i64) -> anyhow::Result<ImportInfo> {
         let gaz = self.gaz();
         let place = |pts: &[(f64, f64)]| gaz.as_deref().and_then(|g| crate::events::common_place(pts, g));
+        // The image model pairs the same scene seen by camera and phone.
+        let index = if self.vision().is_some() { Some(self.embed_index()?) } else { None };
         // The write connection: missing BLAKE3 hashes are stored on the way.
-        crate::import::info(&self.db.write(), id, crate::db::now_ms(), &place)
+        crate::import::info(&self.db.write(), id, crate::db::now_ms(), &place, index.as_deref())
+    }
+
+    /// The smart offset (4.5) for a set of items: phone photos of the same
+    /// moments, by look, give the camera's clock error.
+    pub fn date_smart(&self, ids: &[i64]) -> anyhow::Result<Option<crate::datefix::SmartOffset>> {
+        let index = if self.vision().is_some() { Some(self.embed_index()?) } else { None };
+        Ok(crate::datefix::smart_offset(&self.db.read(), ids, index.as_deref())?)
     }
 
     pub fn import_name(&self, id: i64, name: Option<&str>) -> anyhow::Result<()> {

@@ -54,6 +54,7 @@ export const tauriApi: Api = {
   dateSets: () => invoke('date_sets'),
   datePreview: (fix) => invoke('date_preview', { fix }),
   dateApply: (fix) => invoke('date_apply', { fix }),
+  dateSmart: (ids) => invoke('date_smart', { ids }),
   dateCandidates: (ids) => invoke('date_candidates', { ids }),
   dismiss: (kind, key) => invoke('dismiss', { kind, key }),
   placesInfo: () => invoke('places_info'),

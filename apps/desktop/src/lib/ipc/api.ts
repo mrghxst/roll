@@ -1,6 +1,7 @@
 // The backend interface the UI uses. In the app it is Tauri; in a plain
 // browser (development, Playwright) it is an in-memory mock.
 
+import type { SmartOffset } from './bindings/SmartOffset';
 import type { Taught } from './bindings/Taught';
 import type { AppInfo } from './bindings/AppInfo';
 import type { AssetDetail } from './bindings/AssetDetail';
@@ -119,6 +120,8 @@ export interface Api {
   datePreview(fix: DateFix): Promise<DatePreview>;
   /** Returns how many items changed. */
   dateApply(fix: DateFix): Promise<number>;
+  /** The camera clock error from phone photos of the same moments, if they pair up. */
+  dateSmart(ids: number[]): Promise<SmartOffset | null>;
   dateCandidates(ids: number[]): Promise<Candidate[]>;
   /** Hide a place suggestion, a date set or a duplicate group. */
   dismiss(kind: 'place' | 'date' | 'dupe', key: string): Promise<void>;

@@ -149,6 +149,7 @@ pub fn run() {
             commands::date_sets,
             commands::date_preview,
             commands::date_apply,
+            commands::date_smart,
             commands::date_candidates,
             commands::dismiss,
             commands::places_info,

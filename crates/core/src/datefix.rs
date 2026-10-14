@@ -625,8 +625,12 @@ pub struct OffsetPair {
     pub phone_local: String,
 }
 
-/// Look-alike photos: dHash within this many of 64 bits.
+/// Look-alike photos: dHash within this many of 64 bits (near-identical
+/// frames)…
 const PAIR_BITS: u32 = 10;
+/// …or image embeddings at least this similar (the same scene from another
+/// camera, with other framing and lens).
+const PAIR_COS: f32 = 0.88;
 /// Phone photos this far from the camera's dates are not compared.
 const PAIR_WINDOW_S: i64 = 48 * 3600;
 /// Pairs within this many seconds of each other agree on the offset.
@@ -635,9 +639,23 @@ const AGREE_S: i64 = 180;
 struct Shot {
     id: i64,
     local: NaiveDateTime,
-    hash: u64,
+    hash: Option<u64>,
     offset: Option<i32>,
     phone: bool,
+}
+
+/// How unlike two shots are, 0 (same) to 1, or `None` when they do not
+/// look alike: the closer of dHash bits and embedding similarity.
+fn unlike(a: &Shot, b: &Shot, index: Option<&roll_ai::vectors::Index>) -> Option<f32> {
+    let by_hash = a.hash.zip(b.hash).map(|(x, y)| (x ^ y).count_ones()).filter(|bits| *bits <= PAIR_BITS).map(|bits| bits as f32 / 64.0);
+    let by_look = index
+        .and_then(|ix| Some(roll_ai::vectors::dot(ix.get(a.id)?, ix.get(b.id)?)))
+        .filter(|cos| *cos >= PAIR_COS)
+        .map(|cos| (1.0 - cos) / 2.0);
+    match (by_hash, by_look) {
+        (Some(h), Some(l)) => Some(h.min(l)),
+        (h, l) => h.or(l),
+    }
 }
 
 fn shots(c: &Connection, sql: &str, p: impl rusqlite::Params) -> rusqlite::Result<Vec<Shot>> {
@@ -647,21 +665,24 @@ fn shots(c: &Connection, sql: &str, p: impl rusqlite::Params) -> rusqlite::Resul
         Ok((
             r.get::<_, i64>(0)?,
             r.get::<_, String>(1)?,
-            r.get::<_, i64>(2)?,
+            r.get::<_, Option<i64>>(2)?,
             r.get::<_, Option<i64>>(3)?,
             is_phone(make.as_deref(), model.as_deref()),
         ))
     })?;
     Ok(rows
         .filter_map(Result::ok)
-        .filter_map(|(id, l, h, o, phone)| Some(Shot { id, local: parse(&l)?, hash: h as u64, offset: o.map(|o| o as i32), phone }))
+        .filter_map(|(id, l, h, o, phone)| {
+            Some(Shot { id, local: parse(&l)?, hash: h.map(|h| h as u64), offset: o.map(|o| o as i32), phone })
+        })
         .collect())
 }
 
 /// The smart offset (4.5): phone photos in the archive that look like the
 /// items and were taken within 48 h of them; the median time difference of
-/// the pairs that agree. `None` when fewer than three items pair up.
-pub fn smart_offset(c: &Connection, ids: &[i64]) -> rusqlite::Result<Option<SmartOffset>> {
+/// the pairs that agree. `None` when fewer than three items pair up. With
+/// `index` (image embeddings), the same scene seen differently pairs too.
+pub fn smart_offset(c: &Connection, ids: &[i64], index: Option<&roll_ai::vectors::Index>) -> rusqlite::Result<Option<SmartOffset>> {
     if ids.is_empty() {
         return Ok(None);
     }
@@ -670,7 +691,7 @@ pub fn smart_offset(c: &Connection, ids: &[i64]) -> rusqlite::Result<Option<Smar
         c,
         &format!(
             "SELECT id, taken_local, phash, tz_offset, make, model FROM assets
-             WHERE id IN ({list}) AND kind = 0 AND phash IS NOT NULL AND taken_local IS NOT NULL"
+             WHERE id IN ({list}) AND kind = 0 AND taken_local IS NOT NULL"
         ),
         [],
     )?;
@@ -680,14 +701,15 @@ pub fn smart_offset(c: &Connection, ids: &[i64]) -> rusqlite::Result<Option<Smar
     let phones: Vec<Shot> = shots(
         c,
         "SELECT id, taken_local, phash, tz_offset, make, model FROM assets
-         WHERE missing = 0 AND trashed_at IS NULL AND kind = 0 AND phash IS NOT NULL AND taken_local BETWEEN ?1 AND ?2",
+         WHERE missing = 0 AND trashed_at IS NULL AND kind = 0 AND taken_local BETWEEN ?1 AND ?2",
         params![fmt(lo - window), fmt(hi + window)],
     )?
     .into_iter()
     .filter(|s| !mine.contains(&s.id) && s.phone)
     .collect();
 
-    // (item index, phone index, seconds, bits); the 8 closest looks per item.
+    // (item index, phone index, seconds, unlikeness in 1/10,000); the 8
+    // closest looks per item.
     let mut cands: Vec<(usize, usize, i64, u32)> = Vec::new();
     for (i, it) in items.iter().enumerate() {
         let mut mine: Vec<(usize, usize, i64, u32)> = phones
@@ -695,8 +717,10 @@ pub fn smart_offset(c: &Connection, ids: &[i64]) -> rusqlite::Result<Option<Smar
             .enumerate()
             .filter_map(|(j, p)| {
                 let d = (p.local - it.local).num_seconds();
-                let bits = (it.hash ^ p.hash).count_ones();
-                (d.abs() <= PAIR_WINDOW_S && bits <= PAIR_BITS).then_some((i, j, d, bits))
+                if d.abs() > PAIR_WINDOW_S {
+                    return None;
+                }
+                unlike(it, p, index).map(|u| (i, j, d, (u * 10_000.0) as u32))
             })
             .collect();
         mine.sort_by_key(|x| x.3);
@@ -1000,5 +1024,33 @@ mod tests {
         assert_eq!((got[1].source.as_str(), got[1].local.as_str()), ("filename", "2020-03-01T10:15:00"));
         assert_eq!(got[2].source, "folder");
         assert!(got[2].local.starts_with("2019-07"));
+    }
+
+    #[test]
+    fn smart_offset_pairs_the_same_scene_by_look() {
+        let db = Db::memory().unwrap();
+        let c = db.write();
+        let mut index = roll_ai::vectors::Index::new(4);
+        let mut cams = Vec::new();
+        // Four scenes; the camera's clock is 1 h 30 min behind the phone's.
+        for k in 0..4 {
+            let scene = [[1.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0], [0.0, 0.0, 0.0, 1.0]][k];
+            let phone_t = format!("2023-07-1{k}T12:00:00");
+            let cam_t = format!("2023-07-1{k}T10:30:00");
+            for (name, make, when, tilt) in [("IMG", "Apple", phone_t, 0.05f32), ("DSC", "NIKON", cam_t, 0.1)] {
+                let id = insert_asset(&c, &format!("{name}_{k}.jpg"));
+                c.execute("UPDATE assets SET make = ?2, taken_local = ?3, phash = NULL WHERE id = ?1", params![id, make, when]).unwrap();
+                let mut v = scene.to_vec();
+                v[(k + 1) % 4] += tilt;
+                roll_ai::vectors::normalize(&mut v);
+                index.insert(id, &v);
+                if make == "NIKON" {
+                    cams.push(id);
+                }
+            }
+        }
+        assert!(smart_offset(&c, &cams, None).unwrap().is_none(), "no hashes, no pairs");
+        let s = smart_offset(&c, &cams, Some(&index)).unwrap().unwrap();
+        assert_eq!((s.seconds, s.matched, s.compared), (5400, 4, 4));
     }
 }

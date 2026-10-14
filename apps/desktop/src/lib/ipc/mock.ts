@@ -1330,6 +1330,27 @@ export const mockApi: Api = {
       },
     ];
   },
+  // The NIKON set runs a year and two hours ahead; photos from the same
+  // weeks stand in for the phone photos of the same moments.
+  dateSmart: async (ids) => {
+    const set = mockCameraSet().filter((a) => ids.includes(a.id));
+    if (set.length < 3 || !set.every((a) => a.local.startsWith('2020'))) return null;
+    const seconds = -(366 * 24 + 2) * 3600;
+    const others = assets.filter((a) => a.category === 'photos' && !ids.includes(a.id)).slice(0, 4);
+    return {
+      seconds,
+      label: diffLabel(seconds),
+      offset_min: 120,
+      matched: Math.min(set.length, 18),
+      compared: set.length,
+      pairs: set.slice(0, others.length).map((a, i) => ({
+        item: a.id,
+        phone: others[i]!.id,
+        item_local: a.local,
+        phone_local: fmtLocal(parseLocal(a.local) + seconds * 1000),
+      })),
+    };
+  },
   datePreview: async (fix) => {
     const list = fix.ids.map((id) => byId(id)).filter((a): a is MockAsset => !!a);
     const pairs = list.map((a) => [a, a.local, shifted(fix, a)] as const).filter((p) => p[2] != null) as [MockAsset, string, string][];
