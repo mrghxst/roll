@@ -170,11 +170,12 @@ pub fn decode(probs: &[f32], steps: usize, classes: usize, chars: &[String]) -> 
     for s in 0..steps {
         let row = &probs[s * classes..(s + 1) * classes];
         let (best, p) = row.iter().enumerate().max_by(|a, b| a.1.total_cmp(b.1)).map(|(i, p)| (i, *p))?;
-        if best != 0 && best != last {
-            if let Some(ch) = chars.get(best - 1) {
-                text.push_str(ch);
-                confs.push(p);
-            }
+        if best != 0
+            && best != last
+            && let Some(ch) = chars.get(best - 1)
+        {
+            text.push_str(ch);
+            confs.push(p);
         }
         last = best;
     }
