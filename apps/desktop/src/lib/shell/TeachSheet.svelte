@@ -48,7 +48,7 @@
       }
       const t = await api.teach(key, target);
       app.teaching = null;
-      toast.show(`Taught ${label} with ${n(t.examples)} ${t.examples === 1 ? 'example' : 'examples'}. ${t.proposed ? `${n(t.proposed)} proposals wait in Review.` : 'No other items look like them yet.'}`, {
+      toast.show(`Taught ${label} with ${n(t.examples)} ${t.examples === 1 ? 'example' : 'examples'}. ${t.proposed ? `${n(t.proposed)} ${t.proposed === 1 ? 'proposal waits' : 'proposals wait'} in Review.` : 'No other items look like them yet.'}`, {
         action: t.proposed ? { label: 'Open Review', run: () => app.go('review') } : undefined,
       });
     } catch (e) {

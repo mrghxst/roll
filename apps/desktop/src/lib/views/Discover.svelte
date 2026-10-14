@@ -100,8 +100,8 @@
   <header>
     <h1>Discover</h1>
     <p class="lead">
-      Undecided items that look like they belong together: same size, same encoder and no camera data usually means one app or one source.
-      One decision sorts the whole group.
+      Undecided items that look like they belong together: same size, same encoder and no camera data usually means one app or one source,
+      and with the image model, pictures that look alike. One decision sorts the whole group.
     </p>
   </header>
   {#if loaded && !clusters.length}
