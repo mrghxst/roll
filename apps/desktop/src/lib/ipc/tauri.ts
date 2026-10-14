@@ -92,6 +92,7 @@ export const tauriApi: Api = {
   dupeGroups: () => invoke('dupe_groups'),
   mergeDupes: (keep, others) => invoke('merge_dupes', { keep, others }),
   exactPlan: () => invoke('exact_plan'),
+  bestShots: (ids) => invoke('best_shots', { ids }),
   mergeAllExact: () => invoke('merge_all_exact'),
   aiSearch: (text) => invoke('ai_search', { text }),
   openLink: (url) => invoke('open_link', { url }),

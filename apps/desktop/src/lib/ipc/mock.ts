@@ -268,6 +268,19 @@ function pushBatch(id: number, kind: string, label: string, ops: number) {
 }
 
 /** Record a change as an undoable batch, like the library does. */
+/** Two bursts of four frames, for the best-shot picker. */
+let bursts: number[][] | null = null;
+function burstSeries() {
+  if (!bursts) {
+    const photos = assets.filter((a) => !a.trashed && a.category === 'photos').slice(60, 68).map((a) => a.id);
+    bursts = [photos.slice(0, 4), photos.slice(4, 8)].filter((b) => b.length === 4);
+  }
+  return bursts
+    .map((ids) => ids.filter((id) => !byId(id)?.trashed))
+    .filter((ids) => ids.length > 1)
+    .map((ids) => ({ key: `burst:${ids.join(',')}`, kind: 'burst', ids, why: 'The original camera file.' }));
+}
+
 /** The mock's stand-in for image similarity: the closest colours. */
 function lookAlike(ids: number[], limit: number): number[] {
   const rgb = (c: number) => [(c >> 16) & 255, (c >> 8) & 255, c & 255];
@@ -2005,8 +2018,23 @@ export const mockApi: Api = {
     // Each pair keeps its kind (by its place in the fixed list).
     return dupePairs
       .map((ids, i) => ({ key: `exact:${ids.join(',')}`, kind: i % 2 === 0 ? 'exact' : 'copy', ids, why: i % 2 === 0 ? 'Identical; the first one found.' : 'The original camera file.' }))
+      .concat(burstSeries())
       .filter((g) => g.ids.every((id) => !byId(id)?.trashed))
       .filter((g) => !dismissed.has(g.key));
+  },
+  bestShots: async (ids) => {
+    const lum = (id: number) => {
+      const c = byId(id)?.color ?? 0;
+      return ((c >> 16) & 255) + ((c >> 8) & 255) + (c & 255);
+    };
+    const max = Math.max(1, ...ids.map(lum));
+    const ranked = [...ids].sort((a, b) => lum(b) - lum(a) || a - b);
+    return ranked.map((id, i) => ({
+      id,
+      score: lum(id) / max,
+      keep: i === 0,
+      notes: i === 0 ? ['Sharpest', 'Best exposed'] : lum(id) < max * 0.5 ? ['Eyes may be closed'] : [],
+    }));
   },
   exactPlan: async () => {
     const groups = (await mockApi.dupeGroups()).filter((g) => g.kind === 'exact');

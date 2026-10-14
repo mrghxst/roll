@@ -167,6 +167,7 @@ pub fn run() {
             commands::dupe_groups,
             commands::merge_dupes,
             commands::exact_plan,
+            commands::best_shots,
             commands::merge_all_exact,
             commands::review_summary,
             commands::review_items,

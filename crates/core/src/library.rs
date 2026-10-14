@@ -1925,6 +1925,37 @@ impl Library {
         Ok(n)
     }
 
+    /// Rank a series (a burst or look-alike group) by picture quality, best
+    /// first, measured on the 1024 px previews.
+    pub fn best_shots(&self, ids: &[i64]) -> anyhow::Result<Vec<crate::bestshot::ShotScore>> {
+        use crate::bestshot::{BAD, EYES_CLOSED, EYES_OPEN, GOOD, Measured};
+        let vision = self.vision();
+        let index = if vision.is_some() { Some(self.embed_index()?) } else { None };
+        let texts = |list: &[&str]| -> anyhow::Result<Vec<Vec<f32>>> {
+            let v = vision.as_ref().expect("checked");
+            list.iter().map(|t| v.text_vec(&self.db.write(), t)).collect()
+        };
+        let prompts = match &vision {
+            Some(_) => Some((texts(GOOD)?, texts(BAD)?, texts(&[EYES_OPEN, EYES_CLOSED])?)),
+            None => None,
+        };
+        let mut series = Vec::new();
+        for &id in ids {
+            let Some(img) = self.preview(id)?.and_then(|b| image::load_from_memory(&b).ok()) else { continue };
+            let rgb = img.to_rgb8();
+            let stats = roll_media::stats::compute(&rgb);
+            let (brightness, clipped) = crate::bestshot::exposure_of(&rgb);
+            let mut m = Measured { id, sharpness: stats.sharpness, brightness, clipped, look: None, eyes: None };
+            if let (Some((good, bad, eyes)), Some(e)) = (&prompts, index.as_ref().and_then(|ix| ix.get(id))) {
+                let best = |vs: &[Vec<f32>]| vs.iter().map(|v| roll_ai::vectors::dot(e, v)).fold(f32::MIN, f32::max);
+                m.look = Some(best(good) - best(bad));
+                m.eyes = Some(roll_ai::vectors::dot(e, &eyes[0]) - roll_ai::vectors::dot(e, &eyes[1]));
+            }
+            series.push(m);
+        }
+        Ok(crate::bestshot::rank(&series))
+    }
+
     pub fn exact_plan(&self) -> anyhow::Result<crate::dupes::ExactPlan> {
         Ok(crate::dupes::exact_plan(&self.db.read())?)
     }

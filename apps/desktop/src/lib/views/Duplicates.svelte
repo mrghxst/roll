@@ -3,6 +3,7 @@
   import { api } from '../ipc/api';
   import type { DupeGroup } from '../ipc/bindings/DupeGroup';
   import type { ExactPlan } from '../ipc/bindings/ExactPlan';
+  import type { ShotScore } from '../ipc/bindings/ShotScore';
   import Sheet from '../ui/Sheet.svelte';
   import { app } from '../state/app.svelte';
   import { undoLast } from '../state/edits';
@@ -14,17 +15,32 @@
 
   let groups = $state<DupeGroup[]>([]);
   let loaded = $state(false);
-  /** The chosen keeper per group; the suggestion by default. */
-  let keep = $state<Record<string, number>>({});
+  /** The chosen keepers per group (the first takes the others' dates,
+   * places and tags); the suggestion by default. */
+  let keep = $state<Record<string, number[]>>({});
+  /** Series ranked by picture quality (bursts and look-alikes). */
+  let ranks = $state<Record<string, ShotScore[]>>({});
   let busy = $state(false);
 
   $effect(() => {
     void app.revision;
-    void api.dupeGroups().then((g) => {
+    void api.dupeGroups().then(async (g) => {
       groups = g;
       loaded = true;
+      // Rank the series, a few at a time, so the first ones show quickly.
+      for (const s of g.filter((x) => x.kind === 'burst' || x.kind === 'similar').slice(0, 40)) {
+        // A group's key names its members: ranked once.
+        if (ranks[s.key]) continue;
+        const r = await api.bestShots(s.ids).catch(() => null);
+        if (r?.length) ranks = { ...ranks, [s.key]: r };
+      }
     });
   });
+
+  const series = (g: DupeGroup) => g.kind === 'burst' || g.kind === 'similar';
+  /** Display order: best first once ranked. */
+  const order = (g: DupeGroup) => ranks[g.key]?.map((r) => r.id).filter((id) => g.ids.includes(id)) ?? g.ids;
+  const scoreOf = (g: DupeGroup, id: number) => ranks[g.key]?.find((r) => r.id === id);
 
   const KIND: Record<string, string> = {
     exact: 'Exact copies',
@@ -33,7 +49,20 @@
     burst: 'Burst',
   };
 
-  const keeper = (g: DupeGroup) => keep[g.key] ?? g.ids[0]!;
+  const keepers = (g: DupeGroup): number[] =>
+    keep[g.key] ?? (ranks[g.key] ? ranks[g.key]!.filter((r) => r.keep).map((r) => r.id) : [g.ids[0]!]);
+  const keeper = (g: DupeGroup) => keepers(g)[0] ?? g.ids[0]!;
+
+  /** A series can keep several frames; other groups keep one. */
+  function choose(g: DupeGroup, id: number) {
+    if (!series(g)) {
+      keep = { ...keep, [g.key]: [id] };
+      return;
+    }
+    const cur = keepers(g);
+    const next = cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id];
+    keep = { ...keep, [g.key]: next.length ? next : cur };
+  }
 
   async function merge(list: DupeGroup[]) {
     if (!list.length) return;
@@ -41,10 +70,10 @@
     try {
       let total = 0;
       for (const g of list) {
-        const k = keeper(g);
+        const ks = keepers(g);
         total += await api.mergeDupes(
-          k,
-          g.ids.filter((i) => i !== k),
+          ks[0]!,
+          g.ids.filter((i) => !ks.includes(i)),
         );
       }
       groups = groups.filter((g) => !list.includes(g));
@@ -117,26 +146,35 @@
             <strong>{KIND[g.kind] ?? g.kind}</strong>
             <span class="muted">{n(g.ids.length)} items · keep suggestion: {g.why.replace(/\.$/, '').toLowerCase()}</span>
           </div>
+          {#if series(g) && ranks[g.key]}
+            <p class="muted ranked" data-testid="ranked">Best first, by sharpness, exposure{app.pack('image-model')?.state === 'installed' ? ' and look' : ''}. Click to choose which to keep.</p>
+          {/if}
           <div class="items">
-            {#each g.ids as id, i (id)}
-              <button
-                class="item"
-                class:kept={keeper(g) === id}
-                onclick={() => (keep = { ...keep, [g.key]: id })}
-                ondblclick={() => viewer.open(Uint32Array.from(g.ids), i, null)}
-                aria-pressed={keeper(g) === id}
-                aria-label={keeper(g) === id ? 'Kept' : 'Choose to keep this one'}
-              >
-                <img src={api.thumbUrl(id, 1)} alt="" loading="lazy" />
-                {#if keeper(g) === id}<span class="badge">Keep</span>{/if}
-              </button>
+            {#each order(g) as id, i (id)}
+              {@const s = scoreOf(g, id)}
+              <div class="cell">
+                <button
+                  class="item"
+                  class:kept={keepers(g).includes(id)}
+                  onclick={() => choose(g, id)}
+                  ondblclick={() => viewer.open(Uint32Array.from(order(g)), i, null)}
+                  aria-pressed={keepers(g).includes(id)}
+                  aria-label={keepers(g).includes(id) ? 'Kept' : 'Choose to keep this one'}
+                >
+                  <img src={api.thumbUrl(id, 1)} alt="" loading="lazy" />
+                  {#if keepers(g).includes(id)}<span class="badge">Keep</span>{/if}
+                </button>
+                {#if s?.notes.length}<span class="notes">{s.notes.join(' · ')}</span>{/if}
+              </div>
             {/each}
           </div>
           <div class="actions">
-            {#if g.kind !== 'burst'}
+            {#if !series(g)}
               <Button variant="primary" disabled={busy} onclick={() => void merge([g])} data-testid="merge"><Merge size={14} strokeWidth={1.5} /> Keep one, trash {n(g.ids.length - 1)}</Button>
             {:else}
-              <Button disabled={busy} onclick={() => void merge([g])}><Merge size={14} strokeWidth={1.5} /> Keep the chosen frame, trash {n(g.ids.length - 1)}</Button>
+              <Button disabled={busy} onclick={() => void merge([g])} data-testid="keep-best">
+                <Merge size={14} strokeWidth={1.5} /> Keep {n(keepers(g).length)}, trash {n(g.ids.length - keepers(g).length)}
+              </Button>
             {/if}
             <Button variant="ghost" onclick={() => void notDupes(g)}><X size={14} strokeWidth={1.5} /> Not duplicates</Button>
           </div>
@@ -274,5 +312,18 @@
   }
   .plan .muted::before {
     content: 'Trash ';
+  }
+  .cell {
+    display: grid;
+    gap: 2px;
+    align-content: start;
+  }
+  .notes {
+    color: var(--muted);
+    font-size: 11px;
+  }
+  .ranked {
+    margin: 0 0 6px;
+    font-size: var(--t12);
   }
 </style>

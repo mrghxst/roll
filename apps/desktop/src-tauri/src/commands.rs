@@ -482,6 +482,12 @@ pub async fn merge_dupes(state: State<'_, AppState>, keep: i64, others: Vec<i64>
 }
 
 #[tauri::command]
+pub async fn best_shots(state: State<'_, AppState>, ids: Vec<i64>) -> Res<Vec<roll_core::bestshot::ShotScore>> {
+    let lib = state.lib.clone();
+    blocking(move || lib.best_shots(&ids)).await
+}
+
+#[tauri::command]
 pub async fn exact_plan(state: State<'_, AppState>) -> Res<roll_core::dupes::ExactPlan> {
     let lib = state.lib.clone();
     blocking(move || lib.exact_plan()).await

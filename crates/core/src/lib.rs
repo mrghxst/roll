@@ -2,6 +2,7 @@
 //! organize planner, the journal and background jobs.
 
 pub mod actions;
+pub mod bestshot;
 pub mod categories;
 pub mod classify;
 pub mod datefix;
