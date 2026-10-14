@@ -93,6 +93,10 @@ pub fn clusters(c: &Connection, split: Option<&str>) -> rusqlite::Result<Vec<Clu
 /// Items at least this similar to a group's centre join it.
 const LOOK_ALIKE: f32 = 0.80;
 
+/// A look-alike group while it grows: the sum of its members' vectors,
+/// their normalized centre, and the members (with their proposed category).
+type Group = (Vec<f32>, Vec<f32>, Vec<(i64, Option<String>)>);
+
 /// Groups of undecided items that look alike (embeddings in `index`),
 /// leaving out `taken` (items already in a signature cluster). Greedy:
 /// each item joins the closest group centre within reach or starts one.
@@ -115,8 +119,7 @@ pub fn look_alike(
         let mut st = c.prepare("SELECT key FROM dismissed WHERE kind = 'discover'")?;
         st.query_map([], |r| r.get(0))?.collect::<Result<_, _>>()?
     };
-    // (sum of members, normalized centre, members)
-    let mut groups: Vec<(Vec<f32>, Vec<f32>, Vec<(i64, Option<String>)>)> = Vec::new();
+    let mut groups: Vec<Group> = Vec::new();
     for (id, proposed) in rows {
         if taken.contains(&id) {
             continue;
