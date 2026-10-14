@@ -9,9 +9,23 @@ license.workspace = true
 anyhow.workspace = true
 base64.workspace = true
 half.workspace = true
+image.workspace = true
 rayon.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 ureq = { version = "3.4.2", default-features = false, features = ["rustls", "json"] }
+ndarray = "0.17.2"
+# ONNX Runtime, downloaded at build time and linked in; the graphics card
+# through DirectML on Windows and Core ML on macOS, else the CPU.
+ort = { version = "=2.0.0-rc.13", default-features = false, features = ["std", "ndarray", "tracing", "download-binaries", "copy-dylibs", "tls-rustls", "api-24"] }
+tokenizers = { version = "0.23.2", default-features = false, features = ["onig"] }
+
+[dev-dependencies]
+
+[target.'cfg(windows)'.dependencies]
+ort = { version = "=2.0.0-rc.13", default-features = false, features = ["directml"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+ort = { version = "=2.0.0-rc.13", default-features = false, features = ["coreml"] }

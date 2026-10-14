@@ -39,6 +39,7 @@ pub mod tags;
 pub mod template;
 pub mod thumbs;
 pub mod trash;
+pub mod vision;
 pub mod watch;
 pub mod why;
 

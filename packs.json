@@ -39,7 +39,7 @@
       "source": "Hugging Face (immich-app/ViT-B-16-SigLIP2__webli)",
       "attribution": "SigLIP 2 by Google, Apache-2.0; ONNX export by the Immich project",
       "dir": "models/siglip2-b16",
-      "after": null,
+      "after": "vision",
       "files": [
         {
           "path": "config.json",

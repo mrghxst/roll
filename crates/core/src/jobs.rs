@@ -42,6 +42,8 @@ pub enum JobSpec {
     Decide {
         run: i64,
     },
+    /// Image embeddings for items without one, then sorting with them.
+    Embed,
 }
 
 impl JobSpec {
@@ -57,6 +59,7 @@ impl JobSpec {
             JobSpec::Index => "index",
             JobSpec::Immich { .. } => "immich",
             JobSpec::Decide { .. } => "decide",
+            JobSpec::Embed => "embed",
         }
     }
     pub fn priority(&self) -> i64 {
@@ -70,6 +73,7 @@ impl JobSpec {
             JobSpec::Index => 22,
             JobSpec::Immich { .. } => 40,
             JobSpec::Decide { .. } => 45,
+            JobSpec::Embed => 35,
         }
     }
     pub fn label(&self) -> String {
@@ -84,6 +88,7 @@ impl JobSpec {
             JobSpec::Index => "Preparing search".into(),
             JobSpec::Immich { .. } => "Syncing with Immich".into(),
             JobSpec::Decide { .. } => "Sorting uncertain items with AI".into(),
+            JobSpec::Embed => "Looking at photos for search and sorting".into(),
         }
     }
 }

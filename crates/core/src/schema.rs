@@ -1,6 +1,6 @@
 //! Database migrations. Append only: never edit a shipped migration.
 
-pub const MIGRATIONS: &[&str] = &[M1, M2, M3, M4, M5, M6, M7, M8, M9, M10, M11];
+pub const MIGRATIONS: &[&str] = &[M1, M2, M3, M4, M5, M6, M7, M8, M9, M10, M11, M12];
 
 const M1: &str = r#"
 CREATE TABLE settings (
@@ -353,6 +353,18 @@ CREATE TABLE event_undo (
 /// Decision models (M5): measured prices and token counts per model, runs
 /// with their budget, and one row per item and run so a run resumes
 /// without sending an item twice. The model check's labelled sample.
+/// Text embeddings of category descriptions and searches, so the large
+/// text tower loads only for new text.
+const M12: &str = r#"
+CREATE TABLE text_embeddings (
+  model TEXT NOT NULL,
+  text TEXT NOT NULL,
+  vec BLOB NOT NULL,
+  at INTEGER NOT NULL,
+  PRIMARY KEY (model, text)
+);
+"#;
+
 /// Sharper built-in definitions after the first real model run: memes
 /// were taken for photos and chat screenshots for social media. Only
 /// definitions the owner has not edited change.

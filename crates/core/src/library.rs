@@ -59,6 +59,13 @@ pub struct Library {
     /// Items in duplicate groups, from the last time they were computed.
     dupe_count: std::sync::atomic::AtomicI64,
     pub packs: crate::packs::Packs,
+    /// The image model, once its pack is installed and first needed.
+    vision: Mutex<Option<Arc<crate::vision::Vision>>>,
+    /// Every image embedding, loaded for searching; dropped when new ones
+    /// are stored.
+    embed_index: Mutex<Option<Arc<roll_ai::vectors::Index>>>,
+    /// The last search text and the items whose image matches it.
+    similar_cache: Mutex<Option<(String, Vec<i64>)>>,
 }
 
 /// Whether the offline place names are installed.
@@ -83,11 +90,11 @@ impl Library {
         let s2 = sink.clone();
         let jobs = Jobs::new(db.clone(), Arc::new(move |list| s2(LibEvent::Jobs(list))));
         let s3 = sink.clone();
-        let packs = crate::packs::Packs::new(
-            data_dir.to_path_buf(),
-            crate::packs::Catalog::bundled(),
-            Arc::new(move || s3(LibEvent::Changed("packs"))),
-        );
+        // ROLL_PACKS: a shared folder of downloaded packs (development and
+        // the model tests).
+        let packs_root = std::env::var_os("ROLL_PACKS").map(PathBuf::from).unwrap_or_else(|| data_dir.to_path_buf());
+        let packs =
+            crate::packs::Packs::new(packs_root, crate::packs::Catalog::bundled(), Arc::new(move || s3(LibEvent::Changed("packs"))));
         let pool =
             rayon::ThreadPoolBuilder::new().num_threads(settings.thread_count()).thread_name(|i| format!("roll-work-{i}")).build()?;
         Ok(Arc::new(Self {
@@ -105,6 +112,9 @@ impl Library {
             place_cache: Mutex::new(Default::default()),
             dupe_count: std::sync::atomic::AtomicI64::new(-1),
             packs,
+            vision: Mutex::new(None),
+            embed_index: Mutex::new(None),
+            similar_cache: Mutex::new(None),
         }))
     }
 
@@ -203,6 +213,9 @@ impl Library {
                 self.emit(LibEvent::Changed("thumbs"));
                 // Junk rules need the pixel statistics the thumbnails bring.
                 self.jobs.enqueue(JobSpec::Classify)?;
+                if self.packs.installed("image-model").is_some() {
+                    self.jobs.enqueue(JobSpec::Embed)?;
+                }
                 Ok(())
             }
             JobSpec::Classify => {
@@ -214,6 +227,7 @@ impl Library {
                 Ok(())
             }
             JobSpec::Hash => self.run_hash(ctx),
+            JobSpec::Embed => self.run_embed(ctx),
             JobSpec::Index => {
                 let gaz = self.gaz();
                 let place = |la: f64, lo: f64| gaz.as_ref().and_then(|g| g.reverse(la, lo).map(|e| e.label()));
@@ -426,7 +440,104 @@ impl Library {
             return q.clone();
         }
         let gaz = self.gaz();
-        crate::search::expand(&self.db.read(), q, gaz.as_deref(), chrono::Local::now().date_naive())
+        let mut q = crate::search::expand(&self.db.read(), q, gaz.as_deref(), chrono::Local::now().date_naive());
+        if let Some(text) = q.text.clone().filter(|t| !t.trim().is_empty()) {
+            match self.similar(&text) {
+                Ok(ids) => q.similar = Some(ids),
+                Err(e) => tracing::warn!("image search: {e:#}"),
+            }
+        }
+        q
+    }
+
+    /// Items whose image matches `text`: at least 0.09 similar and within
+    /// 0.035 of the best match (measured on the CC0 set, docs/benchmarks.md).
+    /// Empty while the image model is not installed.
+    fn similar(&self, text: &str) -> anyhow::Result<Vec<i64>> {
+        let key = text.trim().to_lowercase();
+        if let Some((t, ids)) = self.similar_cache.lock().as_ref()
+            && *t == key
+        {
+            return Ok(ids.clone());
+        }
+        let Some(v) = self.vision() else { return Ok(Vec::new()) };
+        let index = self.embed_index()?;
+        if index.is_empty() {
+            return Ok(Vec::new());
+        }
+        let tv = v.text_vec(&self.db.write(), &key)?;
+        let hits = index.search(&tv, 1000, None);
+        let top = hits.first().map_or(0.0, |h| h.1);
+        let ids: Vec<i64> = hits.into_iter().take_while(|(_, s)| *s >= 0.09 && *s >= top - 0.035).map(|(id, _)| id).collect();
+        *self.similar_cache.lock() = Some((key, ids.clone()));
+        Ok(ids)
+    }
+
+    /// The image model, when its pack is installed.
+    pub fn vision(&self) -> Option<Arc<crate::vision::Vision>> {
+        let dir = self.packs.installed("image-model")?;
+        let mut g = self.vision.lock();
+        Some(g.get_or_insert_with(|| Arc::new(crate::vision::Vision::new(dir, true))).clone())
+    }
+
+    fn embed_index(&self) -> anyhow::Result<Arc<roll_ai::vectors::Index>> {
+        let mut g = self.embed_index.lock();
+        if let Some(ix) = g.as_ref() {
+            return Ok(ix.clone());
+        }
+        let ix = Arc::new(crate::embeddings::load(&self.db.read(), crate::vision::MODEL_ID)?);
+        *g = Some(ix.clone());
+        Ok(ix)
+    }
+
+    /// Embeddings for every item without one, then sorting with them.
+    fn run_embed(&self, ctx: &crate::jobs::JobCtx) -> anyhow::Result<()> {
+        let Some(v) = self.vision() else { return Ok(()) };
+        let todo = crate::embeddings::missing(&self.db.read(), crate::vision::MODEL_ID, usize::MAX >> 1)?;
+        if !todo.is_empty() {
+            let enc = v.image()?;
+            let total = todo.len();
+            let mut done = 0;
+            for chunk in todo.chunks(32) {
+                if !ctx.checkpoint() {
+                    return Ok(());
+                }
+                // Thumbnails decode in parallel; the model takes one at a time.
+                let images: Vec<(i64, Option<image::DynamicImage>)> = self.pool.install(|| {
+                    use rayon::prelude::*;
+                    chunk
+                        .par_iter()
+                        .map(|id| (*id, self.thumb(*id).ok().flatten().and_then(|b| image::load_from_memory(&b).ok())))
+                        .collect()
+                });
+                let mut vecs: Vec<(i64, Vec<f32>)> = Vec::new();
+                for (id, img) in images {
+                    match img.map(|i| enc.embed(&i)) {
+                        Some(Ok(e)) => vecs.push((id, e)),
+                        Some(Err(e)) => tracing::warn!("embedding {id}: {e:#}"),
+                        None => {}
+                    }
+                }
+                self.db.tx(|tx| {
+                    for (id, e) in &vecs {
+                        crate::embeddings::store(tx, *id, crate::vision::MODEL_ID, e)?;
+                    }
+                    Ok(())
+                })?;
+                done += chunk.len();
+                ctx.progress(done, total);
+            }
+            *self.embed_index.lock() = None;
+            *self.similar_cache.lock() = None;
+        }
+        let protos = crate::vision::prototypes(&self.db.write(), &v)?;
+        let out = crate::vision::sort(&self.db.write(), &protos, None)?;
+        tracing::info!("image model sorted {} and proposed {}", out.decided, out.proposed);
+        if out != crate::vision::Outcome::default() {
+            self.emit(LibEvent::Changed("assets"));
+            self.emit(LibEvent::Changed("review"));
+        }
+        Ok(())
     }
 
     pub fn parse_search(&self, text: &str) -> crate::search::ParsedSearch {
@@ -1006,6 +1117,24 @@ impl Library {
                     None => Ok(()),
                 }))
             }
+            Some("vision") => {
+                // Start looking at photos once the pack is marked installed
+                // (the manifest is written after this step).
+                let me = Arc::downgrade(self);
+                Some(Box::new(move |_: &Path| {
+                    std::thread::spawn(move || {
+                        for _ in 0..600 {
+                            std::thread::sleep(std::time::Duration::from_millis(100));
+                            let Some(lib) = me.upgrade() else { return };
+                            if lib.packs.installed("image-model").is_some() {
+                                let _ = lib.jobs.enqueue(JobSpec::Embed);
+                                return;
+                            }
+                        }
+                    });
+                    Ok(())
+                }))
+            }
             _ => None,
         };
         self.packs.download(id, after)
@@ -1016,6 +1145,10 @@ impl Library {
     }
 
     pub fn remove_pack(&self, id: &str) -> anyhow::Result<()> {
+        if id == "image-model" {
+            *self.vision.lock() = None;
+            *self.similar_cache.lock() = None;
+        }
         self.packs.remove(id)?;
         if self.packs.catalog().get(id).and_then(|d| d.after.as_deref()) == Some("places") {
             let _ = std::fs::remove_file(self.data_dir.join("geodata").join("places.tsv"));

@@ -171,7 +171,15 @@ pub fn where_clause(q: &Query) -> Sql {
     }
     if let Some(m) = q.text.as_deref().and_then(crate::search::fts_match) {
         let m = push(&mut p, Value::Text(m));
-        w.push(format!("a.id IN (SELECT rowid FROM fts WHERE fts MATCH {m})"));
+        let fts = format!("a.id IN (SELECT rowid FROM fts WHERE fts MATCH {m})");
+        // The words, or a picture that matches them.
+        match q.similar.as_deref() {
+            Some(ids) if !ids.is_empty() => {
+                let list = ids.iter().map(|i| i.to_string()).collect::<Vec<_>>().join(",");
+                w.push(format!("({fts} OR a.id IN ({list}))"));
+            }
+            _ => w.push(fts),
+        }
     }
     Sql { clause: w.join(" AND "), params: p }
 }
