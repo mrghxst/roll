@@ -152,3 +152,29 @@ endpoint, same prompt, 2026-10-13:
 That is about $4.30 per 100,000 items, 52 s for 157 items. Estimates ran
 10–26% low on the first run with a model; Roll keeps the measured token
 counts per model, so later estimates use them.
+
+## Local image model and text reader (M4), 2026-10-14
+
+SigLIP 2 ViT-B/16 (ONNX, Immich's export), RTX 2080 Ti through DirectML;
+CC0 set (157 items) as a library, `crates/core/tests/vision_real.rs`:
+
+| Step | Result |
+|---|---|
+| Zero-shot on full-size images, mean of descriptions | 82.2% right |
+| Zero-shot, best description per category | 89.2% right; top 60% by margin 98.9% right |
+| In the library (256 px thumbnails), auto-accepted | 68% of items, 97.2% right (3 wrong: two photos taken for junk, a post for a photo) |
+| Scan, thumbnails, embeddings and sorting | 11 s for 157 items |
+| With the text reader as well | 39 s; text in 70 items |
+| Image model alone, full-size JPEGs from disk | 18–21 items/s |
+
+Text reader (PP-OCRv6 small), per image:
+
+| Image | CPU | DirectML |
+|---|---|---|
+| Chat screenshot, 8 lines | 180 ms | 1,015 ms |
+| Screenshot, 14 lines | 236 ms | 1,397 ms |
+| Meme, 2 lines | 229 ms | 232 ms |
+| 1899 receipt, 24 lines | 294 ms | 1,144 ms |
+
+Search, text to picture similarity on the CC0 set: relevant pictures score
+0.09–0.17, the median item 0.01–0.04; "chat" finds cats (French).

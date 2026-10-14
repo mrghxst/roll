@@ -180,3 +180,28 @@ how a sync works, and why the Immich app's phone backup should stay off.
   does not forget them.
 - **Roll crashed:** `%LOCALAPPDATA%\Roll\logs` has a `crash-…txt` report.
   Interrupted file operations are finished or rolled back on the next start.
+
+## Models on this computer
+
+Settings › Models and data downloads two models that run on this computer,
+nothing leaves it:
+
+- **Image understanding** (SigLIP 2, 1.5 GB): Roll looks at every photo
+  and video once, then sorts undecided items into categories (only when it
+  is at least 97% sure; the rest waits in Review with the reason), finds
+  pictures by what they show ("dog", "beach", "receipt"), and suggests the
+  clock error of a camera from phone photos of the same scenes in Dates.
+- **Text in photos** (30 MB): reads screenshots, documents, memes and saved
+  posts, so their words are searchable and cards or IDs in them are marked
+  Private.
+
+With the image model you can also:
+
+- **Find similar:** select items and press the find-similar button in the
+  selection bar.
+- **Teach a category:** select 10–30 examples, press the teach button, and
+  name a new category or subcategory (for example Pokémon GO inside
+  Screenshots). Roll proposes items that look like them in Review; every
+  correction teaches it more.
+- **Discover** shows groups of undecided items that look alike, so one
+  decision sorts the whole group.

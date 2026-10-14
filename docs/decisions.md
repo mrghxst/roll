@@ -357,3 +357,27 @@ questions. One line of reason each. Newest at the bottom of each section.
   administrator rights, nothing added to the owner's other distros, and
   `remove` deletes all of it. Machine learning is left out. The test
   asserts through Immich's API and only adds data, so it can run again.
+- **Image embeddings come from the 256 px thumbnails, and videos from
+  their poster frame** (PROMPT 5.1 asks for 3 keyframes per video). The
+  thumbnails exist already, so embedding 100k items reads no originals;
+  SigLIP 2 sees 224 px. Keyframes for videos can follow.
+- **Image-model sorting is zero-shot plus nearest neighbours, not
+  logistic regression per category.** Zero-shot uses the best-matching
+  description per category (89% on the CC0 set against 82% for the mean);
+  once the owner has sorted 20 items, their 9 nearest sorted neighbours
+  vote too. Logistic regression is used for taught categories (Teach),
+  where examples are few and specific.
+- **The confidence curve was calibrated on the CC0 set** it is then
+  measured on (68% auto-accepted at 97.2%). There is no second labelled
+  set yet; the model check (5.4) on the owner's own items is the honest
+  measure and should replace it.
+- **Search results stay in date order.** The image side joins the text
+  side as a set (similarity 0.09 or more and within 0.035 of the best
+  match) instead of an RRF-ranked list, because the timeline, map and
+  facets all filter one query. `embeddings::hybrid` (RRF) is kept for a
+  "best matches" order later.
+- **The text reader runs on the CPU.** DirectML was 4–6× slower for the
+  small, variable-width OCR models (180–500 ms per screen on the CPU).
+  The image model uses the graphics card.
+- **DirectML.dll ships next to Roll.exe**; ONNX Runtime itself is linked
+  in (`ort` download-binaries), so there is no separate runtime install.

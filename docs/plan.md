@@ -87,7 +87,9 @@ Milestones from PROMPT.md section 10. `[x]` done, `[~]` partly done,
       consent sheet with size, hosts and license; resume after stop;
       checksum check; Settings › Models and data; place names download
       from the Places page (tested against a local server)
-- [ ] First real downloads: waiting for the owner's go-ahead
+- [x] First real downloads (2026-10-14, approved by the owner): SigLIP 2
+      (1.5 GB), PP-OCRv6 small (30 MB) and GeoNames (14 MB) through the
+      pack manager with checksums (`crates/core/examples/packs.rs`)
 - [x] Private guard, text part: Luhn-valid card numbers, IBANs (mod 97),
       passport and ID machine-readable lines (check digits); marks items
       Private with a reason that never repeats the number; the owner's own
@@ -97,9 +99,32 @@ Milestones from PROMPT.md section 10. `[x]` done, `[~]` partly done,
       (100k × 768 in 12 ms), hybrid ranking: FTS5 BM25 plus image
       similarity fused with RRF, filters applied to both; OCR text table
       feeding the search index
-- [ ] SigLIP 2 embeddings (GPU and CPU), semantic search with RRF,
-      zero-shot and learned classifiers, Teach, embedding clusters in
-      Discover, smart time offset, OCR and the Private guard
+- [x] ONNX Runtime through `ort` (DirectML on Windows, Core ML on macOS,
+      CPU on Linux); SigLIP 2 image and text towers, embeddings from the
+      256 px thumbnails in a background job
+- [x] Image-model sorting: zero-shot from category descriptions (best
+      matching description per category) plus the owner's sorted items
+      (k nearest neighbours), calibrated confidence, auto-accept at the
+      category threshold (97%)
+- [x] **Acceptance:** CC0 set, local only: 68% sorted on their own at
+      97.2% precision (target 60% at 97%); 157 items in 11 s on the
+      owner's GPU (`crates/core/tests/vision_real.rs`)
+- [x] Semantic search: pictures that match the words (similarity 0.09 or
+      more, within 0.035 of the best) join the text matches; "dog",
+      "receipt", "nebula" and a word only in a chat screenshot are found
+- [x] Text reader: PP-OCRv6 small (detection, line boxes, CTC) on the CPU
+      for screenshots, documents, memes and saved posts; feeds search and
+      the Private guard
+- [x] Teach: examples of a new or existing (sub)category train a linear
+      classifier; proposals in Review, retrained on corrections; Find
+      similar
+- [x] Discover: look-alike groups of undecided items next to the
+      signature clusters, named by the closest category description
+- [x] Smart time offset by look: camera and phone photos of the same
+      scene pair by embedding (0.88) as well as dHash; in Dates and Add
+      photos
+- [ ] Cluster names from the text or decision model (one call per
+      cluster with 9 thumbnails)
 ## M5 Decision models and cost
 
 - [x] OpenAI-compatible client for local servers (Ollama, LM Studio,
@@ -224,7 +249,7 @@ Owner requests (2026-10-13), to build after M4–M6:
 
 ## Next
 
-M4 models (downloads approved by the owner on 2026-10-13): SigLIP 2 (1.4 GB),
-PP-OCRv6 small (30 MB) and GeoNames (13 MB) through the pack manager, and
-ONNX Runtime with the `ort` crate. The store and ranking they feed are
-ready.
+M4 is in: SigLIP 2 sorting, search, Teach, Discover groups, the smart
+offset by look and the text reader. Left: cluster names from a model,
+optional reranking, the Immich CLI comparison, and the M7 owner requests
+(bulk merge of identical photos, best shot of a series).
