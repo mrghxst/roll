@@ -481,6 +481,18 @@ pub async fn merge_dupes(state: State<'_, AppState>, keep: i64, others: Vec<i64>
     blocking(move || lib.merge_dupes(keep, &others)).await
 }
 
+#[tauri::command]
+pub async fn exact_plan(state: State<'_, AppState>) -> Res<roll_core::dupes::ExactPlan> {
+    let lib = state.lib.clone();
+    blocking(move || lib.exact_plan()).await
+}
+
+#[tauri::command]
+pub async fn merge_all_exact(state: State<'_, AppState>) -> Res<usize> {
+    let lib = state.lib.clone();
+    blocking(move || lib.merge_all_exact()).await
+}
+
 // Review
 
 #[tauri::command]

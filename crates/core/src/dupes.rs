@@ -41,16 +41,49 @@ struct Item {
     junk: bool,
     taken: Option<i64>,
     screenshot: bool,
+    path: String,
+}
+
+/// How much a path looks like a copy: a copy-like name (" (1)", "copy",
+/// "Kopie"), or a folder for downloads, backups or chat exports. Lower is
+/// better; among identical files the cleanest path is kept.
+pub fn copy_penalty(path: &str) -> i32 {
+    let p = path.to_lowercase().replace('\\', "/");
+    let (dir, name) = p.rsplit_once('/').unwrap_or(("", &p));
+    let stem = name.rsplit_once('.').map_or(name, |(s, _)| s);
+    let mut n = 0;
+    if stem.ends_with(')') && stem.rsplit_once('(').is_some_and(|(_, d)| d.trim_end_matches(')').chars().all(|c| c.is_ascii_digit()))
+        || ["copy", "kopie", "copie", "kopia"].iter().any(|w| stem.contains(w))
+    {
+        n += 2;
+    }
+    if ["download", "backup", "sicherung", "whatsapp", "telegram", "temp", "tmp", "export", "duplicate"].iter().any(|w| dir.contains(w)) {
+        n += 1;
+    }
+    n
 }
 
 /// The keep-best order: original camera file, then the largest resolution,
-/// then the richest metadata, then the bigger file.
-fn score(i: &Item) -> (bool, i64, i32, i64) {
-    (i.camera && i.makernotes, i.pixels, i32::from(i.gps) + i32::from(i.exif_date) + i32::from(i.camera), i.size)
+/// then the richest metadata, then the bigger file, then the path that
+/// looks least like a copy, then the shorter path.
+fn score(i: &Item) -> (bool, i64, i32, i64, i32, i64) {
+    (
+        i.camera && i.makernotes,
+        i.pixels,
+        i32::from(i.gps) + i32::from(i.exif_date) + i32::from(i.camera),
+        i.size,
+        -copy_penalty(&i.path),
+        -(i.path.len() as i64),
+    )
 }
 
 fn why(best: &Item, others: &[&Item]) -> String {
-    if best.camera && best.makernotes && others.iter().any(|o| !o.camera) {
+    let same_file = others.iter().all(|o| o.blake3.is_some() && o.blake3 == best.blake3);
+    if same_file && others.iter().any(|o| copy_penalty(&o.path) > copy_penalty(&best.path)) {
+        "Identical files; this one is in your own folders, the others look like copies.".into()
+    } else if same_file {
+        "Identical files; this one has the shortest path.".into()
+    } else if best.camera && best.makernotes && others.iter().any(|o| !o.camera) {
         "The original camera file.".into()
     } else if others.iter().all(|o| o.pixels < best.pixels) {
         "The largest resolution.".into()
@@ -97,7 +130,8 @@ pub fn groups(c: &Connection) -> rusqlite::Result<Vec<DupeGroup>> {
                     a.make IS NOT NULL OR a.model IS NOT NULL, a.has_makernotes, a.lat IS NOT NULL,
                     a.date_source IN ('exif_original', 'exif_digitized', 'quicktime'),
                     CASE WHEN g.kind = 'burst' THEN a.group_id END, a.stats LIKE '%\"junk\":\"%', a.taken_utc,
-                    a.screenshot != 0 OR coalesce((SELECT key FROM categories WHERE id = a.category_id), '') = 'screenshots'
+                    a.screenshot != 0 OR coalesce((SELECT key FROM categories WHERE id = a.category_id), '') = 'screenshots',
+                    a.rel_path
              FROM assets a LEFT JOIN groups g ON g.id = a.group_id
              WHERE a.missing = 0 AND a.trashed_at IS NULL AND a.kind = 0 AND (a.group_role IS NULL OR a.group_role = 'primary' OR g.kind = 'burst')",
         )?;
@@ -121,6 +155,7 @@ pub fn groups(c: &Connection) -> rusqlite::Result<Vec<DupeGroup>> {
                 junk: r.get::<_, Option<bool>>(12)?.unwrap_or(false),
                 taken: r.get(13)?,
                 screenshot: r.get(14)?,
+                path: r.get(15)?,
             })
         })?
         .collect::<Result<_, _>>()?
@@ -251,10 +286,72 @@ pub fn groups(c: &Connection) -> rusqlite::Result<Vec<DupeGroup>> {
 /// Keep `keep`, move the others to Roll's trash, and give `keep` the date,
 /// place and tags it lacks. One batch; returns (batch, items trashed).
 pub fn merge(c: &Connection, keep: i64, others: &[i64]) -> rusqlite::Result<(i64, usize)> {
-    let others: Vec<i64> = others.iter().copied().filter(|o| *o != keep).collect();
-    let n = others.len();
+    let n = others.iter().filter(|o| **o != keep).count();
     let label = if n == 1 { "Merge 1 duplicate".to_string() } else { format!("Merge {n} duplicates") };
     let batch = edits::begin_batch(c, "edit", &label)?;
+    merge_in(c, batch, keep, others)?;
+    c.execute("UPDATE batches SET summary = ?2 WHERE id = ?1", params![batch, json!({"kept": keep}).to_string()])?;
+    Ok((batch, n))
+}
+
+/// What "Merge all exact copies" would do.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct ExactPlan {
+    pub groups: i32,
+    /// Copies that go to Roll's trash.
+    pub copies: i32,
+    #[ts(type = "number")]
+    pub bytes: i64,
+    /// The first groups: the path kept, then the copies.
+    pub samples: Vec<Vec<String>>,
+}
+
+fn exact_groups(c: &Connection) -> rusqlite::Result<Vec<Vec<i64>>> {
+    Ok(groups(c)?.into_iter().filter(|g| g.kind == "exact").map(|g| g.ids.into_iter().map(i64::from).collect()).collect())
+}
+
+pub fn exact_plan(c: &Connection) -> rusqlite::Result<ExactPlan> {
+    let mut plan = ExactPlan::default();
+    for ids in exact_groups(c)? {
+        plan.groups += 1;
+        plan.copies += ids.len() as i32 - 1;
+        for id in &ids[1..] {
+            plan.bytes += c.query_row("SELECT size FROM assets WHERE id = ?1", [id], |r| r.get::<_, i64>(0))?;
+        }
+        if plan.samples.len() < 8 {
+            let mut paths = Vec::new();
+            for id in &ids {
+                paths.push(c.query_row("SELECT rel_path FROM assets WHERE id = ?1", [id], |r| r.get(0))?);
+            }
+            plan.samples.push(paths);
+        }
+    }
+    Ok(plan)
+}
+
+/// Merge every group of exact copies, keeping the suggested one of each,
+/// as one batch (one undo). Returns (batch, groups, copies trashed).
+pub fn merge_all_exact(c: &Connection) -> rusqlite::Result<Option<(i64, usize, usize)>> {
+    let groups = exact_groups(c)?;
+    if groups.is_empty() {
+        return Ok(None);
+    }
+    let copies: usize = groups.iter().map(|g| g.len() - 1).sum();
+    let batch = edits::begin_batch(c, "edit", &format!("Merge {copies} exact copies in {} groups", groups.len()))?;
+    for g in &groups {
+        merge_in(c, batch, g[0], &g[1..])?;
+    }
+    c.execute(
+        "UPDATE batches SET summary = ?2 WHERE id = ?1",
+        params![batch, json!({"groups": groups.len(), "copies": copies}).to_string()],
+    )?;
+    Ok(Some((batch, groups.len(), copies)))
+}
+
+/// Merge `others` into `keep` as part of `batch`.
+fn merge_in(c: &Connection, batch: i64, keep: i64, others: &[i64]) -> rusqlite::Result<()> {
+    let others: Vec<i64> = others.iter().copied().filter(|o| *o != keep).collect();
     let name: String = c.query_row("SELECT name FROM assets WHERE id = ?1", [keep], |r| r.get(0))?;
     let why = |what: &str, from: &str| Some(format!("{what} from the duplicate {from}."));
     let trusted = |v: &Value| {
@@ -320,8 +417,7 @@ pub fn merge(c: &Connection, keep: i64, others: &[i64]) -> rusqlite::Result<(i64
             },
         )?;
     }
-    c.execute("UPDATE batches SET summary = ?2 WHERE id = ?1", params![batch, json!({"kept": keep}).to_string()])?;
-    Ok((batch, n))
+    Ok(())
 }
 
 #[cfg(test)]
@@ -374,5 +470,44 @@ mod tests {
         // Dismissed groups stay away.
         crate::places::dismiss(&c, "dupe", &g[0].key).unwrap();
         assert_eq!(groups(&c).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn copy_like_paths_lose() {
+        assert_eq!(copy_penalty("2019/IMG_1.jpg"), 0);
+        assert_eq!(copy_penalty("2019/IMG_1 (1).jpg"), 2);
+        assert_eq!(copy_penalty("Downloads/IMG_1.jpg"), 1);
+        assert_eq!(copy_penalty("Backup 2020/x - Kopie.png"), 3);
+        assert_eq!(copy_penalty("2019/Copenhagen.jpg"), 0);
+        assert_eq!(copy_penalty("2019/IMG_1 copy.jpg"), 2);
+    }
+
+    #[test]
+    fn merges_all_exact_copies_in_one_step() {
+        let db = Db::memory().unwrap();
+        let c = db.write();
+        let keep1 = insert_asset(&c, "2019/IMG_1.jpg");
+        let dl = insert_asset(&c, "Downloads/IMG_1 (1).jpg");
+        let bak = insert_asset(&c, "Backup/IMG_1.jpg");
+        let keep2 = insert_asset(&c, "a/x.png");
+        let kopie = insert_asset(&c, "a/x - Kopie.png");
+        for id in [keep1, dl, bak] {
+            set(&c, id, "blake3 = 'one', size = 1000, width = 400, height = 300");
+        }
+        for id in [keep2, kopie] {
+            set(&c, id, "blake3 = 'two', size = 500, width = 100, height = 100");
+        }
+        let plan = exact_plan(&c).unwrap();
+        assert_eq!((plan.groups, plan.copies, plan.bytes), (2, 3, 2500));
+        assert!(plan.samples.iter().any(|s| s[0] == "2019/IMG_1.jpg"), "{:?}", plan.samples);
+        let (batch, groups, copies) = merge_all_exact(&c).unwrap().unwrap();
+        assert_eq!((groups, copies), (2, 3));
+        let trashed =
+            |id: i64| -> bool { c.query_row("SELECT trashed_at IS NOT NULL FROM assets WHERE id = ?1", [id], |r| r.get(0)).unwrap() };
+        assert!(!trashed(keep1) && !trashed(keep2));
+        assert!(trashed(dl) && trashed(bak) && trashed(kopie));
+        assert!(merge_all_exact(&c).unwrap().is_none(), "nothing left");
+        edits::undo_batch(&c, batch).unwrap();
+        assert!(!trashed(dl) && !trashed(bak) && !trashed(kopie), "one undo restores all");
     }
 }

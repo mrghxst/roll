@@ -2002,10 +2002,28 @@ export const mockApi: Api = {
       dupePairs = [];
       for (let i = 0; i + 1 < Math.min(photos.length, 40); i += 4) dupePairs.push([photos[i]!.id, photos[i + 1]!.id]);
     }
+    // Each pair keeps its kind (by its place in the fixed list).
     return dupePairs
-      .filter((ids) => ids.every((id) => !byId(id)?.trashed))
       .map((ids, i) => ({ key: `exact:${ids.join(',')}`, kind: i % 2 === 0 ? 'exact' : 'copy', ids, why: i % 2 === 0 ? 'Identical; the first one found.' : 'The original camera file.' }))
+      .filter((g) => g.ids.every((id) => !byId(id)?.trashed))
       .filter((g) => !dismissed.has(g.key));
+  },
+  exactPlan: async () => {
+    const groups = (await mockApi.dupeGroups()).filter((g) => g.kind === 'exact');
+    return {
+      groups: groups.length,
+      copies: groups.reduce((s, g) => s + g.ids.length - 1, 0),
+      bytes: groups.reduce((s, g) => s + (g.ids.length - 1) * 3_400_000, 0),
+      samples: groups.slice(0, 8).map((g) => g.ids.map((id, i) => `${byId(id)?.dir ?? ''}/${i ? `Downloads/${byId(id)?.name}` : byId(id)?.name}`)),
+    };
+  },
+  mergeAllExact: async () => {
+    const groups = (await mockApi.dupeGroups()).filter((g) => g.kind === 'exact');
+    const others = groups.flatMap((g) => g.ids.slice(1));
+    return change('edit', `Merge ${others.length} exact copies in ${groups.length} groups`, others, (a) => {
+      a.trashed = true;
+      return true;
+    });
   },
   mergeDupes: async (keep, others) =>
     change('edit', `Merge ${plural(others.length)}`, others.filter((o) => o !== keep), (a) => {

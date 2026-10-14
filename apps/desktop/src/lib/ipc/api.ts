@@ -1,6 +1,7 @@
 // The backend interface the UI uses. In the app it is Tauri; in a plain
 // browser (development, Playwright) it is an in-memory mock.
 
+import type { ExactPlan } from './bindings/ExactPlan';
 import type { SmartOffset } from './bindings/SmartOffset';
 import type { Taught } from './bindings/Taught';
 import type { AppInfo } from './bindings/AppInfo';
@@ -230,6 +231,10 @@ export interface Api {
   dupeGroups(): Promise<DupeGroup[]>;
   /** Keep one, move the others to Roll's trash. */
   mergeDupes(keep: number, others: number[]): Promise<number>;
+  /** What merging every group of exact copies would do. */
+  exactPlan(): Promise<ExactPlan>;
+  /** Merge every group of exact copies as one undoable step; returns the copies trashed. */
+  mergeAllExact(): Promise<number>;
   on<K extends keyof Events>(event: K, cb: Events[K]): () => void;
   thumbUrl(id: number, v: number): string;
   previewUrl(id: number, v: number): string;

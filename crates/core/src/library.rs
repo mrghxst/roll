@@ -1925,6 +1925,19 @@ impl Library {
         Ok(n)
     }
 
+    pub fn exact_plan(&self) -> anyhow::Result<crate::dupes::ExactPlan> {
+        Ok(crate::dupes::exact_plan(&self.db.read())?)
+    }
+
+    /// Merge every group of exact copies as one undoable step. Returns how
+    /// many copies went to Roll's trash.
+    pub fn merge_all_exact(&self) -> anyhow::Result<usize> {
+        let out = self.db.tx(|tx| crate::dupes::merge_all_exact(tx))?;
+        self.emit(LibEvent::Changed("assets"));
+        self.emit(LibEvent::Changed("history"));
+        Ok(out.map_or(0, |o| o.2))
+    }
+
     pub fn map_points(&self, q: &Query) -> anyhow::Result<Vec<u8>> {
         let q = self.expand(q);
         Ok(query::map_points(&self.db.read(), &q)?)

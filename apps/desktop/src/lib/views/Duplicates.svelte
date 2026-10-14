@@ -2,13 +2,15 @@
   import { Merge, X } from '@lucide/svelte';
   import { api } from '../ipc/api';
   import type { DupeGroup } from '../ipc/bindings/DupeGroup';
+  import type { ExactPlan } from '../ipc/bindings/ExactPlan';
+  import Sheet from '../ui/Sheet.svelte';
   import { app } from '../state/app.svelte';
   import { undoLast } from '../state/edits';
   import { toast } from '../state/toast.svelte';
   import { viewer } from '../state/viewer.svelte';
   import Button from '../ui/Button.svelte';
   import EmptyState from '../ui/EmptyState.svelte';
-  import { n } from '../util/format';
+  import { bytes, n } from '../util/format';
 
   let groups = $state<DupeGroup[]>([]);
   let loaded = $state(false);
@@ -62,6 +64,33 @@
   }
 
   const exact = $derived(groups.filter((g) => g.kind === 'exact'));
+
+  // Merge all exact copies: preview first, then one step with one undo.
+  let plan = $state<ExactPlan | null>(null);
+
+  async function previewAll() {
+    try {
+      plan = await api.exactPlan();
+    } catch (e) {
+      toast.error(e);
+    }
+  }
+
+  async function mergeAll() {
+    busy = true;
+    try {
+      const done = await api.mergeAllExact();
+      plan = null;
+      groups = groups.filter((g) => g.kind !== 'exact');
+      toast.show(`Moved ${n(done)} exact ${done === 1 ? 'copy' : 'copies'} to the trash; one of each stays, with their dates, places and tags`, {
+        action: { label: 'Undo', run: () => void undoLast() },
+      });
+    } catch (e) {
+      toast.error(e);
+    } finally {
+      busy = false;
+    }
+  }
 </script>
 
 <div class="dupes">
@@ -72,7 +101,7 @@
       metadata. Merging moves the others to Roll's trash and gives the kept one their dates, places and tags.
     </p>
     {#if exact.length > 1}
-      <Button variant="primary" disabled={busy} onclick={() => void merge(exact)} data-testid="merge-exact">
+      <Button variant="primary" disabled={busy} onclick={() => void previewAll()} data-testid="merge-exact">
         <Merge size={16} strokeWidth={1.5} /> Merge all {n(exact.length)} groups of exact copies
       </Button>
     {/if}
@@ -116,6 +145,31 @@
     </ul>
   {/if}
 </div>
+
+<Sheet open={plan != null} title="Merge all exact copies" width={560} onclose={() => (plan = null)}>
+  {#if plan}
+    <p class="lead" data-testid="exact-plan">
+      {n(plan.copies)} {plan.copies === 1 ? 'copy' : 'copies'} in {n(plan.groups)} {plan.groups === 1 ? 'group' : 'groups'} go to Roll's trash, {bytes(plan.bytes)}. In each
+      group the same file stays once: the one in your own folders, not in Downloads, backups or with a copy-like name. Its dates, places and tags
+      are kept, and one undo brings everything back. Files are only deleted when you empty the trash.
+    </p>
+    <ul class="plan">
+      {#each plan.samples as s, i (i)}
+        <li>
+          <span class="kept">{s[0]}</span>
+          {#each s.slice(1) as o (o)}<span class="muted">{o}</span>{/each}
+        </li>
+      {/each}
+    </ul>
+    {#if plan.groups > plan.samples.length}<p class="muted">And {n(plan.groups - plan.samples.length)} more groups.</p>{/if}
+  {/if}
+  {#snippet footer()}
+    <Button variant="ghost" onclick={() => (plan = null)}>Cancel</Button>
+    <Button variant="primary" disabled={busy || !plan?.copies} onclick={() => void mergeAll()} data-testid="merge-exact-confirm">
+      <Merge size={16} strokeWidth={1.5} /> Move {n(plan?.copies ?? 0)} copies to the trash
+    </Button>
+  {/snippet}
+</Sheet>
 
 <style>
   .dupes {
@@ -202,5 +256,23 @@
   .actions {
     display: flex;
     gap: 8px;
+  }
+  .plan {
+    display: grid;
+    gap: 8px;
+    margin: 12px 0;
+    padding: 0;
+    list-style: none;
+    font: 12px/1.5 var(--mono);
+  }
+  .plan li {
+    display: grid;
+  }
+  .plan .kept::before {
+    content: 'Keep  ';
+    color: var(--muted);
+  }
+  .plan .muted::before {
+    content: 'Trash ';
   }
 </style>
