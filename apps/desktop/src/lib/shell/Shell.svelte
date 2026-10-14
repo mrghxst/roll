@@ -32,6 +32,7 @@
   import SelectionActions from './SelectionActions.svelte';
   import Sidebar from './Sidebar.svelte';
   import TagSheet from './TagSheet.svelte';
+  import TeachSheet from './TeachSheet.svelte';
   import ZoneSheet from './ZoneSheet.svelte';
   import DateSheet from './DateSheet.svelte';
   import LocationSheet from './LocationSheet.svelte';
@@ -177,6 +178,7 @@
 {/if}
 <CommandPalette onsearch={() => topbar?.focusSearch()} />
 <TagSheet />
+<TeachSheet />
 <RecycleSheet />
 <ZoneSheet />
 <LocationSheet />

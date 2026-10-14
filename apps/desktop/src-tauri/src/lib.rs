@@ -170,6 +170,8 @@ pub fn run() {
             commands::accept_above,
             commands::discover,
             commands::discover_ignore,
+            commands::teach,
+            commands::similar_items,
             commands::parse_search,
             commands::packs,
             commands::download_pack,

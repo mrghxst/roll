@@ -508,6 +508,20 @@ pub fn discover_ignore(state: State<AppState>, key: String) -> Res<()> {
     state.lib.discover_ignore(&key).map_err(e)
 }
 
+// Teach
+
+#[tauri::command]
+pub async fn teach(state: State<'_, AppState>, key: String, ids: Vec<i64>) -> Res<roll_core::teach::Taught> {
+    let lib = state.lib.clone();
+    blocking(move || lib.teach(&key, &ids)).await
+}
+
+#[tauri::command]
+pub async fn similar_items(state: State<'_, AppState>, ids: Vec<i64>, limit: usize) -> Res<Vec<i64>> {
+    let lib = state.lib.clone();
+    blocking(move || lib.similar_items(&ids, limit)).await
+}
+
 #[tauri::command]
 pub async fn parse_search(state: State<'_, AppState>, text: String) -> Res<ParsedSearch> {
     let lib = state.lib.clone();

@@ -540,7 +540,8 @@ impl Library {
         let protos = crate::vision::prototypes(&self.db.write(), &v)?;
         let out = crate::vision::sort(&self.db.write(), &protos, None)?;
         tracing::info!("image model sorted {} and proposed {}", out.decided, out.proposed);
-        if out != crate::vision::Outcome::default() {
+        let taught = crate::teach::rerun_all(&self.db.write(), &*self.embed_index()?)?;
+        if out != crate::vision::Outcome::default() || taught > 0 {
             self.emit(LibEvent::Changed("assets"));
             self.emit(LibEvent::Changed("review"));
         }
@@ -1029,6 +1030,10 @@ impl Library {
         if matches!(action, EditAction::Rotate { .. }) && n > 0 {
             self.jobs.enqueue(JobSpec::Thumbs)?;
         }
+        // The owner's decisions teach the image model and taught categories.
+        if matches!(action, EditAction::Category { .. } | EditAction::Accept) && n > 0 && self.packs.installed("image-model").is_some() {
+            self.jobs.enqueue(JobSpec::Embed)?;
+        }
         self.emit(LibEvent::Changed("assets"));
         Ok(n)
     }
@@ -1368,7 +1373,64 @@ impl Library {
     // Discover
 
     pub fn discover(&self, split: Option<&str>) -> anyhow::Result<Vec<crate::discover::Cluster>> {
-        Ok(crate::discover::clusters(&self.db.read(), split)?)
+        let mut out = crate::discover::clusters(&self.db.read(), split)?;
+        // Look-alike groups from the image model, without items already in
+        // a signature cluster.
+        if split.is_none()
+            && let Some(v) = self.vision()
+        {
+            let index = self.embed_index()?;
+            let protos = crate::vision::prototypes(&self.db.write(), &v).ok();
+            let taken: std::collections::HashSet<i64> = out.iter().flat_map(|c| c.ids.iter().map(|i| *i as i64)).collect();
+            out.extend(crate::discover::look_alike(&self.db.read(), &index, protos.as_ref(), &taken)?);
+            out.sort_by(|a, b| b.count.cmp(&a.count).then(a.key.cmp(&b.key)));
+        }
+        Ok(out)
+    }
+
+    /// Teach `key` with the owner's examples: they are sorted into it (as
+    /// the owner's decision), then Roll trains on them and proposes
+    /// matches in Review.
+    pub fn teach(&self, key: &str, examples: &[i64]) -> anyhow::Result<crate::teach::Taught> {
+        anyhow::ensure!(self.vision().is_some(), "Teaching needs the image model. Download it in Settings › Models and data.");
+        if !examples.is_empty() {
+            self.edit(examples, &EditAction::Category { key: Some(key.to_string()) })?;
+        }
+        crate::teach::mark(&self.db.write(), key)?;
+        self.run_embed_now()?;
+        let index = self.embed_index()?;
+        let out = crate::teach::run(&self.db.write(), key, &index)?
+            .unwrap_or(crate::teach::Taught { examples: examples.len() as u32, proposed: 0 });
+        self.emit(LibEvent::Changed("assets"));
+        self.emit(LibEvent::Changed("review"));
+        Ok(out)
+    }
+
+    /// Items that look most like `ids`, best first.
+    pub fn similar_items(&self, ids: &[i64], limit: usize) -> anyhow::Result<Vec<i64>> {
+        if self.vision().is_none() {
+            return Ok(Vec::new());
+        }
+        Ok(crate::teach::similar(&*self.embed_index()?, ids, limit))
+    }
+
+    /// Embeddings for items still without one, right now (Teach needs
+    /// them for its examples).
+    fn run_embed_now(&self) -> anyhow::Result<()> {
+        let Some(v) = self.vision() else { return Ok(()) };
+        let todo = crate::embeddings::missing(&self.db.read(), crate::vision::MODEL_ID, 2000)?;
+        if todo.is_empty() {
+            return Ok(());
+        }
+        let enc = v.image()?;
+        for id in todo {
+            if let Some(img) = self.thumb(id)?.and_then(|b| image::load_from_memory(&b).ok()) {
+                let e = enc.embed(&img)?;
+                crate::embeddings::store(&self.db.write(), id, crate::vision::MODEL_ID, &e)?;
+            }
+        }
+        *self.embed_index.lock() = None;
+        Ok(())
     }
 
     pub fn discover_ignore(&self, key: &str) -> anyhow::Result<()> {

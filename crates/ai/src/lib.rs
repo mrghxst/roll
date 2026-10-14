@@ -3,6 +3,7 @@
 
 pub mod catalog;
 pub mod chat;
+pub mod classifier;
 pub mod cost;
 pub mod decide;
 pub mod ocr;

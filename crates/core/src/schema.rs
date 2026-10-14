@@ -354,7 +354,7 @@ CREATE TABLE event_undo (
 /// with their budget, and one row per item and run so a run resumes
 /// without sending an item twice. The model check's labelled sample.
 /// Text embeddings of category descriptions and searches, so the large
-/// text tower loads only for new text.
+/// text tower loads only for new text; taught categories.
 const M12: &str = r#"
 CREATE TABLE text_embeddings (
   model TEXT NOT NULL,
@@ -363,6 +363,8 @@ CREATE TABLE text_embeddings (
   at INTEGER NOT NULL,
   PRIMARY KEY (model, text)
 );
+-- Categories the owner taught with examples; retrained on corrections.
+ALTER TABLE categories ADD COLUMN taught INTEGER NOT NULL DEFAULT 0;
 "#;
 
 /// Sharper built-in definitions after the first real model run: memes

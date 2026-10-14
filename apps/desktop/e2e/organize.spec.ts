@@ -90,7 +90,7 @@ test.describe('organize', () => {
     await page.getByRole('button', { name: 'Add rule' }).click();
     await page.getByLabel('Rule name').fill('Scanner receipts');
     await page.getByLabel('Value').fill('^SCAN_');
-    await page.getByLabel('Category').selectOption('documents');
+    await page.getByLabel('Category', { exact: true }).selectOption('documents');
     await page.getByRole('button', { name: 'Save rule' }).click();
     await expect(page.getByTestId('rules')).toContainText('Scanner receipts');
     await expect(page.getByTestId('rules')).toContainText('File name matches the pattern ^SCAN_ → Documents');

@@ -36,6 +36,7 @@ pub mod secrets;
 pub mod settings;
 pub mod sidecars;
 pub mod tags;
+pub mod teach;
 pub mod template;
 pub mod thumbs;
 pub mod trash;

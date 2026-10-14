@@ -69,6 +69,8 @@ class AppState {
   filtersOpen = $state(false);
   /** Items the tag sheet is open for. */
   tagging = $state<number[] | null>(null);
+  /** Items given as examples in the Teach sheet. */
+  teaching = $state<number[] | null>(null);
   /** Trashed items waiting for confirmation to go to the Recycle Bin. */
   recycling = $state<number[] | 'all' | null>(null);
   /** Time zones to offer after places were set. */

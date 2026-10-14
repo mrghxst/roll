@@ -4,7 +4,7 @@
   import { api, emptyQuery } from '../ipc/api';
   import type { ParsedSearch } from '../ipc/bindings/ParsedSearch';
   import type { Query } from '../ipc/bindings/Query';
-  import { app } from '../state/app.svelte';
+  import { ALL, app } from '../state/app.svelte';
   import { selection } from '../state/selection.svelte';
   import { toast } from '../state/toast.svelte';
   import IconButton from '../ui/IconButton.svelte';
@@ -89,12 +89,20 @@
   }
 
   const active = $derived(chips(app.filters, app.filterLabels));
+  // A hand-picked set (from the map, similar items): shown so it can be left.
+  const picked = $derived(app.view === 'timeline' && app.scope.query.ids ? app.scope : null);
   const showGridOptions = $derived(app.view === 'timeline' || app.view === 'folders');
 </script>
 
 <header class="topbar">
-  <div class="search" class:has={active.length > 0}>
+  <div class="search" class:has={active.length > 0 || picked}>
     <Search size={16} strokeWidth={1.5} />
+    {#if picked}
+      <span class="chip" data-testid="scope-chip">
+        {picked.label}
+        <button aria-label="Show everything" onclick={() => app.go('timeline', ALL)}><X size={12} strokeWidth={2} /></button>
+      </span>
+    {/if}
     {#each active as c (c.key)}
       <span class="chip">
         {c.label}

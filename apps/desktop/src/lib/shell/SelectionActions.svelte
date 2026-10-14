@@ -1,9 +1,10 @@
 <script lang="ts">
-  import { ArchiveRestore, CalendarClock, Cloud, ExternalLink, FolderInput, FolderOpen, Heart, MapPin, RotateCcw, RotateCw, Star, Tag, Trash2 } from '@lucide/svelte';
+  import { ArchiveRestore, CalendarClock, Cloud, ExternalLink, FolderInput, FolderOpen, GraduationCap, Heart, MapPin, RotateCcw, RotateCw, ScanSearch, Star, Tag, Trash2 } from '@lucide/svelte';
   import { api } from '../ipc/api';
   import { app } from '../state/app.svelte';
   import { rate, restore, rotate, setCategory, setImmich, toggleFavorite, trash } from '../state/edits';
   import { selection } from '../state/selection.svelte';
+  import { toast } from '../state/toast.svelte';
   import IconButton from '../ui/IconButton.svelte';
   import Menu, { type MenuItem } from '../ui/Menu.svelte';
 
@@ -32,6 +33,18 @@
     { label: 'Use the default (category and event)', run: () => void setImmich(ids, 'default') },
   ]);
 
+  const seeing = $derived(app.pack('image-model')?.state === 'installed');
+
+  /** Show the items that look most like the selection. */
+  async function findSimilar() {
+    try {
+      const like = await api.similarItems(ids, 300);
+      app.go('timeline', { key: 'similar', label: `Look like the ${ids.length === 1 ? 'selected item' : `${ids.length} selected`}`, query: { ids: like } });
+    } catch (e) {
+      toast.error(e);
+    }
+  }
+
   const ratingItems = $derived<MenuItem[]>(
     [5, 4, 3, 2, 1, 0].map((r) => ({ label: r ? '★'.repeat(r) : 'No rating', hint: String(r), run: () => void rate(ids, r) })),
   );
@@ -51,6 +64,10 @@
     {/snippet}
   </Menu>
   <IconButton label="Add a tag (T)" onclick={() => (app.tagging = ids)} data-testid="add-tag"><Tag size={16} strokeWidth={1.5} /></IconButton>
+  {#if seeing}
+    <IconButton label="Find similar items" onclick={() => void findSimilar()} data-testid="find-similar"><ScanSearch size={16} strokeWidth={1.5} /></IconButton>
+  {/if}
+  <IconButton label="Teach a category with these examples" onclick={() => (app.teaching = ids)} data-testid="teach"><GraduationCap size={16} strokeWidth={1.5} /></IconButton>
   <IconButton label="Set location (L)" onclick={() => (app.locating = ids)} data-testid="set-location"><MapPin size={16} strokeWidth={1.5} /></IconButton>
   <IconButton label="Change date (D)" onclick={() => (app.dating = ids)} data-testid="change-date"><CalendarClock size={16} strokeWidth={1.5} /></IconButton>
   <IconButton label="Favorite (F)" onclick={() => void toggleFavorite(ids)} data-testid="favorite"><Heart size={16} strokeWidth={1.5} /></IconButton>

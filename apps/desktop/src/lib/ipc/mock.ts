@@ -268,6 +268,20 @@ function pushBatch(id: number, kind: string, label: string, ops: number) {
 }
 
 /** Record a change as an undoable batch, like the library does. */
+/** The mock's stand-in for image similarity: the closest colours. */
+function lookAlike(ids: number[], limit: number): number[] {
+  const rgb = (c: number) => [(c >> 16) & 255, (c >> 8) & 255, c & 255];
+  const from = assets.filter((a) => ids.includes(a.id)).map((a) => rgb(a.color));
+  if (!from.length) return [];
+  const centre = [0, 1, 2].map((i) => from.reduce((s, c) => s + c[i]!, 0) / from.length);
+  return assets
+    .filter((a) => !a.trashed && !ids.includes(a.id))
+    .map((a) => ({ id: a.id, d: rgb(a.color).reduce((s, v, i) => s + (v - centre[i]!) ** 2, 0) }))
+    .sort((a, b) => a.d - b.d || a.id - b.id)
+    .slice(0, limit)
+    .map((x) => x.id);
+}
+
 function change(kind: string, label: string, ids: number[], fn: (a: MockAsset) => boolean, dirty = true): number {
   const before = new Map<number, Partial<MockAsset>>();
   let n = 0;
@@ -320,6 +334,10 @@ const packs: PackStatus[] = [
   pack('image-model', 'Image understanding', 1_535_520_638, 'huggingface.co', 'Apache-2.0'),
   pack('text-reader', 'Text in photos', 31_114_837, 'github.com', 'Apache-2.0'),
 ];
+// `?models=1`: the image model and text reader are installed (Teach, Find similar).
+if (params.get('models') === '1') {
+  for (const p of packs) if (p.id !== 'places') Object.assign(p, { state: 'installed', done: p.size });
+}
 const packTimers = new Map<string, ReturnType<typeof setInterval>>();
 
 // Events: quarters with 8 or more photos stand in for detection (the
@@ -1913,6 +1931,29 @@ export const mockApi: Api = {
       }));
   },
   discoverIgnore: async (key) => void dismissed.add(key),
+  teach: async (key, ids) => {
+    const name = CATS.find((c) => c[0] === key)?.[1] ?? key;
+    const examples = change('category', `Move ${ids.length} items to ${name}`, ids, (a) => {
+      a.category = key;
+      a.review = 3;
+      return true;
+    });
+    // Proposals, not decisions: no history entry, as in the app.
+    const like = new Set(lookAlike(ids, 40));
+    let proposed = 0;
+    for (const a of assets) {
+      if (!like.has(a.id) || a.review === 3) continue;
+      a.category = key;
+      a.review = 1;
+      a.conf = 0.72;
+      proposed++;
+    }
+    assets = [...assets];
+    emit('changed', 'assets');
+    emit('changed', 'review');
+    return { examples, proposed };
+  },
+  similarItems: async (ids, limit) => lookAlike(ids, limit),
   parseSearch: async (text) => {
     const words = text.toLowerCase().split(/\s+/).filter(Boolean);
     const query = { ...emptyQuery() };

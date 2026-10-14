@@ -1,6 +1,7 @@
 // The backend interface the UI uses. In the app it is Tauri; in a plain
 // browser (development, Playwright) it is an in-memory mock.
 
+import type { Taught } from './bindings/Taught';
 import type { AppInfo } from './bindings/AppInfo';
 import type { AssetDetail } from './bindings/AssetDetail';
 import type { BatchInfo } from './bindings/BatchInfo';
@@ -217,6 +218,10 @@ export interface Api {
   /** Clusters of undecided items; `split` breaks one up by folder. */
   discover(split: string | null): Promise<Cluster[]>;
   discoverIgnore(key: string): Promise<void>;
+  /** Sort `ids` into `key` as examples, train, and propose matches in Review. */
+  teach(key: string, ids: number[]): Promise<Taught>;
+  /** Items that look most like `ids`, best first (empty without the image model). */
+  similarItems(ids: number[], limit: number): Promise<number[]>;
   /** What the search parser understands in the text. */
   parseSearch(text: string): Promise<ParsedSearch>;
   dupeGroups(): Promise<DupeGroup[]>;
