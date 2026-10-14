@@ -127,7 +127,7 @@ In active development. Working today:
 | | |
 |---|---|
 | Library | Timeline, folders, filters, search, viewer for photos and videos, 100k items at 60 fps |
-| Sorting | Rules, categories, review, duplicates and bursts, organize into year folders with undo |
+| Sorting | Rules, categories, review, organize into year folders with undo; duplicates merged in bulk, best shots of bursts and series |
 | Fixing | Camera clock and time zone fixes, places from neighbours and location history, map with time slider |
 | Import | Camera cards, WhatsApp and Google Takeout exports |
 | On this computer | SigLIP 2 image model: sorting (68% on its own at 97% precision on the test set), search by what a picture shows, Teach, Find similar, look-alike groups; text reader for screenshots and documents |
@@ -135,8 +135,8 @@ In active development. Working today:
 | Sync | Immich sync with albums and shared albums, checked against a real Immich 3.3.1 |
 | Install | Windows installer (per user, ExifTool and FFmpeg bundled), dmg, AppImage and deb: [releases](https://github.com/mrghxst/roll/releases) |
 
-Next: merging identical photos in bulk and picking the best shot of a
-series, cluster names from a model, and signed builds with updates.
+Next: cluster names from a model, faces for picking best shots, and
+signed builds with updates.
 [docs/plan.md](docs/plan.md) tracks every milestone; [PROMPT.md](PROMPT.md)
 is the full spec.
 

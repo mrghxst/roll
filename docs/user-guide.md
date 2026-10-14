@@ -205,3 +205,15 @@ With the image model you can also:
   correction teaches it more.
 - **Discover** shows groups of undecided items that look alike, so one
   decision sorts the whole group.
+
+## Duplicates and best shots
+
+- **Merge all exact copies** shows first what happens: how many identical
+  files go to Roll's trash, how much space that frees, and for each group
+  which copy stays (the one in your own folders, not in Downloads,
+  backups or with names like "(1)" or "copy"). One undo brings everything
+  back; files are only deleted when you empty the trash.
+- **Bursts and look-alike series** are ranked best first: the sharpest,
+  best exposed frame (and, with the image model, the one that looks best,
+  without closed eyes) is suggested. Click frames to choose which to keep,
+  even several; the rest go to Roll's trash in one step.

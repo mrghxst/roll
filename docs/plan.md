@@ -234,22 +234,22 @@ Milestones from PROMPT.md section 10. `[x]` done, `[~]` partly done,
 
 Owner requests (2026-10-13), to build after M4–M6:
 
-- [ ] **Deduplicate identical photos in bulk.** Today Duplicates finds
-      exact copies (BLAKE3), smaller copies and look-alikes, and merges one
-      group at a time. To add: "Merge all exact copies" with a preview of
-      what is kept and where the others go, rules for which copy wins
-      (folder, original camera file), and the same across library folders
-      and imports. Originals stay untouched; the others go to Roll's trash.
-- [ ] **Pick the best shots of a series.** Bursts and look-alike series
-      are grouped, but "keep" is chosen from file facts only (camera file,
-      resolution, metadata). To add: picture quality per frame (sharpness,
-      exposure, motion blur, closed eyes, then an aesthetic score from the
-      image model), a side-by-side picker that suggests the best one or
-      two, and "keep the best, trash the rest" with undo. Never re-encode.
+- [x] **Deduplicate identical photos in bulk** (2026-10-14): "Merge all
+      exact copies" with a preview (groups, copies, space, sample paths);
+      among identical files the copy in the owner's folders wins (not
+      Downloads, backups or chat exports, no " (1)", "copy" or "Kopie"),
+      then the shortest path; one batch, one undo; dates, places and tags
+      move to the kept file. Originals stay untouched
+- [x] **Pick the best shots of a series** (2026-10-14): bursts and
+      look-alike groups ranked on their previews by sharpness (Laplacian),
+      exposure (brightness, clipping) and, with the image model, look and
+      clearly closed eyes; the best one or two suggested, any frames can be
+      kept, the rest to Roll's trash with undo. Never re-encodes
+- [ ] Faces for the best shot (an eye detector instead of the image
+      model's rough "closed eyes"), and duplicates across imports before
+      they are added
 
 ## Next
 
-M4 is in: SigLIP 2 sorting, search, Teach, Discover groups, the smart
-offset by look and the text reader. Left: cluster names from a model,
-optional reranking, the Immich CLI comparison, and the M7 owner requests
-(bulk merge of identical photos, best shot of a series).
+M4 and the M7 owner requests are in. Left: cluster names from a model,
+optional reranking, the Immich CLI comparison, signed builds with updates.
