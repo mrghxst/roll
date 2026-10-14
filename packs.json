@@ -93,7 +93,7 @@
       "source": "GitHub (GreatV/oar-ocr release v0.7.0)",
       "attribution": "PP-OCRv6 by PaddlePaddle (PaddleOCR), Apache-2.0; ONNX files from the oar-ocr project",
       "dir": "models/ppocr-v6-small",
-      "after": null,
+      "after": "reader",
       "files": [
         {
           "path": "det.onnx",

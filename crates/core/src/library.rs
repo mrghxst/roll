@@ -41,6 +41,9 @@ pub enum LibEvent {
 
 pub type EventSink = Arc<dyn Fn(LibEvent) + Send + Sync>;
 
+/// Stored with OCR text, so a newer reader model reads items again.
+const OCR_MODEL: &str = "ppocr-v6-small";
+
 pub struct Library {
     pub data_dir: PathBuf,
     pub db: Arc<Db>,
@@ -66,6 +69,8 @@ pub struct Library {
     embed_index: Mutex<Option<Arc<roll_ai::vectors::Index>>>,
     /// The last search text and the items whose image matches it.
     similar_cache: Mutex<Option<(String, Vec<i64>)>>,
+    /// The text reader, once its pack is installed and first needed.
+    reader: Mutex<Option<Arc<roll_ai::ocr::Reader>>>,
 }
 
 /// Whether the offline place names are installed.
@@ -115,6 +120,7 @@ impl Library {
             vision: Mutex::new(None),
             embed_index: Mutex::new(None),
             similar_cache: Mutex::new(None),
+            reader: Mutex::new(None),
         }))
     }
 
@@ -228,6 +234,7 @@ impl Library {
             }
             JobSpec::Hash => self.run_hash(ctx),
             JobSpec::Embed => self.run_embed(ctx),
+            JobSpec::Ocr => self.run_ocr(ctx),
             JobSpec::Index => {
                 let gaz = self.gaz();
                 let place = |la: f64, lo: f64| gaz.as_ref().and_then(|g| g.reverse(la, lo).map(|e| e.label()));
@@ -537,6 +544,72 @@ impl Library {
             self.emit(LibEvent::Changed("assets"));
             self.emit(LibEvent::Changed("review"));
         }
+        // Categories are known now: read the text-heavy ones.
+        if self.packs.installed("text-reader").is_some() {
+            self.jobs.enqueue(JobSpec::Ocr)?;
+        }
+        Ok(())
+    }
+
+    fn reader(&self) -> anyhow::Result<Option<Arc<roll_ai::ocr::Reader>>> {
+        let Some(dir) = self.packs.installed("text-reader") else { return Ok(None) };
+        let mut g = self.reader.lock();
+        if let Some(r) = g.as_ref() {
+            return Ok(Some(r.clone()));
+        }
+        // On the CPU: the models are small and every line has its own
+        // width, which DirectML handles 4–6× slower (docs/benchmarks.md).
+        let r = Arc::new(roll_ai::ocr::Reader::load(&dir, false)?);
+        *g = Some(r.clone());
+        Ok(Some(r))
+    }
+
+    /// Text in screenshots, documents, memes and saved posts (as sorted or
+    /// proposed), read from their 1024 px previews, for search and the
+    /// Private guard. Items are read once; a new reader model reads again.
+    fn run_ocr(&self, ctx: &crate::jobs::JobCtx) -> anyhow::Result<()> {
+        let Some(reader) = self.reader()? else { return Ok(()) };
+        let todo: Vec<i64> = {
+            let c = self.db.read();
+            let mut st = c.prepare(
+                "SELECT a.id FROM assets a LEFT JOIN categories cat ON cat.id = a.category_id
+                 WHERE a.missing = 0 AND a.trashed_at IS NULL AND a.kind = 0
+                   AND (a.screenshot != 0 OR cat.key IN ('screenshots', 'documents', 'memes', 'social_media'))
+                   AND NOT EXISTS (SELECT 1 FROM ocr o WHERE o.asset_id = a.id AND o.model = ?1)
+                 ORDER BY a.taken_local DESC, a.id DESC",
+            )?;
+            st.query_map([OCR_MODEL], |r| r.get(0))?.collect::<Result<_, _>>()?
+        };
+        let total = todo.len();
+        let mut read_ids = Vec::new();
+        let mut marked = 0;
+        for (i, id) in todo.iter().enumerate() {
+            if !ctx.checkpoint() {
+                break;
+            }
+            let reading = match self.preview(*id)?.and_then(|b| image::load_from_memory(&b).ok()) {
+                Some(img) if roll_ai::ocr::readable(&img) => reader.read(&img)?,
+                _ => roll_ai::ocr::Reading::default(),
+            };
+            let text = reading.text();
+            let c = self.db.write();
+            c.execute(
+                "INSERT OR REPLACE INTO ocr (asset_id, model, text, area, at) VALUES (?1, ?2, ?3, ?4, ?5)",
+                params![id, OCR_MODEL, text, reading.area, crate::db::now_ms()],
+            )?;
+            if !text.is_empty() && crate::privacy::guard(&c, *id, &text)?.is_some() {
+                marked += 1;
+            }
+            drop(c);
+            read_ids.push(*id);
+            ctx.progress(i + 1, total);
+        }
+        self.reindex(&read_ids);
+        if !read_ids.is_empty() {
+            *self.similar_cache.lock() = None;
+            self.emit(LibEvent::Changed("assets"));
+        }
+        tracing::info!("read text in {} items, {marked} marked private", read_ids.len());
         Ok(())
     }
 
@@ -1117,17 +1190,18 @@ impl Library {
                     None => Ok(()),
                 }))
             }
-            Some("vision") => {
-                // Start looking at photos once the pack is marked installed
+            Some(step @ ("vision" | "reader")) => {
+                // Start the model's job once the pack is marked installed
                 // (the manifest is written after this step).
+                let (pack, job) = if step == "vision" { ("image-model", JobSpec::Embed) } else { ("text-reader", JobSpec::Ocr) };
                 let me = Arc::downgrade(self);
                 Some(Box::new(move |_: &Path| {
                     std::thread::spawn(move || {
                         for _ in 0..600 {
                             std::thread::sleep(std::time::Duration::from_millis(100));
                             let Some(lib) = me.upgrade() else { return };
-                            if lib.packs.installed("image-model").is_some() {
-                                let _ = lib.jobs.enqueue(JobSpec::Embed);
+                            if lib.packs.installed(pack).is_some() {
+                                let _ = lib.jobs.enqueue(job);
                                 return;
                             }
                         }
@@ -1145,6 +1219,9 @@ impl Library {
     }
 
     pub fn remove_pack(&self, id: &str) -> anyhow::Result<()> {
+        if id == "text-reader" {
+            *self.reader.lock() = None;
+        }
         if id == "image-model" {
             *self.vision.lock() = None;
             *self.similar_cache.lock() = None;

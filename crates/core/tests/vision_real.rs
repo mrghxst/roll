@@ -109,9 +109,16 @@ fn sorts_and_searches_the_cc0_set() {
         let mut st = c.prepare("SELECT id, name FROM assets").unwrap();
         st.query_map([], |r| Ok((r.get(0)?, r.get(1)?))).unwrap().collect::<Result<_, _>>().unwrap()
     };
-    for (q, want) in
-        [("dog", "photos_photos-004.jpg"), ("receipt", "documents_documents-006.jpg"), ("nebula", "wallpapers_wallpapers-009.jpg")]
-    {
+    // Text read from the pictures (with the text-reader pack).
+    let read: i64 = lib.db.read().query_row("SELECT count(*) FROM ocr WHERE text != ''", [], |r| r.get(0)).unwrap();
+    println!("text read in {read} items");
+    let mut searches =
+        vec![("dog", "photos_photos-004.jpg"), ("receipt", "documents_documents-006.jpg"), ("nebula", "wallpapers_wallpapers-009.jpg")];
+    if read > 0 {
+        // Only in a chat screenshot's text.
+        searches.push(("dessert", "screenshots_screenshots-001.png"));
+    }
+    for (q, want) in searches {
         let ids = lib.ids(&Query { text: Some(q.into()), ..Default::default() }).unwrap();
         let found: Vec<&str> = ids.iter().filter_map(|i| names.get(i).map(String::as_str)).collect();
         println!("search {q:?}: {} results", found.len());

@@ -44,6 +44,8 @@ pub enum JobSpec {
     },
     /// Image embeddings for items without one, then sorting with them.
     Embed,
+    /// Read the text in screenshots, documents, memes and saved posts.
+    Ocr,
 }
 
 impl JobSpec {
@@ -60,6 +62,7 @@ impl JobSpec {
             JobSpec::Immich { .. } => "immich",
             JobSpec::Decide { .. } => "decide",
             JobSpec::Embed => "embed",
+            JobSpec::Ocr => "ocr",
         }
     }
     pub fn priority(&self) -> i64 {
@@ -74,6 +77,7 @@ impl JobSpec {
             JobSpec::Immich { .. } => 40,
             JobSpec::Decide { .. } => 45,
             JobSpec::Embed => 35,
+            JobSpec::Ocr => 36,
         }
     }
     pub fn label(&self) -> String {
@@ -89,6 +93,7 @@ impl JobSpec {
             JobSpec::Immich { .. } => "Syncing with Immich".into(),
             JobSpec::Decide { .. } => "Sorting uncertain items with AI".into(),
             JobSpec::Embed => "Looking at photos for search and sorting".into(),
+            JobSpec::Ocr => "Reading text in screenshots and documents".into(),
         }
     }
 }

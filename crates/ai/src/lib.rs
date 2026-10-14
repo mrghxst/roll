@@ -5,6 +5,7 @@ pub mod catalog;
 pub mod chat;
 pub mod cost;
 pub mod decide;
+pub mod ocr;
 pub mod onnx;
 pub mod openrouter;
 pub mod privacy;
