@@ -25,18 +25,15 @@ impl Model {
         let threads = std::thread::available_parallelism().map_or(4, |n| n.get()).clamp(1, 8);
         let mut b = Session::builder().map_err(err)?.with_optimization_level(GraphOptimizationLevel::Level3).map_err(err)?;
         b = b.with_intra_threads(threads).map_err(err)?;
-        let mut on_gpu = false;
-        if gpu {
-            #[cfg(windows)]
-            {
-                b = b.with_execution_providers([ort::ep::DirectML::default().build()]).map_err(err)?;
-                on_gpu = true;
-            }
-            #[cfg(target_os = "macos")]
-            {
-                b = b.with_execution_providers([ort::ep::CoreML::default().build()]).map_err(err)?;
-                on_gpu = true;
-            }
+        // Linux uses the CPU.
+        let on_gpu = gpu && cfg!(any(windows, target_os = "macos"));
+        #[cfg(windows)]
+        if on_gpu {
+            b = b.with_execution_providers([ort::ep::DirectML::default().build()]).map_err(err)?;
+        }
+        #[cfg(target_os = "macos")]
+        if on_gpu {
+            b = b.with_execution_providers([ort::ep::CoreML::default().build()]).map_err(err)?;
         }
         let session = b.commit_from_file(path).map_err(err)?;
         Ok(Model { session: Mutex::new(session), gpu: on_gpu })
