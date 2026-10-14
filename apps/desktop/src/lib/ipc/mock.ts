@@ -193,7 +193,7 @@ const defaults: Settings = {
   row_height: 200,
   ai_mode: 'off',
   ai_local_endpoint: null,
-  ai_decision_model: null,
+  ai_decision_model: params.get('model'),
   ai_text_model: null,
   ai_budget_usd: 5,
   ai_batch: 8,
@@ -1965,6 +1965,12 @@ export const mockApi: Api = {
       }));
   },
   discoverIgnore: async (key) => void dismissed.add(key),
+  nameCluster: async (ids) => {
+    const shots = ids.filter((id) => byId(id)?.category === 'screenshots').length;
+    return shots * 2 > ids.length
+      ? { name: 'Screenshots', definition: '', existing: 'screenshots', cost_usd: 0.0002 }
+      : { name: 'Concert tickets', definition: 'Photos and screenshots of tickets for concerts and shows.', existing: null, cost_usd: 0.0002 };
+  },
   teach: async (key, ids) => {
     const name = CATS.find((c) => c[0] === key)?.[1] ?? key;
     const examples = change('category', `Move ${ids.length} items to ${name}`, ids, (a) => {

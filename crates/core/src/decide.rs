@@ -566,7 +566,7 @@ fn run_batch(
 }
 
 /// The server's context cannot hold the request.
-fn too_long(e: &ChatError) -> bool {
+pub fn too_long(e: &ChatError) -> bool {
     matches!(e, ChatError::Status { status: 400 | 413, message } if {
         let m = message.to_lowercase();
         m.contains("context") || m.contains("too long") || m.contains("too many tokens")

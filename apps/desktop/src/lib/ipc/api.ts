@@ -1,6 +1,7 @@
 // The backend interface the UI uses. In the app it is Tauri; in a plain
 // browser (development, Playwright) it is an in-memory mock.
 
+import type { NameSuggestion } from './bindings/NameSuggestion';
 import type { ShotScore } from './bindings/ShotScore';
 import type { ExactPlan } from './bindings/ExactPlan';
 import type { SmartOffset } from './bindings/SmartOffset';
@@ -223,6 +224,8 @@ export interface Api {
   /** Clusters of undecided items; `split` breaks one up by folder. */
   discover(split: string | null): Promise<Cluster[]>;
   discoverIgnore(key: string): Promise<void>;
+  /** A name for a Discover group from the decision model (sends up to 9 pictures). */
+  nameCluster(ids: number[]): Promise<NameSuggestion>;
   /** Sort `ids` into `key` as examples, train, and propose matches in Review. */
   teach(key: string, ids: number[]): Promise<Taught>;
   /** Items that look most like `ids`, best first (empty without the image model). */

@@ -1406,6 +1406,52 @@ impl Library {
         Ok(out)
     }
 
+    /// A name for a Discover group from the decision model: one call with up
+    /// to 9 of its pictures (512 px, no metadata).
+    pub fn name_cluster(&self, ids: &[i64]) -> anyhow::Result<crate::discover::NameSuggestion> {
+        let s = self.settings();
+        let model = s
+            .ai_decision_model
+            .clone()
+            .filter(|m| !m.trim().is_empty())
+            .ok_or_else(|| anyhow::anyhow!("Pick a decision model in Sort with AI first."))?;
+        let ep = self.ai_endpoint()?;
+        let names: Vec<(String, String)> = {
+            let c = self.db.read();
+            let mut st = c.prepare("SELECT key, name FROM categories WHERE key != 'unsorted' ORDER BY sort, id")?;
+            st.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?.collect::<Result<_, _>>()?
+        };
+        // 320 px is enough to tell what a group is, and keeps 9 pictures
+        // within a local server's context.
+        let small = |j: Vec<u8>| -> Vec<u8> {
+            let Ok(img) = image::load_from_memory(&j) else { return j };
+            let img = img.resize(320, 320, image::imageops::FilterType::Triangle).to_rgb8();
+            let mut out = Vec::new();
+            match image::codecs::jpeg::JpegEncoder::new_with_quality(&mut out, 80).encode_image(&img) {
+                Ok(()) => out,
+                Err(_) => j,
+            }
+        };
+        let mut jpegs: Vec<Vec<u8>> = ids.iter().take(9).filter_map(|id| self.ai_image(*id).map(|(_, j)| small(j))).collect();
+        anyhow::ensure!(!jpegs.is_empty(), "No pictures to show the model.");
+        // Fewer pictures when the server's context is too small.
+        let reply = loop {
+            let body = roll_ai::name::body(&model, &jpegs, &names, ep.is_openrouter());
+            match ep.complete(&body) {
+                Ok(r) => break r,
+                Err(e) if crate::decide::too_long(&e) && jpegs.len() > 1 => jpegs.truncate(jpegs.len() / 2),
+                Err(e) => anyhow::bail!(e.explain()),
+            }
+        };
+        let sug = roll_ai::name::parse(&reply.content, &names).map_err(|e| anyhow::anyhow!("The model's answer could not be used: {e}"))?;
+        Ok(crate::discover::NameSuggestion {
+            name: sug.name,
+            definition: sug.definition,
+            existing: sug.existing,
+            cost_usd: reply.cost.unwrap_or(0.0),
+        })
+    }
+
     /// Items that look most like `ids`, best first.
     pub fn similar_items(&self, ids: &[i64], limit: usize) -> anyhow::Result<Vec<i64>> {
         if self.vision().is_none() {

@@ -26,6 +26,17 @@ pub struct Cluster {
 
 const MIN_SIZE: usize = 5;
 
+/// A name the decision model suggests for a group.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct NameSuggestion {
+    pub name: String,
+    pub definition: String,
+    /// An existing category that already fits.
+    pub existing: Option<String>,
+    pub cost_usd: f64,
+}
+
 fn describe(signature: &str) -> String {
     let parts: Vec<&str> = signature.splitn(4, ':').collect();
     let format = parts.first().map(|f| f.to_uppercase()).unwrap_or_default();

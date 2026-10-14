@@ -85,6 +85,7 @@ export const tauriApi: Api = {
   reviewItems: (key, limit) => invoke('review_items', { key, limit }),
   acceptAbove: (key, min) => invoke('accept_above', { key, min }),
   discover: (split) => invoke('discover', { split }),
+  nameCluster: (ids) => invoke('name_cluster', { ids }),
   teach: (key, ids) => invoke('teach', { key, ids }),
   similarItems: (ids, limit) => invoke('similar_items', { ids, limit }),
   discoverIgnore: (key) => invoke('discover_ignore', { key }),

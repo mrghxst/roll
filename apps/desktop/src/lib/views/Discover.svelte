@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { ChevronDown, FolderInput, Plus, Split, X } from '@lucide/svelte';
+  import { ChevronDown, FolderInput, Plus, Sparkles, Split, X } from '@lucide/svelte';
   import { api } from '../ipc/api';
   import type { Cluster } from '../ipc/bindings/Cluster';
   import { app } from '../state/app.svelte';
@@ -64,6 +64,28 @@
   }
 
   const name = (key: string | null) => app.categories.find((c) => c.key === key)?.name;
+
+  // Names from the decision model, when one is set up.
+  const naming = $derived(!!app.settings && app.settings.ai_mode !== 'off' && !!app.settings.ai_decision_model);
+  let asking = $state<string | null>(null);
+
+  async function suggest(c: Cluster) {
+    asking = c.key;
+    try {
+      const s = await api.nameCluster(c.samples.slice(0, 9));
+      const cost = s.cost_usd > 0 ? ` ($${s.cost_usd.toFixed(4)})` : '';
+      if (s.existing && name(s.existing)) {
+        toast.show(`The model says these are ${name(s.existing)}${cost}.`, { action: { label: `Assign all to ${name(s.existing)}`, run: () => void setCategory(c.ids, s.existing!) } });
+      } else {
+        creating = { ids: c.ids, name: s.name, definition: s.definition, parent: '' };
+        if (cost) toast.show(`Name suggested by the model${cost}.`);
+      }
+    } catch (e) {
+      toast.error(e);
+    } finally {
+      asking = null;
+    }
+  }
 </script>
 
 {#snippet card(c: Cluster, nested: boolean)}
@@ -83,6 +105,11 @@
           <Button variant="primary" onclick={toggle} aria-expanded={open} data-testid="assign-cluster"><FolderInput size={14} strokeWidth={1.5} /> Assign all to… <ChevronDown size={14} strokeWidth={1.5} /></Button>
         {/snippet}
       </Menu>
+      {#if naming}
+        <Button disabled={asking != null} onclick={() => void suggest(c)} data-testid="suggest-name">
+          <Sparkles size={14} strokeWidth={1.5} /> {asking === c.key ? 'Asking…' : 'Suggest a name'}
+        </Button>
+      {/if}
       {#if !nested}
         <Button onclick={() => void split(c)}><Split size={14} strokeWidth={1.5} /> {parts[c.key] ? 'Join again' : 'Split by folder'}</Button>
         <Button variant="ghost" onclick={() => void ignore(c)}><X size={14} strokeWidth={1.5} /> Ignore</Button>

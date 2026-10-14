@@ -6,6 +6,7 @@ pub mod chat;
 pub mod classifier;
 pub mod cost;
 pub mod decide;
+pub mod name;
 pub mod ocr;
 pub mod onnx;
 pub mod openrouter;

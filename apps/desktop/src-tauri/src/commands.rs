@@ -532,6 +532,12 @@ pub fn discover_ignore(state: State<AppState>, key: String) -> Res<()> {
     state.lib.discover_ignore(&key).map_err(e)
 }
 
+#[tauri::command]
+pub async fn name_cluster(state: State<'_, AppState>, ids: Vec<i64>) -> Res<roll_core::discover::NameSuggestion> {
+    let lib = state.lib.clone();
+    blocking(move || lib.name_cluster(&ids)).await
+}
+
 // Teach
 
 #[tauri::command]
