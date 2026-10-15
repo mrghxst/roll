@@ -411,3 +411,14 @@ questions. One line of reason each. Newest at the bottom of each section.
 - **Search ignores Roll's own tag roots.** `Category/`, `Event/`,
   `Source/` and `From/` are not indexed as words; "cat" matched every
   sorted item through "Category" before.
+- **Local AI is llama.cpp's own server**, run by Roll, not a library built
+  into Roll: the official builds cover Vulkan (any graphics card on Windows
+  and Linux) and Metal, need no compiler toolchain in CI, and keep the
+  installer small (the server comes with the 3 GB model, which is a
+  download anyway). Packs can now be listed once per system under one id.
+  The server is started on demand and stopped after 10 idle minutes (its
+  `/slots` endpoint tells whether a request is still running) so it does
+  not hold graphics memory while Roll is idle. Qwen3-VL 4B rather than 8B:
+  it fits 6 GB cards and is twice as fast (91.1% at 0.95 items/s against
+  95.5% at 0.48 for 8B on the CC0 set); 8B stays the better choice
+  through Ollama.

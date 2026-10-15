@@ -36,7 +36,22 @@ pub struct PackDef {
     pub dir: String,
     /// A step after the download ("places" builds the gazetteer).
     pub after: Option<String>,
+    /// Only for this system (`windows-x86_64`, `macos-aarch64`, …); a pack
+    /// can be listed once per system under one id.
+    #[serde(default)]
+    pub platform: Option<String>,
     pub files: Vec<PackFile>,
+}
+
+/// This system as packs name it: OS and CPU, like `windows-x86_64`.
+pub fn this_platform() -> String {
+    format!("{}-{}", std::env::consts::OS, std::env::consts::ARCH)
+}
+
+impl PackDef {
+    fn fits(&self, platform: &str) -> bool {
+        self.platform.as_deref().is_none_or(|p| p == platform)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -62,7 +77,8 @@ impl Catalog {
     }
 
     pub fn get(&self, id: &str) -> Option<&PackDef> {
-        self.packs.iter().find(|p| p.id == id)
+        let here = this_platform();
+        self.packs.iter().find(|p| p.id == id && p.fits(&here))
     }
 }
 
@@ -155,7 +171,8 @@ impl Packs {
     }
 
     pub fn list(&self) -> Vec<PackStatus> {
-        self.catalog.packs.iter().filter_map(|p| self.status(&p.id)).collect()
+        let here = this_platform();
+        self.catalog.packs.iter().filter(|p| p.fits(&here)).filter_map(|p| self.status(&p.id)).collect()
     }
 
     pub fn status(&self, id: &str) -> Option<PackStatus> {
@@ -558,6 +575,7 @@ mod tests {
                 attribution: String::new(),
                 dir: "models/test".into(),
                 after: None,
+                platform: None,
                 files: files
                     .iter()
                     .map(|(name, body, pinned)| PackFile {

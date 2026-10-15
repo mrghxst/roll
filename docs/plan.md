@@ -268,6 +268,12 @@ Owner requests (2026-10-13), to build after M4–M6:
       (`crates/core/tests/people_real.rs`)
 - [x] Faces for the best shot: with the faces pack, how sharp the faces
       are counts as much as the whole frame's sharpness ("Sharpest faces")
+- [x] **One-click local AI** (PROMPT M7, 2026-10-15): the `local-ai` pack
+      per system (llama.cpp b11372: Vulkan on Windows and Linux, Metal on
+      macOS; Qwen3-VL 4B Q4_K_M and its projector, 3 GB, checksums
+      pinned); "Set up local AI" in Settings › AI and Sort with AI makes it
+      the decision model; Roll starts `llama-server` on 127.0.0.1:8766 when a
+      model is needed and stops it when idle or on exit
 - [ ] Open or closed eyes from a landmark model (the image model's guess
       stays), and duplicates across imports before they are added
 

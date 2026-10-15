@@ -4,6 +4,7 @@
   import { api } from '../ipc/api';
   import type { Settings } from '../ipc/bindings/Settings';
   import { app } from '../state/app.svelte';
+  import LocalAiSetup from '../shell/LocalAiSetup.svelte';
   import Button from '../ui/Button.svelte';
   import IconButton from '../ui/IconButton.svelte';
   import Input from '../ui/Input.svelte';
@@ -172,6 +173,7 @@
     {:else if section === 'ai'}
       <h1>AI</h1>
       <p class="lead">Rules and local models decide first. A decision model only sees what is still uncertain.</p>
+      {#if s.ai_mode !== 'openrouter'}<LocalAiSetup />{/if}
       <Segmented
         label="AI mode"
         options={[
@@ -185,7 +187,7 @@
       {#if s.ai_mode === 'local'}
         <label class="field">
           <span>Local server</span>
-          <Input placeholder="Detected automatically (Ollama, LM Studio, llama.cpp)" value={s.ai_local_endpoint ?? ''} onchange={(e) => save({ ai_local_endpoint: e.currentTarget.value.trim() || null })} />
+          <Input placeholder={app.pack('local-ai')?.state === 'installed' ? "Roll's local AI" : 'Detected automatically (Ollama, LM Studio, llama.cpp)'} value={s.ai_local_endpoint ?? ''} onchange={(e) => save({ ai_local_endpoint: e.currentTarget.value.trim() || null })} />
         </label>
       {:else if s.ai_mode === 'openrouter'}
         <label class="field">

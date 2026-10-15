@@ -223,3 +223,19 @@ family photos at 1024 px, RTX 2080 Ti machine:
   pair up at 0.44–0.51; two different faces within one blurry family
   picnic photo (sharpness 11–18) reached 0.44, which is why two faces in
   one item are never one person.
+
+## Roll's local AI, 2026-10-15
+
+`crates/core/tests/real_models.rs bundled`: the `local-ai` pack (llama.cpp
+b11372 Vulkan, Qwen3-VL 4B Q4_K_M with the Q8_0 projector) started by
+Roll on the first request, RTX 2080 Ti, the 157-item CC0 set:
+
+| Model | Accuracy | Speed |
+|---|---|---|
+| Qwen3-VL 4B, Roll's local AI | 91.1% (143 of 157) | 0.95 items/s |
+| Qwen3-VL 8B, Ollama (M5) | 95.5% | 0.48 items/s |
+
+- Starting the server and loading the model took about 10 s; the run
+  took 165 s, and the server stopped with the library.
+- Its mistakes: wallpapers taken for photos (6) or junk (3), junk taken
+  for photos (3). Documents, memes, screenshots and posts were all right.

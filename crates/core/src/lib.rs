@@ -21,6 +21,7 @@ pub mod import;
 pub mod jobs;
 pub mod journal;
 pub mod library;
+pub mod localai;
 pub mod model;
 pub mod packs;
 pub mod paths;

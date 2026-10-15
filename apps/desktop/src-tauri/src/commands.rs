@@ -532,6 +532,12 @@ pub fn discover_ignore(state: State<AppState>, key: String) -> Res<()> {
     state.lib.discover_ignore(&key).map_err(e)
 }
 
+#[tauri::command]
+pub async fn setup_local_ai(state: State<'_, AppState>) -> Res<()> {
+    let lib = state.lib.clone();
+    blocking(move || lib.setup_local_ai()).await
+}
+
 // People
 
 #[tauri::command]

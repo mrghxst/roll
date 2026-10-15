@@ -86,6 +86,13 @@ Wallpapers, Documents, Junk or Unsorted, plus your own.
   stopped run continues where it stopped, without paying twice for items
   already answered. The **model check** compares up to three models on
   about 150 of your own items and recommends the cheapest good one.
+- **Local AI in one click** (Settings › AI or Sort with AI): Roll downloads
+  llama.cpp's server and Qwen3-VL 4B (about 3 GB, from GitHub and Hugging
+  Face) and uses it as the decision model. Nothing else needs installing.
+  Roll starts the server when a model is needed, stops it after 10 minutes
+  without requests and when Roll closes, and it listens only on this
+  computer. Ollama or LM Studio still work if you prefer them: enter their
+  address in Settings › AI.
 - **Duplicates** finds exact copies, smaller copies (the WhatsApp copy of a
   camera photo), look-alikes and bursts, and suggests which to keep. Merging
   keeps the best one and moves the others to Roll's trash.

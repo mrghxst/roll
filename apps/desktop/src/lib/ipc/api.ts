@@ -231,6 +231,8 @@ export interface Api {
   /** Clusters of undecided items; `split` breaks one up by folder. */
   discover(split: string | null): Promise<Cluster[]>;
   discoverIgnore(key: string): Promise<void>;
+  /** Roll's local AI becomes the decision model and its pack downloads. */
+  setupLocalAi(): Promise<void>;
   /** Everyone found in photos, named first. */
   people(): Promise<Person[]>;
   personFaces(person: number): Promise<FaceBox[]>;

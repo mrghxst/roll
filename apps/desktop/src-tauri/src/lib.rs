@@ -175,6 +175,7 @@ pub fn run() {
             commands::discover,
             commands::discover_ignore,
             commands::name_cluster,
+            commands::setup_local_ai,
             commands::people,
             commands::person_faces,
             commands::faces_in,
@@ -231,6 +232,12 @@ pub fn run() {
             commands::immich_album,
             commands::save_immich_script,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running Roll");
+        .build(tauri::generate_context!())
+        .expect("error while building Roll")
+        .run(|app, event| {
+            // The local AI server is Roll's to stop.
+            if let tauri::RunEvent::Exit = event {
+                app.state::<AppState>().lib.shutdown();
+            }
+        });
 }

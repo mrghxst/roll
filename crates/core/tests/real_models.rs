@@ -190,3 +190,39 @@ fn openrouter() {
         assert!((0.75..=1.25).contains(&ratio), "estimate off by more than 25%");
     }
 }
+
+/// Roll's own local AI (the `local-ai` pack in ROLL_PACKS): started on
+/// the first request, used for a whole run, stopped with the library.
+#[test]
+#[ignore = "needs the local-ai pack in ROLL_PACKS"]
+fn bundled() {
+    let Some(packs) = std::env::var_os("ROLL_PACKS") else { return };
+    let dir = PathBuf::from(packs).join("models/local-ai");
+    if !dir.join("pack.json").exists() {
+        eprintln!("the local-ai pack is not in ROLL_PACKS");
+        return;
+    }
+    if !dir.join("engine").exists() {
+        roll_core::localai::unpack(&dir).unwrap();
+    }
+    let tmp = tempfile::tempdir().unwrap();
+    let Some((lib, truth)) = setup(tmp.path()) else { return };
+    let mut s = lib.settings();
+    s.ai_mode = "local".into();
+    s.ai_local_endpoint = Some(roll_core::localai::BASE.into());
+    s.ai_decision_model = Some(roll_core::localai::MODEL.into());
+    lib.save_settings(&s).unwrap();
+    let start = Instant::now();
+    let r = run(&lib, &truth, None);
+    println!(
+        "speed {:.2} items/s, {:.0} s with starting the server",
+        r.answered as f64 / r.seconds.max(0.1),
+        start.elapsed().as_secs_f64()
+    );
+    assert!(r.answered as f64 >= r.items as f64 * 0.9, "most items answered");
+    let _ = (r.correct, r.unsure, r.spent, r.estimate);
+    lib.shutdown();
+    std::thread::sleep(Duration::from_secs(1));
+    let up = ureq::get(format!("http://127.0.0.1:{}/health", roll_core::localai::PORT)).call().is_ok();
+    assert!(!up, "the server stops with the library");
+}

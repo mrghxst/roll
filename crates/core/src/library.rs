@@ -72,6 +72,7 @@ pub struct Library {
     /// The text reader, once its pack is installed and first needed.
     reader: Mutex<Option<Arc<roll_ai::ocr::Reader>>>,
     faces: Mutex<Option<Arc<roll_ai::faces::Faces>>>,
+    local_ai: crate::localai::Server,
 }
 
 /// Whether the offline place names are installed.
@@ -123,6 +124,7 @@ impl Library {
             similar_cache: Mutex::new(None),
             reader: Mutex::new(None),
             faces: Mutex::new(None),
+            local_ai: Default::default(),
         }))
     }
 
@@ -556,6 +558,37 @@ impl Library {
             self.jobs.enqueue(JobSpec::Ocr)?;
         }
         Ok(())
+    }
+
+    /// Start Roll's local AI server unless it runs (waits for the model).
+    fn start_local_ai(&self) -> anyhow::Result<()> {
+        let dir = self.packs.installed(crate::localai::PACK).ok_or_else(|| {
+            anyhow::anyhow!("The local AI is not downloaded yet. Set it up in Sort with AI or Settings › Models and data.")
+        })?;
+        let logs = self.data_dir.join("logs");
+        std::fs::create_dir_all(&logs)?;
+        self.local_ai.ensure(&dir, &logs.join("local-ai.log"))
+    }
+
+    /// One click: Roll's local AI becomes the decision model, and its pack
+    /// (about 3 GB) downloads.
+    pub fn setup_local_ai(self: &Arc<Self>) -> anyhow::Result<()> {
+        let mut s = self.settings();
+        let missing = self.packs.installed(crate::localai::PACK).is_none();
+        anyhow::ensure!(!missing || s.network.downloads, "Downloads are off. Turn them on in Settings › Network.");
+        s.ai_mode = "local".into();
+        s.ai_local_endpoint = Some(crate::localai::BASE.into());
+        s.ai_decision_model = Some(crate::localai::MODEL.into());
+        self.save_settings(&s)?;
+        if missing {
+            self.download_pack(crate::localai::PACK)?;
+        }
+        Ok(())
+    }
+
+    /// Stop what Roll started outside itself (the local AI server).
+    pub fn shutdown(&self) {
+        self.local_ai.stop();
     }
 
     fn face_model(&self) -> anyhow::Result<Option<Arc<roll_ai::faces::Faces>>> {
@@ -1319,6 +1352,7 @@ impl Library {
                     None => Ok(()),
                 }))
             }
+            Some("llama") => Some(Box::new(|dir: &Path| crate::localai::unpack(dir))),
             Some(step @ ("vision" | "reader" | "faces")) => {
                 // Start the model's job once the pack is marked installed
                 // (the manifest is written after this step).
@@ -1357,6 +1391,9 @@ impl Library {
         }
         if id == "faces" {
             *self.faces.lock() = None;
+        }
+        if id == crate::localai::PACK {
+            self.local_ai.stop();
         }
         if id == "image-model" {
             *self.vision.lock() = None;
@@ -1926,6 +1963,7 @@ impl Library {
             "local" => {
                 let base = match s.ai_local_endpoint.filter(|e| !e.trim().is_empty()) {
                     Some(b) => b,
+                    None if self.packs.installed(crate::localai::PACK).is_some() => crate::localai::BASE.to_string(),
                     None => roll_ai::chat::detect_local().into_iter().next().map(|(_, b, _)| b).ok_or_else(|| {
                         anyhow::anyhow!("No local AI server found. Start Ollama, LM Studio or llama-server, or enter its address.")
                     })?,
@@ -1952,13 +1990,19 @@ impl Library {
             "local" => {
                 let base = match s.ai_local_endpoint.filter(|e| !e.trim().is_empty()) {
                     Some(b) => b,
+                    None if self.packs.installed(crate::localai::PACK).is_some() => crate::localai::BASE.to_string(),
                     None => roll_ai::chat::detect_local()
                         .into_iter()
                         .next()
                         .map(|(_, b, _)| b)
                         .ok_or_else(|| anyhow::anyhow!("No local AI server found. Start Ollama, LM Studio or llama-server."))?,
                 };
-                Ok(Endpoint::new(&base, None))
+                if base == crate::localai::BASE {
+                    self.start_local_ai()?;
+                }
+                let mut ep = Endpoint::new(&base, None);
+                ep.timeout = std::time::Duration::from_secs(600);
+                Ok(ep)
             }
             _ => anyhow::bail!("AI is off. Choose Local or OpenRouter in Settings › AI."),
         }
@@ -1982,11 +2026,16 @@ impl Library {
                 allow_non_zdr: s.ai_allow_non_zdr,
             });
         }
-        let label = roll_ai::chat::LOCAL_SERVERS
-            .iter()
-            .find(|(_, b)| provider.starts_with(&b[..b.len() - 3]))
-            .map(|(n, _)| n.to_string())
-            .unwrap_or_else(|| "the local server".into());
+        let label = if provider == crate::localai::BASE {
+            self.start_local_ai()?;
+            "Roll's local AI".to_string()
+        } else {
+            roll_ai::chat::LOCAL_SERVERS
+                .iter()
+                .find(|(_, b)| provider.starts_with(&b[..b.len() - 3]))
+                .map(|(n, _)| n.to_string())
+                .unwrap_or_else(|| "the local server".into())
+        };
         let mut endpoint = Endpoint::new(provider, None);
         // Local models are slower per request.
         endpoint.timeout = std::time::Duration::from_secs(600);
@@ -2027,14 +2076,19 @@ impl Library {
         let gpu = gpu_memory_gb();
         let measured = crate::decide::measured(&self.db.read()).unwrap_or_default();
         let local: Vec<crate::decide::LocalServer> = if s.ai_mode == "local" {
-            roll_ai::chat::detect_local()
-                .into_iter()
-                .map(|(name, base, models)| {
+            // Roll's own server first, whether it runs yet or not.
+            let own = self.packs.installed(crate::localai::PACK).map(|_| crate::decide::LocalServer {
+                name: "Roll".into(),
+                base: crate::localai::BASE.into(),
+                models: crate::decide::rank_local(&[crate::localai::MODEL.to_string()], &Default::default(), gpu, &measured, false),
+            });
+            own.into_iter()
+                .chain(roll_ai::chat::detect_local().into_iter().map(|(name, base, models)| {
                     let ollama = name == "Ollama";
                     let sizes = if ollama { ollama_sizes(&base) } else { Default::default() };
                     let models = crate::decide::rank_local(&models, &sizes, gpu, &measured, ollama);
                     crate::decide::LocalServer { name, base, models }
-                })
+                }))
                 .collect()
         } else {
             Vec::new()

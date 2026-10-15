@@ -86,6 +86,7 @@ export const tauriApi: Api = {
   acceptAbove: (key, min) => invoke('accept_above', { key, min }),
   discover: (split) => invoke('discover', { split }),
   nameCluster: (ids) => invoke('name_cluster', { ids }),
+  setupLocalAi: () => invoke('setup_local_ai'),
   people: () => invoke('people'),
   personFaces: (person) => invoke('person_faces', { person }),
   facesIn: (asset) => invoke('faces_in', { asset }),

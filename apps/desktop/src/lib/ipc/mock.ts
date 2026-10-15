@@ -400,10 +400,11 @@ const packs: PackStatus[] = [
   pack('image-model', 'Image understanding', 1_535_520_638, 'huggingface.co', 'Apache-2.0'),
   pack('text-reader', 'Text in photos', 31_114_837, 'github.com', 'Apache-2.0'),
   pack('faces', 'Faces', 38_941_385, 'huggingface.co', 'MIT (YuNet), Apache-2.0 (SFace)'),
+  pack('local-ai', 'Local AI', 2_984_528_827, 'github.com', 'MIT (llama.cpp), Apache-2.0 (Qwen3-VL)'),
 ];
-// `?models=1`: the image model and text reader are installed (Teach, Find similar).
+// `?models=1`: the image model, text reader and faces are installed (Teach, Find similar, People).
 if (params.get('models') === '1') {
-  for (const p of packs) if (p.id !== 'places') Object.assign(p, { state: 'installed', done: p.size });
+  for (const p of packs) if (p.id !== 'places' && p.id !== 'local-ai') Object.assign(p, { state: 'installed', done: p.size });
 }
 const packTimers = new Map<string, ReturnType<typeof setInterval>>();
 
@@ -2041,6 +2042,13 @@ export const mockApi: Api = {
       }));
   },
   discoverIgnore: async (key) => void dismissed.add(key),
+  setupLocalAi: async () => {
+    const missing = packs.find((p) => p.id === 'local-ai')?.state !== 'installed';
+    if (missing && !settings.network.downloads) throw new Error('Downloads are off. Turn them on in Settings › Network.');
+    settings = { ...settings, ai_mode: 'local', ai_local_endpoint: 'http://127.0.0.1:8766/v1', ai_decision_model: 'qwen3-vl-4b-instruct' };
+    emit('changed', 'settings');
+    if (packs.find((p) => p.id === 'local-ai')?.state !== 'installed') await mockApi.downloadPack('local-ai');
+  },
   people: async () => {
     ensurePeople();
     const live = liveFaces();

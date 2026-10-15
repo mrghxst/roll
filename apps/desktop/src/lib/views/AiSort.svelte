@@ -11,6 +11,7 @@
   import { app } from '../state/app.svelte';
   import { toast } from '../state/toast.svelte';
   import { viewer } from '../state/viewer.svelte';
+  import LocalAiSetup from '../shell/LocalAiSetup.svelte';
   import Button from '../ui/Button.svelte';
   import Input from '../ui/Input.svelte';
   import Kbd from '../ui/Kbd.svelte';
@@ -225,8 +226,10 @@
       <p class="muted">Checking…</p>
     {:else if status.mode === 'off'}
       <p>AI is off. Rules and your own decisions still sort everything they can.</p>
+      <LocalAiSetup onready={() => void loadStatus()} />
       <div class="row"><Button onclick={() => app.go('settings')}><Gear size={14} strokeWidth={1.5} /> Choose Local or OpenRouter</Button></div>
     {:else if status.mode === 'local'}
+      <LocalAiSetup onready={() => void loadStatus()} />
       {#if !status.local.length && !status.endpoint}
         <p>No local AI server answers on its usual port (Ollama 11434, LM Studio 1234, llama.cpp 8080). Start one, or enter its address in Settings › AI.</p>
         <div class="row"><Button onclick={() => void loadStatus()}><RefreshCw size={14} strokeWidth={1.5} /> Look again</Button></div>
