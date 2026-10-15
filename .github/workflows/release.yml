@@ -53,7 +53,7 @@ jobs:
 
       - name: macOS and Linux tools to bundle
         if: runner.os != 'Windows'
-        run: ./scripts/fetch-tools.sh
+        run: bash scripts/fetch-tools.sh
 
       - uses: dtolnay/rust-toolchain@stable
         with:
