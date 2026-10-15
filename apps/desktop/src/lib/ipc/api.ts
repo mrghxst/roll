@@ -1,6 +1,8 @@
 // The backend interface the UI uses. In the app it is Tauri; in a plain
 // browser (development, Playwright) it is an in-memory mock.
 
+import type { FaceBox } from './bindings/FaceBox';
+import type { Person } from './bindings/Person';
 import type { BestMatches } from './bindings/BestMatches';
 import type { NameSuggestion } from './bindings/NameSuggestion';
 import type { ShotScore } from './bindings/ShotScore';
@@ -229,6 +231,18 @@ export interface Api {
   /** Clusters of undecided items; `split` breaks one up by folder. */
   discover(split: string | null): Promise<Cluster[]>;
   discoverIgnore(key: string): Promise<void>;
+  /** Everyone found in photos, named first. */
+  people(): Promise<Person[]>;
+  personFaces(person: number): Promise<FaceBox[]>;
+  facesIn(asset: number): Promise<FaceBox[]>;
+  /** Name or rename a person (null takes the name away); one undo. */
+  namePerson(person: number, name: string | null): Promise<void>;
+  mergePeople(into: number, others: number[]): Promise<void>;
+  /** The faces leave their person and stay out of it. */
+  notPerson(faces: number[]): Promise<void>;
+  /** Faces to an existing person, or to a new one by name. */
+  assignFaces(faces: number[], person: number | null, name: string | null): Promise<void>;
+  hidePerson(person: number, hidden: boolean): Promise<void>;
   /** A name for a Discover group from the decision model (sends up to 9 pictures). */
   nameCluster(ids: number[]): Promise<NameSuggestion>;
   /** Sort `ids` into `key` as examples, train, and propose matches in Review. */

@@ -24,7 +24,128 @@ pub struct MetaEdit {
     /// 0 clears the rating.
     pub rating: Option<u8>,
     pub orientation: Option<u16>,
+    /// Named faces as MWG regions. Regions other apps wrote stay.
+    pub regions: Option<Regions>,
 }
+
+/// Named faces for `XMP-mwg-rs:RegionInfo` (Immich imports them as people).
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct Regions {
+    /// The displayed image's size and the file's EXIF orientation: regions
+    /// are written relative to the stored pixels, as MWG says.
+    pub width: u32,
+    pub height: u32,
+    pub orientation: u16,
+    /// Name and box (left, top, width, height, 0–1 of the displayed image).
+    pub faces: Vec<(String, [f32; 4])>,
+    /// Every face Roll found (same boxes): an old region on one of them
+    /// whose name Roll wrote before (`names`) is Roll's and is replaced.
+    pub found: Vec<[f32; 4]>,
+    pub names: Vec<String>,
+}
+
+impl Regions {
+    /// A box on the displayed image as a box on the stored pixels.
+    fn stored(&self, r: [f32; 4]) -> [f32; 4] {
+        let (cx, cy) = (r[0] + r[2] / 2.0, r[1] + r[3] / 2.0);
+        let (x, y, swap) = match self.orientation {
+            2 => (1.0 - cx, cy, false),
+            3 => (1.0 - cx, 1.0 - cy, false),
+            4 => (cx, 1.0 - cy, false),
+            5 => (cy, cx, true),
+            6 => (cy, 1.0 - cx, true),
+            7 => (1.0 - cy, 1.0 - cx, true),
+            8 => (1.0 - cy, cx, true),
+            _ => (cx, cy, false),
+        };
+        let (w, h) = if swap { (r[3], r[2]) } else { (r[2], r[3]) };
+        [x, y, w, h]
+    }
+
+    fn stored_size(&self) -> (u32, u32) {
+        if (5..=8).contains(&self.orientation) { (self.height, self.width) } else { (self.width, self.height) }
+    }
+
+    /// The new `RegionInfo` (as ExifTool's struct value) from what the file
+    /// has: other regions kept, Roll's named faces added. `None` clears it.
+    fn merged(&self, existing: Option<&Value>) -> Option<String> {
+        let ours: Vec<(String, [f32; 4])> = self.faces.iter().map(|(n, r)| (n.clone(), self.stored(*r))).collect();
+        let found: Vec<[f32; 4]> = self.found.iter().map(|r| self.stored(*r)).collect();
+        let overlaps = |a: &[f32; 4], b: &[f32; 4]| centre_iou(a, b) >= 0.3;
+        let mut keep: Vec<Value> = Vec::new();
+        let list = existing.and_then(|v| v.get("RegionList")).and_then(Value::as_array).cloned().unwrap_or_default();
+        for r in list {
+            let area = r.get("Area");
+            let num = |k: &str| area.and_then(|a| a.get(k)).and_then(Value::as_f64).unwrap_or(0.0) as f32;
+            let normalized = area.and_then(|a| a.get("Unit")).and_then(Value::as_str).is_none_or(|u| u == "normalized");
+            let b = [num("X"), num("Y"), num("W"), num("H")];
+            let face = r.get("Type").and_then(Value::as_str).is_none_or(|t| t.eq_ignore_ascii_case("face"));
+            let name = r.get("Name").and_then(Value::as_str).unwrap_or("");
+            let replaced = normalized
+                && face
+                && (ours.iter().any(|(_, o)| overlaps(o, &b))
+                    || (found.iter().any(|o| overlaps(o, &b)) && self.names.iter().any(|n| n == name)));
+            if !replaced {
+                keep.push(r);
+            }
+        }
+        if keep.is_empty() && ours.is_empty() {
+            return None;
+        }
+        let mut items: Vec<String> = keep.iter().map(exiftool_struct).collect();
+        for (name, [x, y, w, h]) in &ours {
+            items.push(format!("{{Area={{X={x:.5},Y={y:.5},W={w:.5},H={h:.5},Unit=normalized}},Name={},Type=Face}}", escape_struct(name)));
+        }
+        let (sw, sh) = match existing.and_then(|v| v.get("AppliedToDimensions")) {
+            // Keep the file's own dimensions when other regions use them.
+            Some(d) if !keep.is_empty() => (
+                d.get("W").and_then(Value::as_u64).unwrap_or(self.stored_size().0 as u64) as u32,
+                d.get("H").and_then(Value::as_u64).unwrap_or(self.stored_size().1 as u64) as u32,
+            ),
+            _ => self.stored_size(),
+        };
+        Some(format!("{{AppliedToDimensions={{W={sw},H={sh},Unit=pixel}},RegionList=[{}]}}", items.join(",")))
+    }
+}
+
+/// Overlap of two boxes given by centre and size.
+fn centre_iou(a: &[f32; 4], b: &[f32; 4]) -> f32 {
+    let corner = |r: &[f32; 4]| [r[0] - r[2] / 2.0, r[1] - r[3] / 2.0, r[2], r[3]];
+    let (a, b) = (corner(a), corner(b));
+    let x0 = a[0].max(b[0]);
+    let y0 = a[1].max(b[1]);
+    let x1 = (a[0] + a[2]).min(b[0] + b[2]);
+    let y1 = (a[1] + a[3]).min(b[1] + b[3]);
+    let inter = (x1 - x0).max(0.0) * (y1 - y0).max(0.0);
+    let union = a[2] * a[3] + b[2] * b[3] - inter;
+    if union <= 0.0 { 0.0 } else { inter / union }
+}
+
+/// A value in ExifTool's structure syntax (`{A=1,B=[x,y]}`).
+fn exiftool_struct(v: &Value) -> String {
+    match v {
+        Value::Object(m) => format!("{{{}}}", m.iter().map(|(k, v)| format!("{k}={}", exiftool_struct(v))).collect::<Vec<_>>().join(",")),
+        Value::Array(a) => format!("[{}]", a.iter().map(exiftool_struct).collect::<Vec<_>>().join(",")),
+        Value::String(s) => escape_struct(s),
+        Value::Null => String::new(),
+        other => other.to_string(),
+    }
+}
+
+/// ExifTool's escape for `,` `]` `}` `|` (and a leading `[` or `{`) in a
+/// structure field.
+fn escape_struct(s: &str) -> String {
+    let mut out = String::new();
+    for (i, ch) in s.chars().enumerate() {
+        if matches!(ch, ',' | ']' | '}' | '|') || (i == 0 && matches!(ch, '[' | '{')) {
+            out.push('|');
+        }
+        out.push(ch);
+    }
+    out
+}
+
+const REGION_TAG: &str = "XMP-mwg-rs:RegionInfo";
 
 impl MetaEdit {
     pub fn is_empty(&self) -> bool {
@@ -239,6 +360,9 @@ fn file_plan(edit: &MetaEdit, kind: MediaKind, format: &str) -> Plan {
     if let (Some(o), false) = (edit.orientation, video) {
         p.set_num("EXIF:Orientation", o);
     }
+    if edit.regions.is_some() && !video {
+        p.touch(REGION_TAG);
+    }
     p
 }
 
@@ -313,7 +437,21 @@ fn sidecar_plan(edit: &MetaEdit) -> Plan {
             p.clear("XMP-xmp:Rating");
         }
     }
+    if edit.regions.is_some() {
+        p.touch(REGION_TAG);
+    }
     p
+}
+
+/// The region assignment for `file`: its current regions merged with ours.
+fn region_assign(tool: &mut ExifTool, file: &Path, regions: &Regions) -> Result<Vec<String>, ExifToolError> {
+    let json = tool.read_json(&[file], &[&format!("-{REGION_TAG}")])?;
+    let existing =
+        json.first().and_then(|o| o.as_object()).and_then(|o| o.iter().find(|(k, _)| k.ends_with(":RegionInfo")).map(|(_, v)| v.clone()));
+    Ok(vec![match regions.merged(existing.as_ref()) {
+        Some(v) => format!("-{REGION_TAG}={v}"),
+        None => format!("-{REGION_TAG}="),
+    }])
 }
 
 /// Previous tag values and the image data hash.
@@ -388,6 +526,9 @@ pub fn perform(
             if edit.tags.is_some() && matches!(format, "jpeg" | "tiff") {
                 assign.splice(0..0, ["-charset".to_string(), "iptc=UTF8".to_string()]);
             }
+            if let (Some(r), false) = (&edit.regions, kind == MediaKind::Video) {
+                assign.extend(region_assign(tool, file, r)?);
+            }
             tool.write(file, &assign)?;
             let after = read_values(tool, file, &[])?.1;
             if snap.image_hash.is_some() && after != snap.image_hash {
@@ -400,7 +541,11 @@ pub fn perform(
         if !existed {
             std::fs::write(&side, EMPTY_XMP).map_err(|e| ExifToolError::Failed(e.to_string()))?;
         }
-        if let Err(e) = tool.write(&side, &sidecar_plan(edit).assign) {
+        let mut assign = sidecar_plan(edit).assign;
+        if let Some(r) = &edit.regions {
+            assign.extend(region_assign(tool, &side, r)?);
+        }
+        if let Err(e) = tool.write(&side, &assign) {
             if !existed {
                 let _ = std::fs::remove_file(&side);
             }
@@ -449,6 +594,7 @@ fn restore_in_file(tool: &mut ExifTool, file: &Path, snap: &Snapshot) -> Result<
 fn plain(v: &Value) -> String {
     match v {
         Value::String(s) => s.clone(),
+        Value::Object(_) => exiftool_struct(v),
         other => other.to_string(),
     }
 }
@@ -489,6 +635,7 @@ mod tests {
             description: Some(Some("Line one\nline two".into())),
             rating: Some(4),
             orientation: None,
+            regions: None,
         }
     }
 
@@ -522,6 +669,37 @@ mod tests {
         let all = p.assign.join("\n");
         assert!(all.contains("-XMP-exif:DateTimeOriginal=2019:08:12 14:03:22+02:00"));
         assert!(all.contains("-XMP-exif:GPSLatitude#=45.64"));
+    }
+
+    #[test]
+    fn regions_merge_and_follow_orientation() {
+        let r = Regions {
+            width: 300,
+            height: 400,
+            orientation: 6,
+            faces: vec![("Anna, Bea".into(), [0.1, 0.2, 0.2, 0.1])],
+            found: vec![[0.1, 0.2, 0.2, 0.1], [0.6, 0.6, 0.2, 0.2]],
+            names: vec!["Ben".into()],
+        };
+        // Turned a quarter: the box's centre (0.2, 0.25) is (0.25, 0.8) stored.
+        let s = r.stored([0.1, 0.2, 0.2, 0.1]);
+        assert!((s[0] - 0.25).abs() < 1e-6 && (s[1] - 0.8).abs() < 1e-6 && s[2] == 0.1 && s[3] == 0.2, "{s:?}");
+        let existing = serde_json::json!({
+            "AppliedToDimensions": {"W": 400, "H": 300, "Unit": "pixel"},
+            "RegionList": [
+                {"Area": {"X": 0.25, "Y": 0.8, "W": 0.1, "H": 0.2, "Unit": "normalized"}, "Name": "Old", "Type": "Face"},
+                {"Area": {"X": 0.7, "Y": 0.3, "W": 0.2, "H": 0.2, "Unit": "normalized"}, "Name": "Ben", "Type": "Face"},
+                {"Area": {"X": 0.1, "Y": 0.1, "W": 0.1, "H": 0.1, "Unit": "normalized"}, "Name": "Rex", "Type": "Pet"}
+            ]
+        });
+        let v = r.merged(Some(&existing)).unwrap();
+        assert!(!v.contains("Name=Old"), "replaced by the named face: {v}");
+        assert!(!v.contains("Name=Ben"), "Roll's old name on a found face: {v}");
+        assert!(v.contains("Name=Rex"), "other regions stay: {v}");
+        assert!(v.contains("Name=Anna|, Bea,Type=Face"), "{v}");
+        assert!(v.starts_with("{AppliedToDimensions={W=400,H=300,Unit=pixel}"), "{v}");
+        let none = Regions { faces: vec![], ..r };
+        assert_eq!(none.merged(None), None);
     }
 
     #[test]

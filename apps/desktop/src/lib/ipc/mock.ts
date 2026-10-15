@@ -281,6 +281,59 @@ function burstSeries() {
     .map((ids) => ({ key: `burst:${ids.join(',')}`, kind: 'burst', ids, why: 'The original camera file.' }));
 }
 
+/** People: four people over the photos, one face each in some of them. */
+interface MockPerson {
+  id: number;
+  name: string | null;
+  hidden: boolean;
+}
+interface MockFace {
+  id: number;
+  asset: number;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  person: number | null;
+  rejected: number[];
+}
+let people: MockPerson[] = [];
+let faces: MockFace[] = [];
+let peopleReady = false;
+function ensurePeople() {
+  if (peopleReady) return;
+  peopleReady = true;
+  people = [
+    { id: 1, name: 'Anna', hidden: false },
+    { id: 2, name: null, hidden: false },
+    { id: 3, name: null, hidden: false },
+    { id: 4, name: null, hidden: false },
+  ];
+  const photos = assets.filter((a) => a.category === 'photos' && a.duration == null).slice(0, 80);
+  let id = 0;
+  photos.forEach((a, i) => {
+    const person = [1, 2, 3, 4, null][i % 5]!;
+    faces.push({ id: ++id, asset: a.id, x: 0.38, y: 0.22, w: 0.2, h: 0.28, person, rejected: [] });
+    if (i % 3 === 0) faces.push({ id: ++id, asset: a.id, x: 0.7, y: 0.3, w: 0.12, h: 0.18, person: i % 2 ? 2 : null, rejected: [] });
+  });
+}
+const faceBox = (f: MockFace) => ({ id: f.id, asset: f.asset, x: f.x, y: f.y, w: f.w, h: f.h, person: f.person, ratio: byId(f.asset)?.aspect ?? 1.5 });
+const liveFaces = () => faces.filter((f) => !byId(f.asset)?.trashed);
+/** A people change as one undoable batch. */
+function peopleChange(label: string, fn: () => void) {
+  const before = { people: people.map((p) => ({ ...p })), faces: faces.map((f) => ({ ...f, rejected: [...f.rejected] })) };
+  fn();
+  const id = ++batchSeq;
+  customUndo.set(id, () => {
+    people = before.people;
+    faces = before.faces;
+    emit('changed', 'people');
+  });
+  pushBatch(id, 'edit', label, 1);
+  emit('changed', 'people');
+  emit('changed', 'history');
+}
+
 /** The mock's stand-in for image similarity: the closest colours. */
 function lookAlike(ids: number[], limit: number): number[] {
   const rgb = (c: number) => [(c >> 16) & 255, (c >> 8) & 255, c & 255];
@@ -346,6 +399,7 @@ const packs: PackStatus[] = [
   pack('places', 'Place names', 14_055_527, 'download.geonames.org', 'CC BY 4.0', false),
   pack('image-model', 'Image understanding', 1_535_520_638, 'huggingface.co', 'Apache-2.0'),
   pack('text-reader', 'Text in photos', 31_114_837, 'github.com', 'Apache-2.0'),
+  pack('faces', 'Faces', 38_941_385, 'huggingface.co', 'MIT (YuNet), Apache-2.0 (SFace)'),
 ];
 // `?models=1`: the image model and text reader are installed (Teach, Find similar).
 if (params.get('models') === '1') {
@@ -733,6 +787,10 @@ function filter(q: Query): MockAsset[] {
     if (q.tags.length && !q.tags.every((t) => a.tags.includes(t))) return false;
     if (q.event_id != null && !mockEvents.find((e) => e.id === q.event_id)?.ids.includes(a.id)) return false;
     if (q.text && !a.name.toLowerCase().includes(q.text.toLowerCase())) return false;
+    if (q.people?.length) {
+      ensurePeople();
+      if (!q.people.every((p) => faces.some((f) => f.asset === a.id && f.person === p))) return false;
+    }
     return true;
   });
 }
@@ -1983,6 +2041,63 @@ export const mockApi: Api = {
       }));
   },
   discoverIgnore: async (key) => void dismissed.add(key),
+  people: async () => {
+    ensurePeople();
+    const live = liveFaces();
+    return people
+      .map((p) => {
+        const mine = live.filter((f) => f.person === p.id);
+        return { id: p.id, name: p.name, hidden: p.hidden, faces: mine.length, items: new Set(mine.map((f) => f.asset)).size, cover: mine[0] ? faceBox(mine[0]) : null };
+      })
+      .filter((p) => p.faces > 0)
+      .sort((a, b) => Number(a.name == null) - Number(b.name == null) || b.faces - a.faces || a.id - b.id);
+  },
+  personFaces: async (person) => {
+    ensurePeople();
+    return liveFaces().filter((f) => f.person === person).map(faceBox);
+  },
+  facesIn: async (asset) => {
+    ensurePeople();
+    return faces.filter((f) => f.asset === asset).map(faceBox);
+  },
+  namePerson: async (person, name) => {
+    ensurePeople();
+    const n = name?.trim() || null;
+    peopleChange(n ? `Named ${n}` : 'Took a name away', () => {
+      people = people.map((p) => (p.id === person ? { ...p, name: n } : p));
+    });
+  },
+  mergePeople: async (into, others) => {
+    ensurePeople();
+    const name = people.find((p) => p.id === into)?.name ?? people.find((p) => others.includes(p.id) && p.name)?.name ?? null;
+    peopleChange(`Merged ${others.length + 1} people${name ? ` into ${name}` : ''}`, () => {
+      faces = faces.map((f) => (f.person != null && others.includes(f.person) ? { ...f, person: into } : f));
+      people = people.map((p) => (p.id === into ? { ...p, name } : p));
+    });
+  },
+  notPerson: async (ids) => {
+    ensurePeople();
+    peopleChange('Not this person', () => {
+      faces = faces.map((f) => (ids.includes(f.id) && f.person != null ? { ...f, rejected: [...f.rejected, f.person], person: null } : f));
+    });
+  },
+  assignFaces: async (ids, person, name) => {
+    ensurePeople();
+    let target = person;
+    if (target == null) {
+      target = Math.max(0, ...people.map((p) => p.id)) + 1;
+      people = [...people, { id: target, name: name?.trim() || null, hidden: false }];
+    }
+    const label = people.find((p) => p.id === target)?.name;
+    peopleChange(label ? `This is ${label}` : 'Grouped faces', () => {
+      faces = faces.map((f) => (ids.includes(f.id) ? { ...f, person: target } : f));
+    });
+  },
+  hidePerson: async (person, hidden) => {
+    ensurePeople();
+    people = people.map((p) => (p.id === person ? { ...p, hidden } : p));
+    emit('changed', 'people');
+  },
   nameCluster: async (ids) => {
     const shots = ids.filter((id) => byId(id)?.category === 'screenshots').length;
     return shots * 2 > ids.length

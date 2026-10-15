@@ -173,6 +173,26 @@ pub fn meta_edit(c: &Connection, asset: i64) -> rusqlite::Result<(MetaEdit, Medi
         e.orientation =
             Some(c.query_row("SELECT coalesce(orientation, 1) FROM assets WHERE id = ?1", [asset], |r| r.get::<_, i64>(0))? as u16);
     }
+    // Named faces, and Roll's earlier names to take back out.
+    let named = crate::people::named_regions(c, asset)?;
+    let faces = crate::people::faces_of_asset(c, asset)?;
+    let names = crate::people::names_ever(c)?;
+    if kind != 1 && !faces.is_empty() && !names.is_empty() {
+        let (width, height, orientation): (i64, i64, i64) = c.query_row(
+            "SELECT coalesce(width, 0), coalesce(height, 0), coalesce(orientation, 1) FROM assets WHERE id = ?1",
+            [asset],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+        )?;
+        let found = faces.iter().map(|f| [f.x, f.y, f.w, f.h]).collect();
+        e.regions = Some(roll_meta::write::Regions {
+            width: width as u32,
+            height: height as u32,
+            orientation: orientation as u16,
+            faces: named,
+            found,
+            names,
+        });
+    }
     Ok((e, if kind == 1 { MediaKind::Video } else { MediaKind::Photo }, format))
 }
 

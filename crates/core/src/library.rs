@@ -71,6 +71,7 @@ pub struct Library {
     similar_cache: Mutex<Option<(String, Vec<i64>)>>,
     /// The text reader, once its pack is installed and first needed.
     reader: Mutex<Option<Arc<roll_ai::ocr::Reader>>>,
+    faces: Mutex<Option<Arc<roll_ai::faces::Faces>>>,
 }
 
 /// Whether the offline place names are installed.
@@ -121,6 +122,7 @@ impl Library {
             embed_index: Mutex::new(None),
             similar_cache: Mutex::new(None),
             reader: Mutex::new(None),
+            faces: Mutex::new(None),
         }))
     }
 
@@ -222,6 +224,9 @@ impl Library {
                 if self.packs.installed("image-model").is_some() {
                     self.jobs.enqueue(JobSpec::Embed)?;
                 }
+                if self.packs.installed("faces").is_some() {
+                    self.jobs.enqueue(JobSpec::Faces)?;
+                }
                 Ok(())
             }
             JobSpec::Classify => {
@@ -235,6 +240,7 @@ impl Library {
             JobSpec::Hash => self.run_hash(ctx),
             JobSpec::Embed => self.run_embed(ctx),
             JobSpec::Ocr => self.run_ocr(ctx),
+            JobSpec::Faces => self.run_faces(ctx),
             JobSpec::Index => {
                 let gaz = self.gaz();
                 let place = |la: f64, lo: f64| gaz.as_ref().and_then(|g| g.reverse(la, lo).map(|e| e.label()));
@@ -549,6 +555,124 @@ impl Library {
         if self.packs.installed("text-reader").is_some() {
             self.jobs.enqueue(JobSpec::Ocr)?;
         }
+        Ok(())
+    }
+
+    fn face_model(&self) -> anyhow::Result<Option<Arc<roll_ai::faces::Faces>>> {
+        let Some(dir) = self.packs.installed("faces") else { return Ok(None) };
+        let mut g = self.faces.lock();
+        if let Some(f) = g.as_ref() {
+            return Ok(Some(f.clone()));
+        }
+        let f = Arc::new(roll_ai::faces::Faces::load(&dir, true)?);
+        *g = Some(f.clone());
+        Ok(Some(f))
+    }
+
+    /// Faces in photos (their 1024 px previews), then people from them.
+    fn run_faces(&self, ctx: &crate::jobs::JobCtx) -> anyhow::Result<()> {
+        let Some(model) = self.face_model()? else { return Ok(()) };
+        let todo = crate::people::missing(&self.db.read())?;
+        let total = todo.len();
+        for (i, chunk) in todo.chunks(16).enumerate() {
+            if !ctx.checkpoint() {
+                return Ok(());
+            }
+            let images: Vec<(i64, Option<image::RgbImage>)> = self.pool.install(|| {
+                use rayon::prelude::*;
+                chunk
+                    .par_iter()
+                    .map(|id| (*id, self.preview(*id).ok().flatten().and_then(|b| image::load_from_memory(&b).ok()).map(|i| i.to_rgb8())))
+                    .collect()
+            });
+            let mut found = Vec::new();
+            for (id, img) in images {
+                let faces = match &img {
+                    Some(img) => model
+                        .detect(img)?
+                        .into_iter()
+                        .map(|f| {
+                            let vec = (f.rect[2] >= roll_ai::faces::MIN_RECOGNIZE).then(|| model.embed(img, &f)).transpose()?;
+                            Ok(crate::people::Found { rect: f.rect, score: f.score, sharpness: roll_ai::faces::sharpness(img, &f), vec })
+                        })
+                        .collect::<anyhow::Result<Vec<_>>>()?,
+                    None => Vec::new(),
+                };
+                let (w, h) = img.as_ref().map_or((1, 1), |i| i.dimensions());
+                found.push((id, w, h, faces));
+            }
+            self.db.tx(|tx| {
+                for (id, w, h, faces) in &found {
+                    crate::people::store(tx, *id, *w, *h, faces)?;
+                }
+                Ok(())
+            })?;
+            ctx.progress((i * 16 + chunk.len()).min(total), total);
+        }
+        let g = self.db.tx(|tx| crate::people::group(tx))?;
+        tracing::info!("faces: {} joined people, {} new people", g.joined, g.created);
+        if !g.named_items.is_empty() {
+            self.db.write().execute(
+                &format!(
+                    "UPDATE assets SET meta_dirty = 1 WHERE id IN ({})",
+                    g.named_items.iter().map(i64::to_string).collect::<Vec<_>>().join(",")
+                ),
+                [],
+            )?;
+            self.reindex(&g.named_items);
+        }
+        if total > 0 || g != crate::people::Grouped::default() {
+            self.emit(LibEvent::Changed("people"));
+        }
+        Ok(())
+    }
+
+    // People
+
+    pub fn people(&self) -> anyhow::Result<Vec<crate::people::Person>> {
+        Ok(crate::people::list(&self.db.read())?)
+    }
+
+    pub fn person_faces(&self, person: i64) -> anyhow::Result<Vec<crate::people::FaceBox>> {
+        Ok(crate::people::faces_of_person(&self.db.read(), person)?)
+    }
+
+    pub fn faces_in(&self, asset: i64) -> anyhow::Result<Vec<crate::people::FaceBox>> {
+        Ok(crate::people::faces_of_asset(&self.db.read(), asset)?)
+    }
+
+    /// One owner change to people: one batch in History; names go into
+    /// the files with the next metadata write.
+    fn people_change(&self, f: impl FnOnce(&rusqlite::Transaction) -> rusqlite::Result<Vec<i64>>) -> anyhow::Result<()> {
+        let items = self.db.tx(f)?;
+        self.reindex(&items);
+        self.emit(LibEvent::Changed("people"));
+        self.emit(LibEvent::Changed("assets"));
+        self.emit(LibEvent::Changed("history"));
+        Ok(())
+    }
+
+    pub fn name_person(&self, person: i64, name: Option<&str>) -> anyhow::Result<()> {
+        self.people_change(|tx| crate::people::name(tx, person, name))
+    }
+
+    pub fn merge_people(&self, into: i64, others: &[i64]) -> anyhow::Result<()> {
+        anyhow::ensure!(!others.is_empty(), "Choose at least two people to merge");
+        self.people_change(|tx| crate::people::merge(tx, into, others))
+    }
+
+    pub fn not_person(&self, faces: &[i64]) -> anyhow::Result<()> {
+        self.people_change(|tx| crate::people::not_person(tx, faces))
+    }
+
+    pub fn assign_faces(&self, faces: &[i64], person: Option<i64>, name: Option<&str>) -> anyhow::Result<()> {
+        anyhow::ensure!(person.is_some() || name.is_some_and(|n| !n.trim().is_empty()), "Choose a person or type a name");
+        self.people_change(|tx| crate::people::assign(tx, faces, person, name))
+    }
+
+    pub fn hide_person(&self, person: i64, hidden: bool) -> anyhow::Result<()> {
+        crate::people::set_hidden(&self.db.write(), person, hidden)?;
+        self.emit(LibEvent::Changed("people"));
         Ok(())
     }
 
@@ -1195,10 +1319,14 @@ impl Library {
                     None => Ok(()),
                 }))
             }
-            Some(step @ ("vision" | "reader")) => {
+            Some(step @ ("vision" | "reader" | "faces")) => {
                 // Start the model's job once the pack is marked installed
                 // (the manifest is written after this step).
-                let (pack, job) = if step == "vision" { ("image-model", JobSpec::Embed) } else { ("text-reader", JobSpec::Ocr) };
+                let (pack, job) = match step {
+                    "vision" => ("image-model", JobSpec::Embed),
+                    "reader" => ("text-reader", JobSpec::Ocr),
+                    _ => ("faces", JobSpec::Faces),
+                };
                 let me = Arc::downgrade(self);
                 Some(Box::new(move |_: &Path| {
                     std::thread::spawn(move || {
@@ -1226,6 +1354,9 @@ impl Library {
     pub fn remove_pack(&self, id: &str) -> anyhow::Result<()> {
         if id == "text-reader" {
             *self.reader.lock() = None;
+        }
+        if id == "faces" {
+            *self.faces.lock() = None;
         }
         if id == "image-model" {
             *self.vision.lock() = None;
@@ -2058,13 +2189,19 @@ impl Library {
             Some(_) => Some((texts(GOOD)?, texts(BAD)?, texts(&[EYES_OPEN, EYES_CLOSED])?)),
             None => None,
         };
+        let faces = self.face_model().ok().flatten();
         let mut series = Vec::new();
         for &id in ids {
             let Some(img) = self.preview(id)?.and_then(|b| image::load_from_memory(&b).ok()) else { continue };
             let rgb = img.to_rgb8();
             let stats = roll_media::stats::compute(&rgb);
             let (brightness, clipped) = crate::bestshot::exposure_of(&rgb);
-            let mut m = Measured { id, sharpness: stats.sharpness, brightness, clipped, look: None, eyes: None };
+            // Faces big enough to judge, on their aligned crops.
+            let face_sharpness = faces.as_ref().and_then(|f| f.detect(&rgb).ok()).and_then(|found| {
+                let s: Vec<f32> = found.iter().filter(|f| f.rect[2] >= 24.0).map(|f| roll_ai::faces::sharpness(&rgb, f)).collect();
+                (!s.is_empty()).then(|| s.iter().sum::<f32>() / s.len() as f32)
+            });
+            let mut m = Measured { id, sharpness: stats.sharpness, brightness, clipped, look: None, eyes: None, faces: face_sharpness };
             if let (Some((good, bad, eyes)), Some(e)) = (&prompts, index.as_ref().and_then(|ix| ix.get(id))) {
                 let best = |vs: &[Vec<f32>]| vs.iter().map(|v| roll_ai::vectors::dot(e, v)).fold(f32::MIN, f32::max);
                 m.look = Some(best(good) - best(bad));

@@ -21,7 +21,7 @@ test('picks the best shots of a burst', async ({ page }) => {
   await page.goto('/?setup=1&mock=800');
   await page.getByTestId('nav-duplicates').click();
   const burst = page.locator('li').filter({ has: page.getByTestId('ranked') }).first();
-  await expect(burst.getByTestId('ranked')).toContainText('Best first, by sharpness, exposure');
+  await expect(burst.getByTestId('ranked')).toContainText('Best first, by sharpness and exposure');
   await expect(burst.locator('.notes').first()).toHaveText('Sharpest · Best exposed');
   await expect(burst.getByRole('button', { name: 'Kept' })).toHaveCount(1);
   // Keep a second frame too.

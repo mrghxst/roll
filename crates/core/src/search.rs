@@ -52,7 +52,8 @@ pub fn reindex(c: &Connection, ids: Option<&[i64]>, place: &dyn Fn(f64, f64) -> 
     }
     let mut st = c.prepare(&format!(
         "SELECT a.id, a.name, a.dir, a.lat, a.lon,
-                coalesce(a.description, '') || ' ' || coalesce(a.caption, '') || ' ' || coalesce((SELECT o.text FROM ocr o WHERE o.asset_id = a.id), ''),
+                coalesce(a.description, '') || ' ' || coalesce(a.caption, '') || ' ' || coalesce((SELECT o.text FROM ocr o WHERE o.asset_id = a.id), '')
+                  || ' ' || coalesce((SELECT group_concat(DISTINCT p.name) FROM faces f JOIN people p ON p.id = f.person_id WHERE f.asset_id = a.id), ''),
                 coalesce(a.make, '') || ' ' || coalesce(a.model, ''),
                 (SELECT group_concat(t.path, char(31)) FROM asset_tags at JOIN tags t ON t.id = at.tag_id WHERE at.asset_id = a.id)
          FROM assets a {filter}"

@@ -49,6 +49,19 @@ impl Model {
         Ok((shape.iter().copied().collect(), v.to_vec()))
     }
 
+    /// Runs the model and returns every output by name, flattened.
+    pub fn run_all(&self, input: &str, shape: Vec<i64>, data: Vec<f32>) -> anyhow::Result<Vec<(String, Vec<f32>)>> {
+        let t = ort::value::Tensor::from_array((shape, data)).map_err(err)?;
+        let mut s = self.session.lock().map_err(err)?;
+        let out = s.run(ort::inputs![input => t]).map_err(err)?;
+        let mut all = Vec::new();
+        for (name, v) in out.iter() {
+            let (_, data) = v.try_extract_tensor::<f32>().map_err(err)?;
+            all.push((name.to_string(), data.to_vec()));
+        }
+        Ok(all)
+    }
+
     pub fn run_i32(&self, input: &str, shape: Vec<i64>, data: Vec<i32>) -> anyhow::Result<(Vec<i64>, Vec<f32>)> {
         let t = ort::value::Tensor::from_array((shape, data)).map_err(err)?;
         let mut s = self.session.lock().map_err(err)?;

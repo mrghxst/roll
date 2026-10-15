@@ -32,6 +32,7 @@ fn main() {
         description: Some(Some("Written by Roll".into())),
         rating: Some(4),
         orientation: None,
+        regions: None,
     };
     for (rel, format, kind) in files {
         let src = lib.join(rel);

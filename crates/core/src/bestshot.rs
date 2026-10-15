@@ -4,6 +4,9 @@
 //! - Sharpness: variance of the Laplacian (motion blur and missed focus
 //!   lower it), compared within the series.
 //! - Exposure: brightness near the middle and few clipped pixels.
+//! - Faces, with the faces pack: how sharp the faces are (on their aligned
+//!   crops), which counts as much as the whole picture's sharpness when
+//!   two or more frames have faces.
 //! - Look, with the image model: how much more the picture resembles "a
 //!   sharp, well exposed photo" than "a blurry, badly exposed photo", and
 //!   open rather than closed eyes. A rough judge, so it weighs least.
@@ -37,6 +40,8 @@ pub struct Measured {
     pub look: Option<f32>,
     /// Open minus closed eyes similarity, with the image model.
     pub eyes: Option<f32>,
+    /// Mean sharpness of the faces in it, with the faces pack.
+    pub faces: Option<f32>,
 }
 
 pub const GOOD: &[&str] = &["a sharp, well exposed photo", "a beautiful photo", "a photo where everyone looks at the camera"];
@@ -72,12 +77,18 @@ pub fn rank(series: &[Measured]) -> Vec<ShotScore> {
     let (lo, hi) = (looks.iter().copied().fold(f32::MAX, f32::min), looks.iter().copied().fold(f32::MIN, f32::max));
     let spread = hi - lo;
     let mean_look = looks.iter().sum::<f32>() / looks.len().max(1) as f32;
+    let with_faces = series.iter().filter(|m| m.faces.is_some()).count();
+    let max_face = series.iter().filter_map(|m| m.faces).fold(f32::MIN, f32::max).max(1e-6);
     let mut out: Vec<(f32, &Measured)> = series
         .iter()
         .map(|m| {
             // Relative to the sharpest frame; the square root keeps a
             // somewhat softer frame from dropping to nothing.
-            let sharp = (m.sharpness.max(0.0) / max_sharp).sqrt();
+            let mut sharp = (m.sharpness.max(0.0) / max_sharp).sqrt();
+            // Faces in focus matter more than the background.
+            if with_faces >= 2 {
+                sharp = 0.5 * sharp + 0.5 * m.faces.map_or(0.0, |f| (f.max(0.0) / max_face).sqrt());
+            }
             // On an absolute scale around the series' mean: a difference
             // of 0.01 in similarity moves it by 0.2.
             let look = m.look.map_or(0.5, |l| (0.5 + (l - mean_look) * 20.0).clamp(0.0, 1.0));
@@ -101,6 +112,9 @@ pub fn rank(series: &[Measured]) -> Vec<ShotScore> {
             if exposure(m) >= exposed && series.len() > 1 {
                 notes.push("Best exposed".to_string());
             }
+            if with_faces >= 2 && m.faces.is_some_and(|f| f >= max_face) {
+                notes.push("Sharpest faces".to_string());
+            }
             if spread > 0.004 && m.look == Some(hi) {
                 notes.push("Looks best".to_string());
             }
@@ -117,7 +131,19 @@ mod tests {
     use super::*;
 
     fn m(id: i64, sharpness: f32, brightness: f32, look: f32) -> Measured {
-        Measured { id, sharpness, brightness, clipped: 0.0, look: Some(look), eyes: None }
+        Measured { id, sharpness, brightness, clipped: 0.0, look: Some(look), eyes: None, faces: None }
+    }
+
+    #[test]
+    fn sharp_faces_beat_a_sharp_background() {
+        // Frame 1 is crisp overall but its face is blurred; frame 2's face is sharp.
+        let mut a = m(1, 400.0, 0.5, 0.02);
+        let mut b = m(2, 330.0, 0.5, 0.02);
+        a.faces = Some(30.0);
+        b.faces = Some(300.0);
+        let r = rank(&[a, b]);
+        assert_eq!(r[0].id, 2);
+        assert!(r[0].notes.contains(&"Sharpest faces".to_string()));
     }
 
     #[test]

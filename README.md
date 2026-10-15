@@ -130,8 +130,8 @@ In active development. Working today:
 | Sorting | Rules, categories, review, organize into year folders with undo; duplicates merged in bulk, best shots of bursts and series |
 | Fixing | Camera clock and time zone fixes, places from neighbours and location history, map with time slider |
 | Import | Camera cards, WhatsApp and Google Takeout exports |
-| On this computer | SigLIP 2 image model: sorting (68% on its own at 97% precision on the test set), search by what a picture shows, Teach, Find similar, look-alike groups; text reader for screenshots and documents |
-| AI | Local and OpenRouter decision models, budget caps, model check, "ask AI" in search |
+| On this computer | SigLIP 2 image model: sorting (68% on its own at 97% precision on the test set), search by what a picture shows, Teach, Find similar, look-alike groups; text reader for screenshots and documents; faces grouped into people you name, written into the files for Immich |
+| AI | Local and OpenRouter decision models, budget caps, model check, "ask AI" in search, best matches with better ranking |
 | Sync | Immich sync with albums and shared albums, checked against a real Immich 3.3.1 |
 | Install | Windows installer (per user, ExifTool and FFmpeg bundled), dmg, AppImage and deb: [releases](https://github.com/mrghxst/roll/releases) |
 

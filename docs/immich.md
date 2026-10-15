@@ -17,6 +17,12 @@ never changes anything in Immich.
 - Private items go only when you mark them Send to Immich, and then in
   Immich's Locked folder.
 
+People you name in Roll go into the files as face regions (MWG). Immich
+reads them when its **Import faces** option is on (off by default; under
+Administration › Settings, in Metadata or Machine Learning depending on
+the Immich version). For items Immich already has, run its metadata
+extraction job again.
+
 Tiles of items in Immich carry a small cloud badge, and the filter panel can
 show what is sent, pending or local.
 

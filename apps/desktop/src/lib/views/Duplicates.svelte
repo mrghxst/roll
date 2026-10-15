@@ -37,6 +37,13 @@
     });
   });
 
+  /** What the ranking looks at, with the packs that are installed. */
+  const rankedBy = $derived.by(() => {
+    const parts = ['sharpness', 'exposure'];
+    if (app.pack('faces')?.state === 'installed') parts.push('faces');
+    if (app.pack('image-model')?.state === 'installed') parts.push('look');
+    return `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`;
+  });
   const series = (g: DupeGroup) => g.kind === 'burst' || g.kind === 'similar';
   /** Display order: best first once ranked. */
   const order = (g: DupeGroup) => ranks[g.key]?.map((r) => r.id).filter((id) => g.ids.includes(id)) ?? g.ids;
@@ -147,7 +154,7 @@
             <span class="muted">{n(g.ids.length)} items · keep suggestion: {g.why.replace(/\.$/, '').toLowerCase()}</span>
           </div>
           {#if series(g) && ranks[g.key]}
-            <p class="muted ranked" data-testid="ranked">Best first, by sharpness, exposure{app.pack('image-model')?.state === 'installed' ? ' and look' : ''}. Click to choose which to keep.</p>
+            <p class="muted ranked" data-testid="ranked">Best first, by {rankedBy}. Click to choose which to keep.</p>
           {/if}
           <div class="items">
             {#each order(g) as id, i (id)}

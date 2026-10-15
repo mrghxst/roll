@@ -45,6 +45,9 @@ pub fn where_clause(q: &Query) -> Sql {
         let ids: Vec<String> = ids.iter().map(|i| i.to_string()).collect();
         w.push(format!("a.id IN ({})", if ids.is_empty() { "NULL".into() } else { ids.join(",") }));
     }
+    for person in &q.people {
+        w.push(format!("a.id IN (SELECT asset_id FROM faces WHERE person_id = {person})"));
+    }
     if let Some(f) = q.from_utc {
         w.push(format!("a.taken_utc >= {}", push(&mut p, Value::Integer(f))));
     }

@@ -12,11 +12,14 @@ use crate::model::problem;
 use crate::tags;
 
 pub const FIELDS: &[&str] =
-    &["category", "tags", "date", "location", "rating", "favorite", "description", "private", "immich", "trashed", "orientation"];
+    &["category", "tags", "date", "location", "rating", "favorite", "description", "private", "immich", "trashed", "orientation", "people"];
 
 /// Fields that end up in file metadata.
 fn file_field(field: &str) -> bool {
-    matches!(field, "category" | "tags" | "date" | "location" | "rating" | "favorite" | "description" | "private" | "orientation")
+    matches!(
+        field,
+        "category" | "tags" | "date" | "location" | "rating" | "favorite" | "description" | "private" | "orientation" | "people"
+    )
 }
 
 /// Formats whose EXIF orientation Roll both honors when decoding and can
@@ -112,6 +115,7 @@ pub fn read(c: &Connection, asset: i64, field: &str) -> rusqlite::Result<Value> 
         "immich" => json!(c.query_row("SELECT immich FROM assets WHERE id = ?1", [asset], |r| r.get::<_, String>(0))?),
         "trashed" => json!(c.query_row("SELECT trashed_at IS NOT NULL FROM assets WHERE id = ?1", [asset], |r| r.get::<_, bool>(0))?),
         "orientation" => json!(c.query_row("SELECT coalesce(orientation, 1) FROM assets WHERE id = ?1", [asset], |r| r.get::<_, i64>(0))?),
+        "people" => crate::people::read(c, asset)?,
         _ => Value::Null,
     };
     Ok(v)
@@ -263,6 +267,11 @@ pub fn write(c: &Connection, asset: i64, field: &str, v: &Value) -> rusqlite::Re
             let old: i64 = c.query_row("SELECT coalesce(orientation, 1) FROM assets WHERE id = ?1", [asset], |r| r.get(0))?;
             // A quarter turn swaps the displayed sides; thumbnails are redone.
             let swap = (orientation_parts(old).0 + orientation_parts(new).0) % 2 == 1;
+            // Face boxes are on the displayed image: turn them with it.
+            let turns = (orientation_parts(new).0 - orientation_parts(old).0).rem_euclid(4);
+            for _ in 0..turns {
+                c.execute("UPDATE faces SET x = 1 - y - h, y = x, w = h, h = w WHERE asset_id = ?1", [asset])?;
+            }
             c.execute(
                 "UPDATE assets SET orientation = ?2, thumb = 0,
                    width = CASE WHEN ?3 THEN height ELSE width END, height = CASE WHEN ?3 THEN width ELSE height END
@@ -270,6 +279,7 @@ pub fn write(c: &Connection, asset: i64, field: &str, v: &Value) -> rusqlite::Re
                 params![asset, new, swap],
             )?;
         }
+        "people" => crate::people::write(c, v)?,
         _ => {}
     }
     if file_field(field) {
@@ -291,6 +301,12 @@ pub struct Change<'a> {
 /// the value was already the same.
 pub fn set(c: &Connection, batch: Option<i64>, asset: i64, ch: &Change) -> rusqlite::Result<bool> {
     let old = read(c, asset, ch.field)?;
+    set_from(c, batch, asset, old, ch)
+}
+
+/// [`set`] with the old value read beforehand: for changes that touch
+/// several items at once (a person's name shows in all their items).
+pub fn set_from(c: &Connection, batch: Option<i64>, asset: i64, old: Value, ch: &Change) -> rusqlite::Result<bool> {
     if old == ch.value {
         return Ok(false);
     }

@@ -10,6 +10,7 @@
   import History from '../views/History.svelte';
   import Dates from '../views/Dates.svelte';
   import Discover from '../views/Discover.svelte';
+  import People from '../views/People.svelte';
   import Events from '../views/Events.svelte';
   import AddPhotos from '../views/AddPhotos.svelte';
   import Immich from '../views/Immich.svelte';
@@ -163,6 +164,8 @@
           <Events />
         {:else if app.view === 'discover'}
           <Discover />
+        {:else if app.view === 'people'}
+          <People />
         {:else if app.view === 'places'}
           <Places />
         {/if}

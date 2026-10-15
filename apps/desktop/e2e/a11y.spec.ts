@@ -70,3 +70,16 @@ for (const nav of ['nav-timeline', 'nav-add', 'nav-immich', 'nav-settings']) {
     expect(r.violations.map((v) => `${v.id}: ${v.help} — ${v.nodes.length} × ${v.nodes[0]?.target.join(' ')}`)).toEqual([]);
   });
 }
+
+// People with faces (the face models installed), light and dark.
+for (const scheme of ['light', 'dark'] as const) {
+  test(`no accessibility problems in people, ${scheme}`, async ({ page }) => {
+    await page.emulateMedia({ colorScheme: scheme });
+    await page.goto('/?setup=1&mock=300&models=1');
+    await page.getByTestId('nav-people').click();
+    await page.getByTestId('people').waitFor();
+    await page.waitForTimeout(300);
+    const r = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze();
+    expect(r.violations.map((v) => `${v.id}: ${v.help} — ${v.nodes.length} × ${v.nodes[0]?.target.join(' ')}`)).toEqual([]);
+  });
+}

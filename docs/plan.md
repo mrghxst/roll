@@ -253,9 +253,23 @@ Owner requests (2026-10-13), to build after M4–M6:
       exposure (brightness, clipping) and, with the image model, look and
       clearly closed eyes; the best one or two suggested, any frames can be
       kept, the rest to Roll's trash with undo. Never re-encodes
-- [ ] Faces for the best shot (an eye detector instead of the image
-      model's rough "closed eyes"), and duplicates across imports before
-      they are added
+- [x] **People** (PROMPT M7, 2026-10-15): the faces pack (YuNet and SFace
+      from the OpenCV Zoo, 39 MB, MIT and Apache-2.0) finds faces on the
+      previews; a face joins the person it is most like (0.42 to their
+      mean), new people need three alike faces in three items, two faces
+      in one item are never one person. People view: name, merge, hide,
+      "Not this person" (never grouped with them again), their photos in
+      the timeline; the info panel shows who is in a photo and asks "Who is
+      this?". All undoable. Names are searchable and go into the files as
+      MWG regions (relative to the stored pixels, merged with regions
+      other apps wrote, taken out again on undo) for Immich's face import.
+      On the CC0 family photos: 22 faces, the Chinde Point family as people
+      across photos, regions checked with ExifTool
+      (`crates/core/tests/people_real.rs`)
+- [x] Faces for the best shot: with the faces pack, how sharp the faces
+      are counts as much as the whole frame's sharpness ("Sharpest faces")
+- [ ] Open or closed eyes from a landmark model (the image model's guess
+      stays), and duplicates across imports before they are added
 
 ## Next
 

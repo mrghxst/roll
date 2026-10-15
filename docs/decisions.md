@@ -391,3 +391,23 @@ questions. One line of reason each. Newest at the bottom of each section.
   pictures with Gemma 4 26B ($0.000038 a picture measured in M5), over the
   spec's $0.001; ranking 25 would meet it, but 50 is what the spec asks
   to rerank.
+- **People from YuNet and SFace.** The OpenCV Zoo models the spec names
+  (MIT and Apache-2.0, 39 MB, 25 ms to find faces and 2 ms a face on the
+  CPU/GPU). Thresholds: a face joins a person at 0.42 cosine to the mean
+  of their faces, new people start from faces 0.45 alike; OpenCV's own
+  "same person" threshold is 0.363, so grouping is a little stricter and
+  the owner merges what it misses. Three faces in three items make a
+  person (as in Immich). Faces under 36 px on the 1024 px preview are
+  kept but not recognized.
+- **Face regions are written relative to the stored pixels** (MWG; Immich
+  turns them by the EXIF orientation on import). Roll keeps every region
+  other apps wrote; it replaces a region that covers one of its named
+  faces, and one on a face it found whose name it once wrote
+  (`people_names`), so a name taken away or undone also leaves the file.
+- **People changes are a history field** (`people`: each face's person,
+  how it got there, and that person's name), so naming, merging and "Not
+  this person" undo like any edit. A merged person keeps its row so undo
+  can bring it back.
+- **Search ignores Roll's own tag roots.** `Category/`, `Event/`,
+  `Source/` and `From/` are not indexed as words; "cat" matched every
+  sorted item through "Category" before.

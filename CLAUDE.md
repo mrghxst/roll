@@ -27,6 +27,9 @@ cd apps/desktop && pnpm tauri dev          # the app; set ROLL_DATA_DIR to keep 
 powershell -File e2e/immich/server.ps1 setup|start|stop|remove   # throwaway Immich in its own WSL distro
 # then ROLL_IMMICH_URL/ROLL_IMMICH_KEY (from %LOCALAPPDATA%\RollImmichTest\credentials.json):
 cargo test -p roll-core --test immich_real -- --ignored
+# model tests need packs: cargo run -p roll-core --example packs -- fixtures-out/packs faces image-model
+# then ROLL_PACKS=<absolute path to fixtures-out/packs> (tests run in the crate folder):
+cargo test --release -p roll-core --test people_real -- --ignored
 ```
 
 ## Conventions and pitfalls

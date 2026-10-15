@@ -1,6 +1,6 @@
 //! Database migrations. Append only: never edit a shipped migration.
 
-pub const MIGRATIONS: &[&str] = &[M1, M2, M3, M4, M5, M6, M7, M8, M9, M10, M11, M12, M13];
+pub const MIGRATIONS: &[&str] = &[M1, M2, M3, M4, M5, M6, M7, M8, M9, M10, M11, M12, M13, M14];
 
 const M1: &str = r#"
 CREATE TABLE settings (
@@ -353,6 +353,49 @@ CREATE TABLE event_undo (
 /// Decision models (M5): measured prices and token counts per model, runs
 /// with their budget, and one row per item and run so a run resumes
 /// without sending an item twice. The model check's labelled sample.
+/// People: faces found in photos (boxes 0–1 of the displayed image), their
+/// SFace vectors (f16), and the people they belong to. A merged person
+/// keeps its row (`merged_into`) so undo can bring it back.
+const M14: &str = r#"
+CREATE TABLE people (
+  id INTEGER PRIMARY KEY,
+  name TEXT,
+  hidden INTEGER NOT NULL DEFAULT 0,
+  merged_into INTEGER REFERENCES people(id) ON DELETE SET NULL,
+  created_at INTEGER NOT NULL
+);
+CREATE TABLE faces (
+  id INTEGER PRIMARY KEY,
+  asset_id INTEGER NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
+  x REAL NOT NULL,
+  y REAL NOT NULL,
+  w REAL NOT NULL,
+  h REAL NOT NULL,
+  score REAL NOT NULL,
+  sharpness REAL NOT NULL DEFAULT 0,
+  vec BLOB,
+  person_id INTEGER REFERENCES people(id) ON DELETE SET NULL,
+  -- 'auto' (grouped by Roll) or 'owner'
+  person_source TEXT
+);
+CREATE INDEX faces_asset ON faces(asset_id);
+CREATE INDEX faces_person ON faces(person_id);
+-- "Not this person": never grouped with that person again.
+CREATE TABLE face_rejects (
+  face_id INTEGER NOT NULL REFERENCES faces(id) ON DELETE CASCADE,
+  person_id INTEGER NOT NULL REFERENCES people(id) ON DELETE CASCADE,
+  PRIMARY KEY (face_id, person_id)
+);
+-- Every name Roll gave a person: regions with these names on found faces
+-- are Roll's to replace or take out.
+CREATE TABLE people_names (name TEXT PRIMARY KEY);
+CREATE TABLE face_scans (
+  asset_id INTEGER PRIMARY KEY REFERENCES assets(id) ON DELETE CASCADE,
+  model TEXT NOT NULL,
+  at INTEGER NOT NULL
+);
+"#;
+
 /// The search index leaves out the roots of Roll's own tags (`Category/`,
 /// `Event/`, `Source/`, `From/`): empty it, so it is rebuilt at the next start.
 const M13: &str = r#"

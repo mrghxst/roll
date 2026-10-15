@@ -46,6 +46,8 @@ pub enum JobSpec {
     Embed,
     /// Read the text in screenshots, documents, memes and saved posts.
     Ocr,
+    /// Find faces in photos and group them into people.
+    Faces,
 }
 
 impl JobSpec {
@@ -63,6 +65,7 @@ impl JobSpec {
             JobSpec::Decide { .. } => "decide",
             JobSpec::Embed => "embed",
             JobSpec::Ocr => "ocr",
+            JobSpec::Faces => "faces",
         }
     }
     pub fn priority(&self) -> i64 {
@@ -78,6 +81,7 @@ impl JobSpec {
             JobSpec::Decide { .. } => 45,
             JobSpec::Embed => 35,
             JobSpec::Ocr => 36,
+            JobSpec::Faces => 37,
         }
     }
     pub fn label(&self) -> String {
@@ -94,6 +98,7 @@ impl JobSpec {
             JobSpec::Decide { .. } => "Sorting uncertain items with AI".into(),
             JobSpec::Embed => "Looking at photos for search and sorting".into(),
             JobSpec::Ocr => "Reading text in screenshots and documents".into(),
+            JobSpec::Faces => "Finding faces".into(),
         }
     }
 }

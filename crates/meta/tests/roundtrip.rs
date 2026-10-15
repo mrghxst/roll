@@ -24,6 +24,7 @@ fn edit() -> MetaEdit {
         description: Some(Some("Line one\nLine two".into())),
         rating: Some(4),
         orientation: None,
+        regions: None,
     }
 }
 
@@ -169,4 +170,55 @@ fn unicode_and_long_paths() {
     let snap = write::apply(&pool, &file, MediaKind::Photo, "jpeg", &e, WriteMode::FileAndSidecar).unwrap();
     assert_eq!(get(&read_tags(&pool, &file), "Rating").and_then(Value::as_i64), Some(5));
     write::restore(&pool, &file, &snap).unwrap();
+}
+
+/// Named faces go into MWG regions next to a region another app wrote, and
+/// undo puts the file's own regions back.
+#[test]
+fn face_regions_merge_and_undo() {
+    let (Some(dir), Ok(pool)) = (fixtures(), ExifToolPool::locate()) else {
+        eprintln!("fixtures or ExifTool missing; skipping");
+        return;
+    };
+    let tmp = tempfile::tempdir().unwrap();
+    let file = tmp.path().join("IMG_3001.JPG");
+    std::fs::copy(dir.join("IMG_3001.JPG"), &file).unwrap();
+    let regions = |pool: &ExifToolPool| -> Option<Value> {
+        let v = pool.with(|t| t.read_json(&[file.as_path()], &["-XMP-mwg-rs:RegionInfo"])).unwrap().remove(0);
+        v.as_object().unwrap().iter().find(|(k, _)| k.ends_with(":RegionInfo")).map(|(_, v)| v.clone())
+    };
+    pool.with(|t| {
+        t.write(
+            &file,
+            &["-XMP-mwg-rs:RegionInfo={AppliedToDimensions={W=4032,H=3024,Unit=pixel},RegionList=[{Area={X=0.1,Y=0.1,W=0.05,H=0.05,Unit=normalized},Name=Rex,Type=Pet}]}".to_string()],
+        )
+    })
+    .unwrap();
+    let before = regions(&pool).unwrap();
+    let edit = MetaEdit {
+        regions: Some(write::Regions {
+            width: 4032,
+            height: 3024,
+            orientation: 1,
+            faces: vec![("Anna".into(), [0.4, 0.3, 0.1, 0.15])],
+            found: vec![[0.4, 0.3, 0.1, 0.15]],
+            names: vec!["Anna".into()],
+        }),
+        ..Default::default()
+    };
+    let snap = write::apply(&pool, &file, MediaKind::Photo, "jpeg", &edit, WriteMode::FileAndSidecar).unwrap();
+    let after = regions(&pool).unwrap();
+    let list = after["RegionList"].as_array().unwrap();
+    let names: Vec<&str> = list.iter().map(|r| r["Name"].as_str().unwrap()).collect();
+    assert_eq!(names, vec!["Rex", "Anna"], "{after}");
+    let anna = &list[1]["Area"];
+    assert!((anna["X"].as_f64().unwrap() - 0.45).abs() < 1e-4 && (anna["Y"].as_f64().unwrap() - 0.375).abs() < 1e-4, "centre: {anna}");
+    // Writing again keeps one Anna.
+    write::apply(&pool, &file, MediaKind::Photo, "jpeg", &edit, WriteMode::FileAndSidecar).unwrap();
+    assert_eq!(regions(&pool).unwrap()["RegionList"].as_array().unwrap().len(), 2);
+    // The sidecar has Anna too.
+    let side = std::fs::read_to_string(sidecar_path(&file)).unwrap();
+    assert!(side.contains("Anna"), "{side}");
+    write::restore(&pool, &file, &snap).unwrap();
+    assert_eq!(regions(&pool), Some(before));
 }

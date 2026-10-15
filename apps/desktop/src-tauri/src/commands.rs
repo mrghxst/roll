@@ -532,6 +532,56 @@ pub fn discover_ignore(state: State<AppState>, key: String) -> Res<()> {
     state.lib.discover_ignore(&key).map_err(e)
 }
 
+// People
+
+#[tauri::command]
+pub async fn people(state: State<'_, AppState>) -> Res<Vec<roll_core::people::Person>> {
+    let lib = state.lib.clone();
+    blocking(move || lib.people()).await
+}
+
+#[tauri::command]
+pub async fn person_faces(state: State<'_, AppState>, person: i64) -> Res<Vec<roll_core::people::FaceBox>> {
+    let lib = state.lib.clone();
+    blocking(move || lib.person_faces(person)).await
+}
+
+#[tauri::command]
+pub async fn faces_in(state: State<'_, AppState>, asset: i64) -> Res<Vec<roll_core::people::FaceBox>> {
+    let lib = state.lib.clone();
+    blocking(move || lib.faces_in(asset)).await
+}
+
+#[tauri::command]
+pub async fn name_person(state: State<'_, AppState>, person: i64, name: Option<String>) -> Res<()> {
+    let lib = state.lib.clone();
+    blocking(move || lib.name_person(person, name.as_deref())).await
+}
+
+#[tauri::command]
+pub async fn merge_people(state: State<'_, AppState>, into: i64, others: Vec<i64>) -> Res<()> {
+    let lib = state.lib.clone();
+    blocking(move || lib.merge_people(into, &others)).await
+}
+
+#[tauri::command]
+pub async fn not_person(state: State<'_, AppState>, faces: Vec<i64>) -> Res<()> {
+    let lib = state.lib.clone();
+    blocking(move || lib.not_person(&faces)).await
+}
+
+#[tauri::command]
+pub async fn assign_faces(state: State<'_, AppState>, faces: Vec<i64>, person: Option<i64>, name: Option<String>) -> Res<()> {
+    let lib = state.lib.clone();
+    blocking(move || lib.assign_faces(&faces, person, name.as_deref())).await
+}
+
+#[tauri::command]
+pub async fn hide_person(state: State<'_, AppState>, person: i64, hidden: bool) -> Res<()> {
+    let lib = state.lib.clone();
+    blocking(move || lib.hide_person(person, hidden)).await
+}
+
 #[tauri::command]
 pub async fn name_cluster(state: State<'_, AppState>, ids: Vec<i64>) -> Res<roll_core::discover::NameSuggestion> {
     let lib = state.lib.clone();

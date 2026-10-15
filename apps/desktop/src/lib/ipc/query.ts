@@ -35,5 +35,6 @@ export function emptyQuery(): Query {
     missing: false,
     staged: null,
     ids: null,
+    people: [],
   };
 }

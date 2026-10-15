@@ -36,4 +36,8 @@ immich: string | null, orientation: string | null, private: boolean | null, inbo
 /**
  * The staging root of an import: its items instead of the archive's.
  */
-staged: number | null, ids: Array<number> | null, };
+staged: number | null, ids: Array<number> | null, 
+/**
+ * Items with every one of these people in them.
+ */
+people: Array<number>, };

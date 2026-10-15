@@ -301,6 +301,8 @@ pub struct Query {
     /// The staging root of an import: its items instead of the archive's.
     pub staged: Option<i32>,
     pub ids: Option<Vec<i32>>,
+    /// Items with every one of these people in them.
+    pub people: Vec<i32>,
     /// Items whose image matches the search text (filled in by the
     /// library from the image model; never sent by the UI).
     #[serde(skip)]

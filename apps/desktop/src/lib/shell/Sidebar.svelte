@@ -28,6 +28,7 @@
     Smile,
     Tag,
     Trash2,
+    Users,
     Wallpaper,
   } from '@lucide/svelte';
   import type { Component } from 'svelte';
@@ -88,6 +89,7 @@
     {@render item('Folders', Folder, app.view === 'folders', () => goView('folders'), undefined, 'nav-folders')}
     {@render item('Map', Map, app.view === 'map', () => goView('map'), undefined, 'nav-map')}
     {@render item('Events', CalendarRange, app.view === 'events', () => goView('events'), undefined, 'nav-events')}
+    {@render item('People', Users, app.view === 'people', () => goView('people'), undefined, 'nav-people')}
     {@render item('Add photos', FolderInput, app.view === 'add', () => goView('add'), undefined, 'nav-add')}
 
     {#if !collapsed}<div class="section">Fix</div>{:else}<hr />{/if}

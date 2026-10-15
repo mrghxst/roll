@@ -205,3 +205,21 @@ birthday party, handwritten letter, mountains):
 - Speed with the local model: about 1.5 s a picture (8 per request) on
   the RTX 2080 Ti, so 50 pictures take about 75 s; the first request after
   loading the model takes longer.
+
+## Faces, 2026-10-15
+
+YuNet 2023mar and SFace 2021dec (`crates/ai/examples/faces.rs`) on CC0
+family photos at 1024 px, RTX 2080 Ti machine:
+
+| Step | Time |
+|---|---|
+| Find faces (YuNet, 640 px input, CPU) | 24–34 ms a photo |
+| Face numbers (SFace, DirectML) | 2 ms a face |
+
+- 22 faces in 6 photos (portraits at 133–168 px, group photos at 37–80
+  px); a 1915 photo's only face, 20 px wide, is kept but too small to
+  recognize.
+- The same three people in the two "family picnic at Chinde Point" photos
+  pair up at 0.44–0.51; two different faces within one blurry family
+  picnic photo (sharpness 11–18) reached 0.44, which is why two faces in
+  one item are never one person.

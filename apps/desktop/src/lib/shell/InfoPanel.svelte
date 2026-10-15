@@ -5,6 +5,7 @@
   import { app } from '../state/app.svelte';
   import { removeTag } from '../state/edits';
   import { selection } from '../state/selection.svelte';
+  import InfoPeople from './InfoPeople.svelte';
   import { accuracy, bytes, coords, duration, n, offset, shortDate, time } from '../util/format';
 
   let { id, dark = false }: { id: number | null; dark?: boolean } = $props();
@@ -66,6 +67,8 @@
         {/if}
       </div>
     </section>
+
+    {#if app.pack('faces')?.state === 'installed'}<InfoPeople id={detail.id} />{/if}
 
     {#if camera || detail.lens}
       <section>

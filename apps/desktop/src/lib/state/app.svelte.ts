@@ -24,6 +24,7 @@ export type View =
   | 'places'
   | 'map'
   | 'events'
+  | 'people'
   | 'add'
   | 'immich'
   | 'ai'

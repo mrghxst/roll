@@ -89,8 +89,8 @@
   }
 
   const active = $derived(chips(app.filters, app.filterLabels));
-  // A hand-picked set (from the map, similar items): shown so it can be left.
-  const picked = $derived(app.view === 'timeline' && app.scope.query.ids ? app.scope : null);
+  // A hand-picked set (from the map, similar items) or a person: shown so it can be left.
+  const picked = $derived(app.view === 'timeline' && (app.scope.query.ids || app.scope.query.people?.length) ? app.scope : null);
   const showGridOptions = $derived(app.view === 'timeline' || app.view === 'folders');
 </script>
 

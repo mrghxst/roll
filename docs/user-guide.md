@@ -211,6 +211,28 @@ With the image model you can also:
 - **Discover** shows groups of undecided items that look alike, so one
   decision sorts the whole group.
 
+## People
+
+People (sidebar) needs the face models (about 39 MB, downloaded from the
+People page or Settings › Models and data). Roll looks for faces in
+photos after their thumbnails are made and groups them by who they look
+like; someone shows up once three photos of them are found.
+
+- **Name** someone by clicking "Add a name" under their face. The name is
+  searchable and goes into the photos' files as a face region at the next
+  metadata write (Organize), which Immich imports when its "Import faces"
+  setting is on.
+- **Merge** two or more groups of the same person: tick them and choose
+  Merge.
+- **Not this person:** the person icon on a card shows all their faces;
+  pick the wrong ones. They are never grouped with that person again.
+- **Hide** people you don't care about (strangers in the background).
+- In a photo's info panel (I), People shows who is in it; "Who is this?"
+  names a face that belongs to nobody yet.
+
+Every change is one step in History and can be undone. Faces and their
+numbers stay on this computer.
+
 ## Duplicates and best shots
 
 - **Merge all exact copies** shows first what happens: how many identical
