@@ -16,6 +16,7 @@ use roll_core::actions::EditAction;
 use roll_core::datefix::{Amount, DateFix};
 use roll_core::immich::{self, Client};
 use roll_core::library::Library;
+use roll_core::planner::PlanOptions;
 use roll_geo::Place;
 use serde_json::{Value, json};
 
@@ -41,6 +42,18 @@ impl Api {
     }
     fn asset(&self, id: &str) -> Value {
         self.get(&format!("/assets/{id}"))
+    }
+    /// The asset with this original file name, waiting for it to arrive.
+    fn by_name(&self, name: &str) -> String {
+        let start = Instant::now();
+        loop {
+            let r = self.post("/search/metadata", &json!({ "originalFileName": name }));
+            if let Some(id) = r["assets"]["items"].as_array().and_then(|a| a.first()).and_then(|a| a["id"].as_str()) {
+                return id.to_string();
+            }
+            assert!(start.elapsed() < Duration::from_secs(90), "{name} not found");
+            std::thread::sleep(Duration::from_millis(500));
+        }
     }
     /// Immich applies metadata in background jobs: wait until `ok` holds.
     fn until(&self, id: &str, what: &str, ok: impl Fn(&Value) -> bool) -> Value {
@@ -235,5 +248,75 @@ fn round_trip() {
     assert_eq!(r.removed, 1);
     assert_eq!(api.asset(&gid)["isTrashed"], true);
     assert_eq!(std::fs::read(&file).unwrap(), bytes);
+
+    // Re-foldering the archive changes nothing in Immich. Organize writes
+    // the metadata into the files and sidecars and moves them into year
+    // folders (the trashed item stays where it is).
+    let stats = api.get("/assets/statistics");
+    let plan = lib.plan(&PlanOptions { write_metadata: true, ..Default::default() }).unwrap();
+    println!("organize: {} moved, {} metadata writes", plan.moved, plan.writes);
+    assert!(plan.moved > 0 && plan.writes > 0, "{plan:?}");
+    lib.apply(plan.batch_id as i64).unwrap();
+    wait_idle(&lib);
+    let r = immich::sync(&lib.db, &client, false, &|_, _| true).unwrap();
+    assert_eq!((r.uploaded, r.linked), (0, 0), "{r:?}");
+    assert_eq!(api.get("/assets/statistics"), stats);
+
+    // The Immich CLI, given the files and the sidecars Roll wrote, reads
+    // the same metadata as Roll's sync set. Another user uploads, so the
+    // files are not duplicates of the synced ones.
+    let pw = format!("cli-{stamp}-pw9");
+    let email = format!("cli-{stamp}@roll.test");
+    api.post("/admin/users", &json!({"email": email, "password": pw, "name": "CLI"}));
+    let token = api
+        .agent
+        .post(format!("{}/api/auth/login", api.base))
+        .send_json(json!({"email": email, "password": pw}))
+        .unwrap()
+        .into_body()
+        .read_json::<Value>()
+        .unwrap()["accessToken"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let cli_key = api
+        .agent
+        .post(format!("{}/api/api-keys", api.base))
+        .header("Authorization", &format!("Bearer {token}"))
+        .send_json(json!({"name": "cli", "permissions": ["all"]}))
+        .unwrap()
+        .into_body()
+        .read_json::<Value>()
+        .unwrap()["secret"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let npx = if cfg!(windows) { "npx.cmd" } else { "npx" };
+    let out = std::process::Command::new(npx)
+        .args(["-y", "@immich/cli@3.2.4", "upload", "--recursive"])
+        .arg(&lib_dir)
+        .env("IMMICH_INSTANCE_URL", format!("{}/api", api.base))
+        .env("IMMICH_API_KEY", &cli_key)
+        .output()
+        .expect("npx");
+    println!("cli: {}", String::from_utf8_lossy(&out.stdout).lines().last().unwrap_or(""));
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    let cli = Api { base: api.base.clone(), key: cli_key, agent: api.agent.clone() };
+    let name: String = lib.db.read().query_row("SELECT name FROM assets WHERE id = ?1", [one], |r| r.get(0)).unwrap();
+    let theirs = cli.by_name(&name);
+    let ours = api.asset(&iid);
+    let b = cli.until(&theirs, "metadata from the file and sidecar", |a| {
+        a["exifInfo"]["rating"] == ours["exifInfo"]["rating"]
+            && a["exifInfo"]["description"] == ours["exifInfo"]["description"]
+            && tags(a).contains(&"Trip/Lisbon".to_string())
+    });
+    let close = |k: &str| (b["exifInfo"][k].as_f64().unwrap_or(0.0) - ours["exifInfo"][k].as_f64().unwrap_or(9.0)).abs() < 1e-4;
+    assert!(close("latitude") && close("longitude"), "{:#} vs {:#}", b["exifInfo"], ours["exifInfo"]);
+    assert_eq!(
+        instant(b["exifInfo"]["dateTimeOriginal"].as_str().unwrap()),
+        instant(ours["exifInfo"]["dateTimeOriginal"].as_str().unwrap()),
+        "the date from the file"
+    );
+    println!("CLI upload of {name} matches: rating, description, place, date and Trip/Lisbon");
     println!("round trip ok: album {album_name}");
 }

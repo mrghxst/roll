@@ -123,8 +123,9 @@ Milestones from PROMPT.md section 10. `[x]` done, `[~]` partly done,
 - [x] Smart time offset by look: camera and phone photos of the same
       scene pair by embedding (0.88) as well as dHash; in Dates and Add
       photos
-- [ ] Cluster names from the text or decision model (one call per
-      cluster with 9 thumbnails)
+- [x] Cluster names from the decision model: "Suggest a name" in Discover,
+      one call with up to 9 pictures (320 px, no metadata); a new category
+      with the name and its definition, or the existing one that fits
 ## M5 Decision models and cost
 
 - [x] OpenAI-compatible client for local servers (Ollama, LM Studio,
@@ -188,8 +189,11 @@ Milestones from PROMPT.md section 10. `[x]` done, `[~]` partly done,
       confirmation with the local file untouched. Found and fixed: linking
       a known still skipped its Live Photo video, and an item sent again
       after "Keep local only" stayed in Immich's trash
-- [ ] Round trip, rest of 9.3: the Immich CLI upload with sidecars for
-      comparison, and re-foldering the archive between syncs
+- [x] Round trip, rest of 9.3 (2026-10-15): re-foldering the archive
+      with metadata writes between syncs sends nothing again and links
+      nothing new; the official Immich CLI (3.2.4) uploading the same
+      archive for a second user gives the same rating, description, place,
+      date and tag as Roll's sync
 - [x] Add photos (4.11): a folder is indexed read-only as a staging set;
       source facts and items already in the library (skipped by default);
       dates against the library by day, smart offset from look-alike phone
