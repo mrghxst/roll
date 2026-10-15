@@ -1,0 +1,12 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "bundle": {
+    "resources": {
+      "bundle-tools/exiftool/": "exiftool/",
+      "bundle-tools/ffmpeg/": "ffmpeg/"
+    },
+    "linux": {
+      "deb": { "depends": ["perl"] }
+    }
+  }
+}

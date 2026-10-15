@@ -274,11 +274,20 @@ Owner requests (2026-10-13), to build after M4–M6:
       pinned); "Set up local AI" in Settings › AI and Sort with AI makes it
       the decision model; Roll starts `llama-server` on 127.0.0.1:8766 when a
       model is needed and stops it when idle or on exit
+- [x] Packaging polish for macOS and Linux (2026-10-15): the `.dmg` brings
+      ExifTool, the `.deb` and AppImage bring ExifTool and an LGPL static
+      FFmpeg (`scripts/fetch-tools.sh`, pinned checksums); Roll finds tools
+      in the app's Resources and in `lib/Roll`. macOS FFmpeg stays Homebrew's
+      (no LGPL build to ship)
+- [ ] Offline map regions (streets and labels without OpenFreeMap)
+- [ ] Signed builds with automatic updates (needs certificates and an
+      update key from the owner)
 - [ ] Open or closed eyes from a landmark model (the image model's guess
       stays), and duplicates across imports before they are added
 
 ## Next
 
-M4, M5, M6 and the M7 owner requests are in. Left: signed builds with
-updates (needs code-signing certificates), faces for the best shot, and
-the checks by hand (docs/checks.md).
+M4 to M6, the M7 owner requests, people, one-click local AI and the
+packaging polish are in. Left: offline map regions, signed builds with
+updates (needs certificates and keys from the owner), open or closed eyes,
+and the checks by hand (docs/checks.md).

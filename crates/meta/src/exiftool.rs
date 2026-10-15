@@ -32,7 +32,19 @@ pub type Result<T> = std::result::Result<T, ExifToolError>;
 /// Where Homebrew and Linux packages put command-line tools.
 pub const SYSTEM_DIRS: &[&str] = if cfg!(windows) { &[] } else { &["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin"] };
 
-/// Finds ExifTool: `ROLL_EXIFTOOL`, next to the app, on `PATH`, the
+/// Where an installed Roll keeps the tools it ships: next to the program
+/// (Windows), in the app's Resources (macOS), or in `lib/Roll` beside
+/// `bin` (Linux packages and the AppImage).
+pub fn bundle_dirs() -> Vec<PathBuf> {
+    let Some(dir) = std::env::current_exe().ok().and_then(|e| e.parent().map(Path::to_path_buf)) else { return Vec::new() };
+    let mut out = vec![dir.clone(), dir.join("resources"), dir.join("../Resources")];
+    for name in ["Roll", "roll"] {
+        out.push(dir.join("../lib").join(name));
+    }
+    out
+}
+
+/// Finds ExifTool: `ROLL_EXIFTOOL`, the copy Roll ships, on `PATH`, the
 /// usual install folders (apps started from the Dock or a menu do not get
 /// Homebrew's `PATH`), or the per-user Windows install location.
 pub fn locate() -> Option<PathBuf> {
@@ -42,10 +54,8 @@ pub fn locate() -> Option<PathBuf> {
         return Some(p);
     }
     let exe_name = if cfg!(windows) { "exiftool.exe" } else { "exiftool" };
-    if let Ok(exe) = std::env::current_exe()
-        && let Some(dir) = exe.parent()
-    {
-        for cand in [dir.join(exe_name), dir.join("exiftool").join(exe_name), dir.join("resources").join("exiftool").join(exe_name)] {
+    for dir in bundle_dirs() {
+        for cand in [dir.join(exe_name), dir.join("exiftool").join(exe_name)] {
             if cand.is_file() {
                 return Some(cand);
             }
@@ -95,7 +105,18 @@ impl ExifTool {
             const CREATE_NO_WINDOW: u32 = 0x0800_0000;
             cmd.creation_flags(CREATE_NO_WINDOW);
         }
-        let mut child = cmd.spawn().map_err(ExifToolError::Spawn)?;
+        let mut child = match cmd.spawn() {
+            // A Perl script that lost its executable bit (copied by hand).
+            Err(e) if !cfg!(windows) && e.kind() == std::io::ErrorKind::PermissionDenied => Command::new("perl")
+                .arg(exe)
+                .args(["-stay_open", "True", "-@", "-"])
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .spawn()
+                .map_err(ExifToolError::Spawn)?,
+            other => other.map_err(ExifToolError::Spawn)?,
+        };
         let stdin = child.stdin.take().ok_or(ExifToolError::Exited)?;
         let out = pump(child.stdout.take().ok_or(ExifToolError::Exited)?);
         let err = pump(child.stderr.take().ok_or(ExifToolError::Exited)?);

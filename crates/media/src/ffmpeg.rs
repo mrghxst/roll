@@ -21,7 +21,19 @@ fn exe_name(base: &str) -> String {
     if cfg!(windows) { format!("{base}.exe") } else { base.to_string() }
 }
 
-/// `ROLL_FFMPEG`, next to the app, `PATH`, or the usual install folders
+/// Where an installed Roll keeps the tools it ships: next to the program
+/// (Windows), in the app's Resources (macOS), or in `lib/Roll` beside
+/// `bin` (Linux packages and the AppImage).
+pub fn bundle_dirs() -> Vec<PathBuf> {
+    let Some(dir) = std::env::current_exe().ok().and_then(|e| e.parent().map(Path::to_path_buf)) else { return Vec::new() };
+    let mut out = vec![dir.clone(), dir.join("resources"), dir.join("../Resources")];
+    for name in ["Roll", "roll"] {
+        out.push(dir.join("../lib").join(name));
+    }
+    out
+}
+
+/// `ROLL_FFMPEG`, the copy Roll ships, `PATH`, or the usual install folders
 /// (apps started from the Dock or a menu do not get Homebrew's `PATH`).
 pub fn locate(base: &str) -> Option<PathBuf> {
     let env = format!("ROLL_{}", base.to_uppercase());
@@ -31,9 +43,7 @@ pub fn locate(base: &str) -> Option<PathBuf> {
         return Some(p);
     }
     let name = exe_name(base);
-    if let Ok(exe) = std::env::current_exe()
-        && let Some(dir) = exe.parent()
-    {
+    for dir in bundle_dirs() {
         for c in [dir.join(&name), dir.join("ffmpeg").join(&name)] {
             if c.is_file() {
                 return Some(c);

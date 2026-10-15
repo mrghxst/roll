@@ -28,13 +28,13 @@ jobs:
           # 22.04 so the AppImage and deb run on older distributions too.
           - name: linux
             os: ubuntu-22.04
-            args: --bundles appimage,deb
+            args: --bundles appimage,deb --config src-tauri/tauri.bundle.linux.json
             files: |
               target/release/bundle/appimage/*.AppImage
               target/release/bundle/deb/*.deb
           - name: macos
             os: macos-15
-            args: --target universal-apple-darwin --bundles dmg
+            args: --target universal-apple-darwin --bundles dmg --config src-tauri/tauri.bundle.macos.json
             files: target/universal-apple-darwin/release/bundle/dmg/*.dmg
     runs-on: ${{ matrix.os }}
     steps:
@@ -50,6 +50,10 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: ./scripts/fetch-tools.ps1
+
+      - name: macOS and Linux tools to bundle
+        if: runner.os != 'Windows'
+        run: ./scripts/fetch-tools.sh
 
       - uses: dtolnay/rust-toolchain@stable
         with:

@@ -12,6 +12,12 @@ only, to `%LOCALAPPDATA%\Programs\Roll`, no administrator rights needed, and
 brings ExifTool (metadata) and FFmpeg (HEIC, videos) with it. Windows may
 warn that the installer is from an unknown publisher: it is not signed yet.
 
+On macOS, open the `.dmg` and drag Roll to Applications; ExifTool comes
+with it, FFmpeg from Homebrew (`brew install ffmpeg`) adds HEIC photos and
+videos. The first start needs right-click › Open, since the app is not
+notarized yet. On Linux, the `.deb` and the AppImage bring ExifTool and
+FFmpeg; the AppImage needs Perl, which nearly every distribution has.
+
 Roll keeps its database, thumbnails and logs in `%LOCALAPPDATA%\Roll`. Your
 photos stay where they are. Uninstalling keeps that folder; delete it by hand
 to start over.
@@ -186,8 +192,9 @@ how a sync works, and why the Immich app's phone backup should stay off.
 
 ## When something goes wrong
 
-- **"ExifTool was not found":** the installer brings it; for a development
-  build, put `exiftool.exe` on the PATH or set `ROLL_EXIFTOOL`.
+- **"ExifTool was not found":** the installers bring it; for a development
+  build, put `exiftool` on the PATH or set `ROLL_EXIFTOOL` (`ROLL_FFMPEG`
+  for FFmpeg).
 - **A drive is missing:** items on it show as missing until it is back; Roll
   does not forget them.
 - **Roll crashed:** `%LOCALAPPDATA%\Roll\logs` has a `crash-…txt` report.
