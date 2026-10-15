@@ -3935,7 +3935,7 @@ dependencies = [
 
 [[package]]
 name = "roll-ai"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "base64 0.23.1",
@@ -3954,7 +3954,7 @@ dependencies = [
 
 [[package]]
 name = "roll-core"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "base64 0.23.1",
@@ -3992,7 +3992,7 @@ dependencies = [
 
 [[package]]
 name = "roll-desktop"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "roll-core",
@@ -4012,7 +4012,7 @@ dependencies = [
 
 [[package]]
 name = "roll-fixtures"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -4024,7 +4024,7 @@ dependencies = [
 
 [[package]]
 name = "roll-geo"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -4042,7 +4042,7 @@ dependencies = [
 
 [[package]]
 name = "roll-media"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "blake3",
@@ -4060,7 +4060,7 @@ dependencies = [
 
 [[package]]
 name = "roll-meta"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "base64 0.23.1",
