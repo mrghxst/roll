@@ -164,7 +164,11 @@ Milestones from PROMPT.md section 10. `[x]` done, `[~]` partly done,
 - [x] Natural-language search: words the offline parser leaves go to the
       text model on request ("Ask AI about these words"); its answer
       becomes filter chips, unknown places stay as words
-- [ ] Optional reranking (Qwen3-VL-Reranker or the decision model)
+- [x] Best matches and "Better ranking" (2026-10-15): the 50 best matches
+      of a search (RRF of text and picture ranks) in a sheet; the decision
+      model rates them 0–10, 8 pictures (320 px) per request. Measured on
+      the CC0 set (docs/benchmarks.md), which also found and fixed tag roots
+      like `Category/` matching searches
 ## M6 Events, Immich, polish
 
 - [x] Events: detection (4 h / 12 h gaps, 50 km from home, 8 items,
@@ -255,5 +259,6 @@ Owner requests (2026-10-13), to build after M4–M6:
 
 ## Next
 
-M4 and the M7 owner requests are in. Left: cluster names from a model,
-optional reranking, the Immich CLI comparison, signed builds with updates.
+M4, M5, M6 and the M7 owner requests are in. Left: signed builds with
+updates (needs code-signing certificates), faces for the best shot, and
+the checks by hand (docs/checks.md).

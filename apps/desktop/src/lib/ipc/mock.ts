@@ -1542,6 +1542,24 @@ export const mockApi: Api = {
   },
   // A stand-in for the text model: a few words it "understands".
   openLink: async (url) => void window.open(url, '_blank', 'noopener'),
+  bestMatches: async (q) => {
+    const words = (q.text ?? '').trim();
+    if (!words) return { ids: [], scores: [], cost_usd: 0, words };
+    const ids = filter(q).slice(0, 50).map((a) => a.id);
+    return { ids, scores: ids.map(() => null), cost_usd: 0, words };
+  },
+  rerank: async (q) => {
+    const problem = aiProblem();
+    if (problem) throw new Error(problem);
+    const m = await mockApi.bestMatches(q);
+    // The model's stand-in: brighter pictures match better.
+    const score = (id: number) => {
+      const c = byId(id)?.color ?? 0;
+      return Math.round((((c >> 16) & 255) + ((c >> 8) & 255) + (c & 255)) / 76.5);
+    };
+    const ids = [...m.ids].sort((a, b) => score(b) - score(a) || m.ids.indexOf(a) - m.ids.indexOf(b));
+    return { ...m, ids, scores: ids.map(score), cost_usd: settings.ai_mode === 'openrouter' ? 0.0008 : 0 };
+  },
   aiSearch: async (text) => {
     const problem = aiProblem();
     if (problem) throw new Error(problem);

@@ -12,5 +12,6 @@ pub mod onnx;
 pub mod openrouter;
 pub mod privacy;
 pub mod query;
+pub mod rerank;
 pub mod siglip;
 pub mod vectors;

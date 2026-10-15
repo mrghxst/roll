@@ -202,6 +202,8 @@ pub fn run() {
             commands::ai_status,
             commands::open_link,
             commands::ai_search,
+            commands::best_matches,
+            commands::rerank,
             commands::ai_offers,
             commands::ai_pick,
             commands::ai_plan,

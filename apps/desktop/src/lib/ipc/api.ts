@@ -1,6 +1,7 @@
 // The backend interface the UI uses. In the app it is Tauri; in a plain
 // browser (development, Playwright) it is an in-memory mock.
 
+import type { BestMatches } from './bindings/BestMatches';
 import type { NameSuggestion } from './bindings/NameSuggestion';
 import type { ShotScore } from './bindings/ShotScore';
 import type { ExactPlan } from './bindings/ExactPlan';
@@ -165,6 +166,10 @@ export interface Api {
   openLink(url: string): Promise<void>;
   /** The text model's reading of search words the parser left. */
   aiSearch(text: string): Promise<ParsedSearch>;
+  /** Up to 50 items that match the search words best, best first. */
+  bestMatches(query: Query): Promise<BestMatches>;
+  /** The same, rated by the decision model (sends the words and the pictures). */
+  rerank(query: Query): Promise<BestMatches>;
   /** The AI mode, local servers found on their default ports, and what is missing. */
   aiStatus(): Promise<AiStatus>;
   /** Image-capable OpenRouter models with live prices, cheapest first. */

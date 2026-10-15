@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Bot, Command, Info, ListFilter, Search, X } from '@lucide/svelte';
+  import { Bot, Command, Info, ListFilter, ListOrdered, Search, X } from '@lucide/svelte';
   import type { Snippet } from 'svelte';
   import { api, emptyQuery } from '../ipc/api';
   import type { ParsedSearch } from '../ipc/bindings/ParsedSearch';
@@ -143,6 +143,11 @@
       </button>
     {/if}
   </div>
+  {#if app.filters.text?.trim()}
+    <IconButton label="Best matches first" onclick={() => (app.bestOpen = true)} data-testid="best-matches">
+      <ListOrdered size={16} strokeWidth={1.5} />
+    </IconButton>
+  {/if}
   <IconButton label="Filters" active={app.filtersOpen} onclick={() => (app.filtersOpen = !app.filtersOpen)} data-testid="filters-toggle">
     <ListFilter size={16} strokeWidth={1.5} />
   </IconButton>

@@ -178,3 +178,30 @@ Text reader (PP-OCRv6 small), per image:
 
 Search, text to picture similarity on the CC0 set: relevant pictures score
 0.09–0.17, the median item 0.01–0.04; "chat" finds cats (French).
+
+## Best matches and better ranking, 2026-10-15
+
+`crates/core/tests/rerank_real.rs` on the 157-item CC0 set with neutral
+file names; relevance is a title word from Openverse (rough: many
+screenshots and documents have no title). Precision of the first 5 best
+matches over 8 searches (cat, dog, food on a plate, beach, city street,
+birthday party, handwritten letter, mountains):
+
+| Order | Precision at 5 |
+|---|---|
+| Before the fix below | 58% |
+| Fused text and picture ranks | 64% |
+| Rated by qwen3-vl:8b-instruct (local) | 64% |
+
+- The run found a search bug: Roll's own tags (`Category/Social media`)
+  were indexed with their root, so "cat" matched 46 items through
+  "Category". Roots of `Category/`, `Event/`, `Source/` and `From/` tags
+  are now left out of the index; "cat" matches 15 items, 3 of them by
+  text.
+- The model moved two more cats into the top 5 for "cat" and one food
+  picture out for "food on a plate"; the other orders stayed. On a set
+  this small the fused order is already good; better ranking is for long
+  result lists.
+- Speed with the local model: about 1.5 s a picture (8 per request) on
+  the RTX 2080 Ti, so 50 pictures take about 75 s; the first request after
+  loading the model takes longer.

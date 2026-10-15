@@ -381,3 +381,13 @@ questions. One line of reason each. Newest at the bottom of each section.
   The image model uses the graphics card.
 - **DirectML.dll ships next to Roll.exe**; ONNX Runtime itself is linked
   in (`ort` download-binaries), so there is no separate runtime install.
+- **Best matches are a separate list.** The timeline keeps date order
+  (above); the list icon next to the search opens the 50 best matches
+  (`embeddings::hybrid`, RRF of the text index and picture similarity,
+  limited to what the search shows). "Better ranking" uses the decision
+  model, not Qwen3-VL-Reranker: it is already set up, and a GGUF reranker
+  would need llama.cpp in the installer. 8 pictures per request at 320 px;
+  the model gives each 0–10. On OpenRouter that is about $0.002 for 50
+  pictures with Gemma 4 26B ($0.000038 a picture measured in M5), over the
+  spec's $0.001; ranking 25 would meet it, but 50 is what the spec asks
+  to rerank.

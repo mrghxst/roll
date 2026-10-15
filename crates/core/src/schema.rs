@@ -1,6 +1,6 @@
 //! Database migrations. Append only: never edit a shipped migration.
 
-pub const MIGRATIONS: &[&str] = &[M1, M2, M3, M4, M5, M6, M7, M8, M9, M10, M11, M12];
+pub const MIGRATIONS: &[&str] = &[M1, M2, M3, M4, M5, M6, M7, M8, M9, M10, M11, M12, M13];
 
 const M1: &str = r#"
 CREATE TABLE settings (
@@ -353,6 +353,12 @@ CREATE TABLE event_undo (
 /// Decision models (M5): measured prices and token counts per model, runs
 /// with their budget, and one row per item and run so a run resumes
 /// without sending an item twice. The model check's labelled sample.
+/// The search index leaves out the roots of Roll's own tags (`Category/`,
+/// `Event/`, `Source/`, `From/`): empty it, so it is rebuilt at the next start.
+const M13: &str = r#"
+DELETE FROM fts;
+"#;
+
 /// Text embeddings of category descriptions and searches, so the large
 /// text tower loads only for new text; taught categories.
 const M12: &str = r#"

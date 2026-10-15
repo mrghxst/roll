@@ -49,6 +49,11 @@ palette brings it back.
   adds categories, cameras, places, ratings and more. When AI is on,
   words Roll did not understand can go to the AI model ("Ask AI about
   these words"); only those words are sent, never photos.
+- **Best matches:** results stay in date order; the list icon next to the
+  search shows the 50 that match the words best, by text and by what the
+  pictures show. With a decision model, "Better ranking" has it rate each
+  of them (the words and 320 px pictures without metadata; about $0.002 a
+  search on OpenRouter, free with a local model).
 - **Command palette:** Ctrl+K. Every view and action is there.
 - **Viewer:** double-click a tile or press Enter. Arrow keys move, 1–5
   rate (0 clears), F favorites, T tags, Del moves to Roll's trash, Esc

@@ -1423,16 +1423,7 @@ impl Library {
         };
         // 320 px is enough to tell what a group is, and keeps 9 pictures
         // within a local server's context.
-        let small = |j: Vec<u8>| -> Vec<u8> {
-            let Ok(img) = image::load_from_memory(&j) else { return j };
-            let img = img.resize(320, 320, image::imageops::FilterType::Triangle).to_rgb8();
-            let mut out = Vec::new();
-            match image::codecs::jpeg::JpegEncoder::new_with_quality(&mut out, 80).encode_image(&img) {
-                Ok(()) => out,
-                Err(_) => j,
-            }
-        };
-        let mut jpegs: Vec<Vec<u8>> = ids.iter().take(9).filter_map(|id| self.ai_image(*id).map(|(_, j)| small(j))).collect();
+        let mut jpegs: Vec<Vec<u8>> = ids.iter().take(9).filter_map(|id| self.ai_image(*id).map(|(_, j)| small_jpeg(j, 320))).collect();
         anyhow::ensure!(!jpegs.is_empty(), "No pictures to show the model.");
         // Fewer pictures when the server's context is too small.
         let reply = loop {
@@ -1449,6 +1440,88 @@ impl Library {
             definition: sug.definition,
             existing: sug.existing,
             cost_usd: reply.cost.unwrap_or(0.0),
+        })
+    }
+
+    /// The best matches for a search, best first (up to 50): the words in
+    /// the text index and, with the image model, picture similarity, fused
+    /// with Reciprocal Rank Fusion. Only items the search shows.
+    pub fn best_matches(&self, q: &Query) -> anyhow::Result<crate::search::BestMatches> {
+        let q = self.expand(q);
+        let words = q.text.clone().unwrap_or_default().split_whitespace().collect::<Vec<_>>().join(" ");
+        if words.is_empty() {
+            return Ok(Default::default());
+        }
+        let mut tv = None;
+        let mut ix = None;
+        if let Some(v) = self.vision() {
+            let index = self.embed_index()?;
+            if !index.is_empty() {
+                tv = Some(v.text_vec(&self.db.write(), &words.to_lowercase())?);
+                ix = Some(index);
+            }
+        }
+        let c = self.db.read();
+        let shown: std::collections::HashSet<i64> = {
+            let sql = query::where_clause(&q);
+            let mut st = c.prepare(&format!("SELECT a.id FROM assets a WHERE {}", sql.clause))?;
+            st.query_map(rusqlite::params_from_iter(sql.params.iter()), |r| r.get::<_, i64>(0))?.collect::<Result<_, _>>()?
+        };
+        let ids = crate::embeddings::hybrid(&c, &q, tv.as_deref(), ix.as_deref(), 2000)?
+            .into_iter()
+            .filter(|id| shown.contains(id))
+            .take(50)
+            .map(|id| id as i32)
+            .collect::<Vec<_>>();
+        Ok(crate::search::BestMatches { scores: vec![None; ids.len()], ids, cost_usd: 0.0, words })
+    }
+
+    /// "Better ranking": the decision model rates the best matches against
+    /// the words, 8 pictures (320 px, no metadata) per request. Sends only
+    /// the words and the pictures.
+    pub fn rerank(&self, q: &Query) -> anyhow::Result<crate::search::BestMatches> {
+        let m = self.best_matches(q)?;
+        anyhow::ensure!(!m.ids.is_empty(), "Nothing to rank. Type what to look for.");
+        let s = self.settings();
+        let model = s
+            .ai_decision_model
+            .clone()
+            .filter(|m| !m.trim().is_empty())
+            .ok_or_else(|| anyhow::anyhow!("Pick a decision model in Sort with AI first."))?;
+        let ep = self.ai_endpoint()?;
+        let jpegs: Vec<Option<Vec<u8>>> = m.ids.iter().map(|id| self.ai_image(*id as i64).map(|(_, j)| small_jpeg(j, 320))).collect();
+        let batches: Vec<Vec<usize>> =
+            (0..m.ids.len()).filter(|i| jpegs[*i].is_some()).collect::<Vec<_>>().chunks(8).map(<[usize]>::to_vec).collect();
+        let score = |idx: &[usize]| {
+            let pics: Vec<&[u8]> = idx.iter().map(|i| jpegs[*i].as_deref().unwrap_or_default()).collect();
+            rerank_batch(&ep, &model, &m.words, &pics)
+        };
+        // A server in the cloud takes the batches at once; a local one in turn.
+        let results: Vec<anyhow::Result<(Vec<Option<u8>>, f64)>> = if ep.is_openrouter() {
+            std::thread::scope(|sc| {
+                let handles: Vec<_> = batches.iter().map(|b| sc.spawn(|| score(b))).collect();
+                handles.into_iter().map(|h| h.join().unwrap_or_else(|_| Err(anyhow::anyhow!("a ranking request failed")))).collect()
+            })
+        } else {
+            batches.iter().map(|b| score(b)).collect()
+        };
+        let mut scores = vec![None; m.ids.len()];
+        let mut cost = 0.0;
+        for (b, r) in batches.iter().zip(results) {
+            let (got, c) = r?;
+            cost += c;
+            for (i, s) in b.iter().zip(got) {
+                scores[*i] = s;
+            }
+        }
+        anyhow::ensure!(scores.iter().any(Option::is_some), "The model's answers could not be used.");
+        let ids: Vec<i64> = m.ids.iter().map(|i| *i as i64).collect();
+        let order = roll_ai::rerank::order(&ids, &scores);
+        Ok(crate::search::BestMatches {
+            ids: order.iter().map(|(id, _)| *id as i32).collect(),
+            scores: order.iter().map(|(_, s)| *s).collect(),
+            cost_usd: cost,
+            words: m.words,
         })
     }
 
@@ -2211,6 +2284,44 @@ fn gpu_memory_gb() -> Option<f64> {
         let mib: f64 = String::from_utf8_lossy(&out.stdout).lines().filter_map(|l| l.trim().parse::<f64>().ok()).fold(0.0, f64::max);
         (mib > 0.0).then(|| (mib / 1024.0 * 10.0).round() / 10.0)
     })
+}
+
+/// A smaller JPEG for a model that only needs to tell what a picture shows.
+fn small_jpeg(j: Vec<u8>, px: u32) -> Vec<u8> {
+    let Ok(img) = image::load_from_memory(&j) else { return j };
+    let img = img.resize(px, px, image::imageops::FilterType::Triangle).to_rgb8();
+    let mut out = Vec::new();
+    match image::codecs::jpeg::JpegEncoder::new_with_quality(&mut out, 80).encode_image(&img) {
+        Ok(()) => out,
+        Err(_) => j,
+    }
+}
+
+/// Scores for one batch of pictures; halved when the server's context is
+/// too small, unscored when an answer cannot be used.
+fn rerank_batch(ep: &roll_ai::chat::Endpoint, model: &str, words: &str, pics: &[&[u8]]) -> anyhow::Result<(Vec<Option<u8>>, f64)> {
+    let owned: Vec<Vec<u8>> = pics.iter().map(|p| p.to_vec()).collect();
+    let body = roll_ai::rerank::body(model, words, &owned, ep.is_openrouter());
+    match ep.complete(&body) {
+        Ok(r) => {
+            let cost = r.cost.unwrap_or(0.0);
+            match roll_ai::rerank::parse(&r.content, pics.len()) {
+                Ok(s) => Ok((s.into_iter().map(Some).collect(), cost)),
+                Err(e) => {
+                    tracing::warn!("better ranking: {e}");
+                    Ok((vec![None; pics.len()], cost))
+                }
+            }
+        }
+        Err(e) if crate::decide::too_long(&e) && pics.len() > 1 => {
+            let (a, b) = pics.split_at(pics.len() / 2);
+            let (mut sa, ca) = rerank_batch(ep, model, words, a)?;
+            let (sb, cb) = rerank_batch(ep, model, words, b)?;
+            sa.extend(sb);
+            Ok((sa, ca + cb))
+        }
+        Err(e) => anyhow::bail!(e.explain()),
+    }
 }
 
 #[cfg(test)]

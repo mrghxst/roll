@@ -716,6 +716,18 @@ pub fn open_link(url: String) -> Res<()> {
 }
 
 #[tauri::command]
+pub async fn best_matches(state: State<'_, AppState>, query: Query) -> Res<roll_core::search::BestMatches> {
+    let lib = state.lib.clone();
+    blocking(move || lib.best_matches(&query)).await
+}
+
+#[tauri::command]
+pub async fn rerank(state: State<'_, AppState>, query: Query) -> Res<roll_core::search::BestMatches> {
+    let lib = state.lib.clone();
+    blocking(move || lib.rerank(&query)).await
+}
+
+#[tauri::command]
 pub async fn ai_search(state: State<'_, AppState>, text: String) -> Res<roll_core::search::ParsedSearch> {
     let lib = state.lib.clone();
     blocking(move || lib.ai_search(&text)).await

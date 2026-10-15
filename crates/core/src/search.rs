@@ -12,6 +12,19 @@ use ts_rs::TS;
 
 use crate::model::{Query, problem};
 
+/// The best matches for a search, best first (PROMPT 4.2): fused text and
+/// picture ranks, or the decision model's after "Better ranking".
+#[derive(Debug, Clone, Default, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct BestMatches {
+    pub ids: Vec<i32>,
+    /// The decision model's 0–10 per item, after "Better ranking".
+    pub scores: Vec<Option<u8>>,
+    pub cost_usd: f64,
+    /// The words the order is for (what the filters leave of the search).
+    pub words: String,
+}
+
 /// An FTS5 query for free text: every word must match as a prefix.
 pub fn fts_match(text: &str) -> Option<String> {
     let words: Vec<String> = fold(text).split(' ').filter(|w| !w.is_empty()).map(|w| format!("\"{w}\"*")).collect();
@@ -41,7 +54,7 @@ pub fn reindex(c: &Connection, ids: Option<&[i64]>, place: &dyn Fn(f64, f64) -> 
         "SELECT a.id, a.name, a.dir, a.lat, a.lon,
                 coalesce(a.description, '') || ' ' || coalesce(a.caption, '') || ' ' || coalesce((SELECT o.text FROM ocr o WHERE o.asset_id = a.id), ''),
                 coalesce(a.make, '') || ' ' || coalesce(a.model, ''),
-                (SELECT group_concat(t.path, ' ') FROM asset_tags at JOIN tags t ON t.id = at.tag_id WHERE at.asset_id = a.id)
+                (SELECT group_concat(t.path, char(31)) FROM asset_tags at JOIN tags t ON t.id = at.tag_id WHERE at.asset_id = a.id)
          FROM assets a {filter}"
     ))?;
     let rows: Vec<IndexRow> = st
@@ -51,9 +64,17 @@ pub fn reindex(c: &Connection, ids: Option<&[i64]>, place: &dyn Fn(f64, f64) -> 
     let spaced = |s: &str| s.replace(['_', '-', '.', '/', '\\'], " ");
     for (id, name, dir, lat, lon, desc, camera, tags) in &rows {
         let place = lat.zip(*lon).and_then(|(la, lo)| place(la, lo)).unwrap_or_default();
-        ins.execute(params![id, spaced(name), spaced(dir), spaced(tags.as_deref().unwrap_or("")), place, format!("{desc} {camera}")])?;
+        let tags = tags.as_deref().unwrap_or("").split(char::from(31)).map(tag_words).collect::<Vec<_>>().join(" ");
+        ins.execute(params![id, spaced(name), spaced(dir), spaced(&tags), place, format!("{desc} {camera}")])?;
     }
     Ok(rows.len())
+}
+
+/// A tag path as search words, without the roots of Roll's own tags: a
+/// search for "cat" should not find every `Category/…` item.
+fn tag_words(path: &str) -> &str {
+    use crate::tags::{CATEGORY_PREFIX, EVENT_PREFIX, SOURCE_PREFIX};
+    [CATEGORY_PREFIX, EVENT_PREFIX, SOURCE_PREFIX, "From/"].iter().find_map(|root| path.strip_prefix(root)).unwrap_or(path)
 }
 
 /// [south, west, north, east] around a place, sized by what it is.
@@ -438,6 +459,14 @@ mod tests {
         assert_eq!(ids("birth"), vec![b], "prefixes match");
         assert_eq!(ids("dsc 0001"), vec![a]);
         assert!(ids("nothing").is_empty());
+        // Roll's own tag roots are not words: "cat" is not every Category/ item.
+        crate::tags::add(&c, b, "Category/Social media", "rule", None).unwrap();
+        crate::tags::add(&c, b, "Event/Lisbon weekend", "rule", None).unwrap();
+        reindex(&c, None, &|_, _| None).unwrap();
+        assert!(ids("cat").is_empty());
+        assert!(ids("event").is_empty());
+        assert_eq!(ids("social"), vec![b]);
+        assert_eq!(ids("lisbon"), vec![b]);
         // Accents fold: "Zürich" finds "zurich".
         assert_eq!(fts_match("Zürich").as_deref(), Some("\"zurich\"*"));
     }

@@ -71,6 +71,8 @@ class AppState {
   tagging = $state<number[] | null>(null);
   /** Items given as examples in the Teach sheet. */
   teaching = $state<number[] | null>(null);
+  /** The best matches sheet for the current search. */
+  bestOpen = $state(false);
   /** Trashed items waiting for confirmation to go to the Recycle Bin. */
   recycling = $state<number[] | 'all' | null>(null);
   /** Time zones to offer after places were set. */
