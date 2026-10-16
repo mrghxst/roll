@@ -3,6 +3,19 @@ It is in active development; see the README for what works today and
 docs/plan.md for what is next. Roll never deletes anything permanently and
 every change can be undone, but please try it on a copy of your photos first.
 
+## New in 0.3
+
+- **The map down to single buildings:** offline map areas now keep every
+  building and footpath for a city or a region up to the size of a large
+  lake (central Lisbon is 18 MB), so you can tell one building of a campus
+  from the next. Larger areas keep streets. The map zooms closer, and when
+  you zoom in where it has no streets it offers to keep the area offline.
+- **Skip blinks in best shots:** with the eye models (about 6 MB, offered
+  on the Duplicates page), every face in a burst or series is checked and
+  frames with closed eyes rank last, noted "Eyes closed". On hand-labelled
+  portraits it found 4 of 5 closed eyes and almost never mistook open
+  ones.
+
 ## New in 0.2
 
 Everything new runs on your computer; the models are optional downloads
