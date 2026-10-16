@@ -26,6 +26,9 @@ in Settings › Models and data.
   Qwen3-VL 4B (about 3 GB) and runs it itself when needed; no Ollama or
   other install. 91% right on the test set, about one item a second.
 - **Discover** can ask the decision model for a group's name.
+- **Offline map areas:** keep the streets, water and place names of an
+  area on this computer (from Protomaps' OpenStreetMap build), for a map
+  without online tiles.
 - Immich sync checked again against a real Immich 3.3.1: re-foldering
   between syncs, and the same metadata as Immich's own CLI.
 
