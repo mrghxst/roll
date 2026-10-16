@@ -306,7 +306,7 @@ Owner requests (2026-10-13), to build after M4–M6:
 
 M4 to M6 and M7 are in, except signed builds with updates (needs
 certificates and keys from the owner; the owner chose to go without for
-now). 0.2.0 is
-published as a pre-release (2026-10-16) for Windows, Linux and Apple
-silicon Macs. Left by hand: the checks in docs/checks.md (the macOS dmg
+now). 0.3.0 is
+published as a pre-release (2026-10-17) for Windows, Linux and Apple
+silicon Macs, with the building-level map and closed eyes. Left by hand: the checks in docs/checks.md (the macOS dmg
 has not been started on a Mac yet).
