@@ -239,3 +239,16 @@ Roll on the first request, RTX 2080 Ti, the 157-item CC0 set:
   took 165 s, and the server stopped with the library.
 - Its mistakes: wallpapers taken for photos (6) or junk (3), junk taken
   for photos (3). Documents, memes, screenshots and posts were all right.
+
+## Offline map areas, 2026-10-15
+
+`crates/core/tests/offline_real.rs`, Protomaps build 20261015, zoom 0 to
+13, six range requests at a time:
+
+| Area | Tiles | Stored | Time |
+|---|---|---|---|
+| Central Lisbon | 46 | 4.4 MB (95 KB a tile) | 16 s |
+| Lake Garda region | 326 | 17.2 MB (53 KB a tile) | 14 s (91–120 s while the server's cache was cold) |
+
+Finding the tiles in the archive's directories took 3.8 s for Lake Garda
+(6 leaf directories).

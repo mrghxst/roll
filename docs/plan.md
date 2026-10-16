@@ -279,7 +279,13 @@ Owner requests (2026-10-13), to build after M4–M6:
       FFmpeg (`scripts/fetch-tools.sh`, pinned checksums); Roll finds tools
       in the app's Resources and in `lib/Roll`. macOS FFmpeg stays Homebrew's
       (no LGPL build to ship)
-- [ ] Offline map regions (streets and labels without OpenFreeMap)
+- [x] **Offline map areas** (PROMPT M7, 2026-10-15): "Offline map areas" on
+      the Map copies the area on screen (zoom 0 to 13, up to 20,000 tiles)
+      from the newest Protomaps build with range requests (a PMTiles reader
+      in `crates/geo`, six requests at a time) into `<data>/maps/<id>.db`,
+      with Noto Sans glyphs (pinned checksums); Roll serves them at
+      `roll://maptile` and the map draws them in its own style while the
+      online tiles are off. Lake Garda: 326 tiles, 17 MB, 14 s
 - [ ] Signed builds with automatic updates (needs certificates and an
       update key from the owner)
 - [ ] Open or closed eyes from a landmark model (the image model's guess
@@ -287,7 +293,6 @@ Owner requests (2026-10-13), to build after M4–M6:
 
 ## Next
 
-M4 to M6, the M7 owner requests, people, one-click local AI and the
-packaging polish are in. Left: offline map regions, signed builds with
-updates (needs certificates and keys from the owner), open or closed eyes,
-and the checks by hand (docs/checks.md).
+M4 to M6 and M7 are in, except signed builds with updates (needs
+certificates and keys from the owner) and open or closed eyes. Left by
+hand: the checks in docs/checks.md.

@@ -1,4 +1,4 @@
-import { createReadStream, existsSync } from 'node:fs';
+import { createReadStream, existsSync, readdirSync } from 'node:fs';
 import { join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { defineConfig, type Plugin } from 'vite';
@@ -28,10 +28,57 @@ function cc0Pictures(): Plugin {
   };
 }
 
+/**
+ * Dev server only: serves offline map areas from `fixtures-out/maps`
+ * (`cargo run -p roll-core --example maparea`) at /__maps/ so the mock
+ * backend can show them with `?maps=1`, the way Roll's `roll://maptile`
+ * does. Uses Node's built-in SQLite.
+ */
+function offlineMaps(): Plugin {
+  const dir = normalize(fileURLToPath(new URL('../../fixtures-out/maps/', import.meta.url)));
+  return {
+    name: 'roll-offline-maps',
+    apply: 'serve',
+    async configureServer(server) {
+      if (!existsSync(dir)) return;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { DatabaseSync } = (await import('node:sqlite' as string)) as any;
+      const dbs = readdirSync(dir)
+        .filter((f) => f.endsWith('.db'))
+        .map((f) => new DatabaseSync(join(dir, f), { readOnly: true }));
+      server.middlewares.use('/__maps/', (req, res, next) => {
+        const path = decodeURIComponent((req.url ?? '').split('?')[0] ?? '');
+        const tile = /^\/?tile\/(\d+)\/(\d+)\/(\d+)$/.exec(path);
+        if (tile) {
+          const [z, x, y] = tile.slice(1).map(Number);
+          for (const db of dbs) {
+            const row = db.prepare('SELECT data FROM tiles WHERE z = ? AND x = ? AND y = ?').get(z, x, y);
+            if (row) {
+              res.setHeader('Content-Type', 'application/x-protobuf');
+              res.end(Buffer.from(row.data));
+              return;
+            }
+          }
+          res.statusCode = 204;
+          res.end();
+          return;
+        }
+        const font = normalize(join(dir, 'fonts', path.replace(/^\/?font\//, '')));
+        if (path.includes('font/') && font.startsWith(dir) && existsSync(font)) {
+          res.setHeader('Content-Type', 'application/x-protobuf');
+          createReadStream(font).pipe(res);
+          return;
+        }
+        next();
+      });
+    },
+  };
+}
+
 const host = process.env.TAURI_DEV_HOST;
 
 export default defineConfig({
-  plugins: [svelte(), cc0Pictures()],
+  plugins: [svelte(), cc0Pictures(), offlineMaps()],
   clearScreen: false,
   server: {
     port: 1420,

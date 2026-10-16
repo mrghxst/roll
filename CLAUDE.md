@@ -12,7 +12,9 @@ docs/plan.md tracks milestones; docs/decisions.md records deviations.
   `apps/desktop/src` Svelte UI. `src/lib/ipc/api.ts` picks the Tauri or mock
   backend (`mock.ts` runs in a plain browser: `?setup=1&mock=N`; add
   `&pics=cc0` to show the CC0 test set from `tools/cc0` instead of
-  gradients, which is how the README screenshots are made).
+  gradients, which is how the README screenshots are made; `&maps=1`
+  serves the offline map areas in `fixtures-out/maps`, made with
+  `cargo run -p roll-core --example maparea`).
 - `tools/fixtures` generates `fixtures-out/` (gitignored) with `manifest.json`.
 
 ## Commands

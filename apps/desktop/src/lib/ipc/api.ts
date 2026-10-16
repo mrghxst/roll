@@ -1,6 +1,8 @@
 // The backend interface the UI uses. In the app it is Tauri; in a plain
 // browser (development, Playwright) it is an in-memory mock.
 
+import type { MapArea } from './bindings/MapArea';
+import type { MapEstimate } from './bindings/MapEstimate';
 import type { FaceBox } from './bindings/FaceBox';
 import type { Person } from './bindings/Person';
 import type { BestMatches } from './bindings/BestMatches';
@@ -231,6 +233,16 @@ export interface Api {
   /** Clusters of undecided items; `split` breaks one up by folder. */
   discover(split: string | null): Promise<Cluster[]>;
   discoverIgnore(key: string): Promise<void>;
+  /** Map areas kept for offline use, ready or downloading. */
+  mapAreas(): Promise<MapArea[]>;
+  /** Tiles and size of an area [west, south, east, north]. */
+  mapEstimate(bbox: [number, number, number, number]): Promise<MapEstimate>;
+  /** Start copying an area for offline use; returns its id. */
+  addMapArea(name: string, bbox: [number, number, number, number]): Promise<string>;
+  removeMapArea(id: string): Promise<void>;
+  /** URL templates for offline tiles and fonts; null without a backend for them. */
+  mapTileUrl(): string | null;
+  mapFontUrl(): string | null;
   /** Roll's local AI becomes the decision model and its pack downloads. */
   setupLocalAi(): Promise<void>;
   /** Everyone found in photos, named first. */

@@ -2,7 +2,9 @@
 //! thumbnails and previews from `thumbs.db`, full images and videos from
 //! disk with range requests.
 //!
-//! Paths: `thumb/<id>`, `preview/<id>`, `full/<id>`, `video/<id>?native=1`.
+//! Paths: `thumb/<id>`, `preview/<id>`, `full/<id>`, `video/<id>?native=1`,
+//! and for offline map areas `maptile/<z>/<x>/<y>` and
+//! `mapfont/<fontstack>/<range>.pbf`.
 
 use std::io::{Read, Seek, SeekFrom};
 use std::path::Path;
@@ -95,9 +97,32 @@ fn percent_decode(s: &str) -> String {
     String::from_utf8_lossy(&out).into_owned()
 }
 
+/// Offline map tiles and fonts. A missing tile is empty (204), which the
+/// map draws as nothing without an error.
+fn map(lib: &Library, kind: &str, rest: &[&str]) -> Response<Vec<u8>> {
+    let found = match (kind, rest) {
+        ("maptile", [z, x, y]) => match (z.parse::<u8>(), x.parse::<u32>(), y.parse::<u32>()) {
+            (Ok(z), Ok(x), Ok(y)) => lib.map_tile(z, x, y).map(|d| ("application/x-protobuf", d)),
+            _ => return status(StatusCode::BAD_REQUEST, "bad tile"),
+        },
+        ("mapfont", [stack, range]) => lib.map_glyphs(stack, range.trim_end_matches(".pbf")).map(|d| ("application/x-protobuf", d)),
+        _ => return status(StatusCode::BAD_REQUEST, "bad path"),
+    };
+    match found {
+        Some((mime, d)) => bytes(mime, d, false),
+        None => {
+            Response::builder().status(StatusCode::NO_CONTENT).header(header::ACCESS_CONTROL_ALLOW_ORIGIN, "*").body(Vec::new()).unwrap()
+        }
+    }
+}
+
 pub fn handle(lib: &Arc<Library>, req: &Request<Vec<u8>>) -> Response<Vec<u8>> {
     let path = percent_decode(req.uri().path());
     let query = req.uri().query().unwrap_or("");
+    let all: Vec<&str> = path.trim_start_matches('/').split('/').collect();
+    if let [kind @ ("maptile" | "mapfont"), rest @ ..] = all.as_slice() {
+        return map(lib, kind, rest);
+    }
     let mut parts = path.trim_start_matches('/').split('/');
     let (Some(kind), Some(id)) = (parts.next(), parts.next().and_then(|s| s.parse::<i64>().ok())) else {
         return status(StatusCode::BAD_REQUEST, "bad path");

@@ -2,6 +2,7 @@
 // Playwright tests. URL parameters: `?mock=N` items (default 2400),
 // `?setup=1` to start with a library already added.
 
+import type { MapArea } from './bindings/MapArea';
 import type { ModelOffer } from './bindings/ModelOffer';
 import type { LocalModelInfo } from './bindings/LocalModelInfo';
 import type { RunInfo } from './bindings/RunInfo';
@@ -297,6 +298,11 @@ interface MockFace {
   person: number | null;
   rejected: number[];
 }
+// `?maps=1`: the Lake Garda area from fixtures-out/maps, served by the dev server.
+let mapAreaList: MapArea[] =
+  params.get('maps') === '1'
+    ? [{ id: 'garda', name: 'Lake Garda', bbox: [10.5, 45.5, 11.0, 46.0], max_zoom: 13, tiles: 326, bytes: 17_178_624, state: 'ready', build: '20261015', error: null }]
+    : [];
 let people: MockPerson[] = [];
 let faces: MockFace[] = [];
 let peopleReady = false;
@@ -2042,6 +2048,40 @@ export const mockApi: Api = {
       }));
   },
   discoverIgnore: async (key) => void dismissed.add(key),
+  mapAreas: async () => mapAreaList,
+  mapEstimate: async (bbox) => {
+    // Web Mercator tile count from zoom 0 to 13, as the library counts it.
+    let tiles = 0;
+    for (let z = 0; z <= 13; z++) {
+      const n = 2 ** z;
+      const x = (lon: number) => Math.min(n - 1, Math.max(0, Math.floor(((lon + 180) / 360) * n)));
+      const y = (lat: number) => {
+        const r = (Math.max(-85.05, Math.min(85.05, lat)) * Math.PI) / 180;
+        return Math.min(n - 1, Math.max(0, Math.floor(((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2) * n)));
+      };
+      tiles += (x(bbox[2]) - x(bbox[0]) + 1) * (y(bbox[1]) - y(bbox[3]) + 1);
+    }
+    return { tiles, bytes: tiles * 50_000, too_big: tiles > 20_000 };
+  },
+  addMapArea: async (name, bbox) => {
+    if (!settings.network.downloads) throw new Error('Downloads are off. Turn them on in Settings › Network.');
+    const est = await mockApi.mapEstimate(bbox);
+    if (est.too_big) throw new Error('This area is too large to keep offline. Zoom in to a country or smaller.');
+    const id = `area-${Date.now()}`;
+    mapAreaList = [...mapAreaList, { id, name, bbox, max_zoom: 13, tiles: est.tiles, bytes: est.bytes, state: 'downloading', build: '', error: null }];
+    emit('changed', 'maps');
+    setTimeout(() => {
+      mapAreaList = mapAreaList.map((a) => (a.id === id ? { ...a, state: 'ready', build: '20261015' } : a));
+      emit('changed', 'maps');
+    }, 1500);
+    return id;
+  },
+  removeMapArea: async (id) => {
+    mapAreaList = mapAreaList.filter((a) => a.id !== id);
+    emit('changed', 'maps');
+  },
+  mapTileUrl: () => (params.get('maps') === '1' ? `${location.origin}/__maps/tile/{z}/{x}/{y}` : null),
+  mapFontUrl: () => (params.get('maps') === '1' ? `${location.origin}/__maps/font/{fontstack}/{range}.pbf` : null),
   setupLocalAi: async () => {
     const missing = packs.find((p) => p.id === 'local-ai')?.state !== 'installed';
     if (missing && !settings.network.downloads) throw new Error('Downloads are off. Turn them on in Settings › Network.');

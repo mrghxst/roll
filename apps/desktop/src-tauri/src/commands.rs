@@ -538,6 +538,31 @@ pub async fn setup_local_ai(state: State<'_, AppState>) -> Res<()> {
     blocking(move || lib.setup_local_ai()).await
 }
 
+// Offline map areas
+
+#[tauri::command]
+pub async fn map_areas(state: State<'_, AppState>) -> Res<Vec<roll_core::offline::MapArea>> {
+    let lib = state.lib.clone();
+    blocking(move || Ok(lib.map_areas())).await
+}
+
+#[tauri::command]
+pub fn map_estimate(state: State<'_, AppState>, bbox: [f64; 4]) -> roll_core::offline::MapEstimate {
+    state.lib.map_estimate(bbox)
+}
+
+#[tauri::command]
+pub async fn add_map_area(state: State<'_, AppState>, name: String, bbox: [f64; 4]) -> Res<String> {
+    let lib = state.lib.clone();
+    blocking(move || lib.add_map_area(&name, bbox)).await
+}
+
+#[tauri::command]
+pub async fn remove_map_area(state: State<'_, AppState>, id: String) -> Res<()> {
+    let lib = state.lib.clone();
+    blocking(move || lib.remove_map_area(&id)).await
+}
+
 // People
 
 #[tauri::command]

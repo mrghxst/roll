@@ -128,7 +128,7 @@ In active development. Working today:
 |---|---|
 | Library | Timeline, folders, filters, search, viewer for photos and videos, 100k items at 60 fps |
 | Sorting | Rules, categories, review, organize into year folders with undo; duplicates merged in bulk, best shots of bursts and series |
-| Fixing | Camera clock and time zone fixes, places from neighbours and location history, map with time slider |
+| Fixing | Camera clock and time zone fixes, places from neighbours and location history, map with time slider and offline map areas |
 | Import | Camera cards, WhatsApp and Google Takeout exports |
 | On this computer | SigLIP 2 image model: sorting (68% on its own at 97% precision on the test set), search by what a picture shows, Teach, Find similar, look-alike groups; text reader for screenshots and documents; faces grouped into people you name, written into the files for Immich |
 | AI | Local and OpenRouter decision models, budget caps, model check, "ask AI" in search, best matches with better ranking |

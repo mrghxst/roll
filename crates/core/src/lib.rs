@@ -23,6 +23,7 @@ pub mod journal;
 pub mod library;
 pub mod localai;
 pub mod model;
+pub mod offline;
 pub mod packs;
 pub mod paths;
 pub mod people;

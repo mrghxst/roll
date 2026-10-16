@@ -4,9 +4,10 @@
   import type { GeoJSONSource, Map as MlMap, Marker } from 'maplibre-gl';
   import { onDestroy, onMount, untrack } from 'svelte';
   import { api } from '../ipc/api';
+  import type { MapArea } from '../ipc/bindings/MapArea';
   import type { MapPoints } from '../ipc/mappoints';
   import { app } from '../state/app.svelte';
-  import { applyPalette, baseStyle, loadCountries, metresPerPixel, palette, ring, setDetail } from './basemap';
+  import { applyPalette, baseStyle, loadCountries, metresPerPixel, palette, ring, setDetail, setOffline } from './basemap';
   import { maplibre } from './maplibre';
   import { Flag } from '../ipc/timeline';
 
@@ -227,6 +228,35 @@
     untrack(() => setDetail(map!, on, palette(), 'heatmap'));
   });
 
+  // Offline areas, while the online tiles are off.
+  let areas = $state<MapArea[]>([]);
+  /** What the offline layers show now (not state: the effect sets it). */
+  let offlineKey: string | undefined;
+  $effect(() => {
+    void app.revision;
+    void api
+      .mapAreas()
+      .then((a) => (areas = a))
+      .catch(() => {});
+  });
+  $effect(() => {
+    const on = !!app.settings?.network.online_tiles;
+    const ready_ = areas.filter((a) => a.state === 'ready');
+    if (!ready || !map) return;
+    const bounds = ready_.length
+      ? [
+          Math.min(...ready_.map((a) => a.bbox[0]!)),
+          Math.min(...ready_.map((a) => a.bbox[1]!)),
+          Math.max(...ready_.map((a) => a.bbox[2]!)),
+          Math.max(...ready_.map((a) => a.bbox[3]!)),
+        ]
+      : null;
+    const key = on ? '' : JSON.stringify(bounds);
+    if (key === offlineKey) return;
+    offlineKey = key;
+    untrack(() => setOffline(map!, on ? null : api.mapTileUrl(), api.mapFontUrl(), bounds, palette(), 'heatmap'));
+  });
+
   $effect(() => {
     const h = heatmap;
     if (!ready || !map) return;
@@ -342,6 +372,19 @@
 
   export function flyTo(lat: number, lon: number, zoom = 11) {
     map?.flyTo({ center: [lon, lat], zoom });
+  }
+
+  /** The area on screen as [west, south, east, north], and its centre. */
+  export function view(): { bbox: [number, number, number, number]; lat: number; lon: number } | null {
+    if (!map) return null;
+    const b = map.getBounds();
+    const c = map.getCenter();
+    const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+    return {
+      bbox: [clamp(b.getWest(), -180, 180), clamp(b.getSouth(), -85, 85), clamp(b.getEast(), -180, 180), clamp(b.getNorth(), -85, 85)],
+      lat: c.lat,
+      lon: c.lng,
+    };
   }
 
   // Selection: Shift-drag draws a rectangle, Alt-drag a lasso.

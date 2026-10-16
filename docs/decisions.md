@@ -422,3 +422,12 @@ questions. One line of reason each. Newest at the bottom of each section.
   it fits 6 GB cards and is twice as fast (91.1% at 0.95 items/s against
   95.5% at 0.48 for 8B on the CC0 set); 8B stays the better choice
   through Ollama.
+- **Offline map areas come from the Protomaps builds**, read with range
+  requests (their documented use, like `pmtiles extract`), not from
+  OpenFreeMap, whose free server should not be crawled tile by tile.
+  Zoom 13 is the deepest level kept (the map enlarges it), and an area
+  is capped at 20,000 tiles (about 1 GB), since a tile is 50–95 KB. Each
+  area is its own SQLite file, so removing one never touches another.
+  Labels need glyphs: Noto Sans for Latin, Greek and Cyrillic (OFL,
+  560 KB, pinned checksums) comes with the first area; other scripts stay
+  unlabelled offline.

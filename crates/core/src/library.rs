@@ -73,6 +73,8 @@ pub struct Library {
     reader: Mutex<Option<Arc<roll_ai::ocr::Reader>>>,
     faces: Mutex<Option<Arc<roll_ai::faces::Faces>>>,
     local_ai: crate::localai::Server,
+    map_tiles: Mutex<Option<crate::offline::Tiles>>,
+    map_errors: Mutex<std::collections::HashMap<String, String>>,
 }
 
 /// Whether the offline place names are installed.
@@ -125,6 +127,8 @@ impl Library {
             reader: Mutex::new(None),
             faces: Mutex::new(None),
             local_ai: Default::default(),
+            map_tiles: Mutex::new(None),
+            map_errors: Default::default(),
         }))
     }
 
@@ -243,6 +247,7 @@ impl Library {
             JobSpec::Embed => self.run_embed(ctx),
             JobSpec::Ocr => self.run_ocr(ctx),
             JobSpec::Faces => self.run_faces(ctx),
+            JobSpec::MapArea { id } => self.run_map_area(ctx, id),
             JobSpec::Index => {
                 let gaz = self.gaz();
                 let place = |la: f64, lo: f64| gaz.as_ref().and_then(|g| g.reverse(la, lo).map(|e| e.label()));
@@ -558,6 +563,105 @@ impl Library {
             self.jobs.enqueue(JobSpec::Ocr)?;
         }
         Ok(())
+    }
+
+    // Offline map areas
+
+    fn maps_dir(&self) -> PathBuf {
+        self.data_dir.join("maps")
+    }
+
+    pub fn map_areas(&self) -> Vec<crate::offline::MapArea> {
+        let running: Vec<String> = {
+            let c = self.db.read();
+            let mut st = match c.prepare("SELECT params FROM jobs WHERE kind = 'map_area' AND state IN ('queued', 'running', 'paused')") {
+                Ok(st) => st,
+                Err(_) => return Vec::new(),
+            };
+            st.query_map([], |r| r.get::<_, String>(0))
+                .map(|rows| rows.flatten().collect::<Vec<_>>())
+                .unwrap_or_default()
+                .into_iter()
+                .filter_map(|p| match serde_json::from_str::<JobSpec>(&p).ok()? {
+                    JobSpec::MapArea { id } => Some(id),
+                    _ => None,
+                })
+                .collect()
+        };
+        crate::offline::list(&self.maps_dir(), &running, &self.map_errors.lock())
+    }
+
+    pub fn map_estimate(&self, bbox: [f64; 4]) -> crate::offline::MapEstimate {
+        crate::offline::estimate(bbox)
+    }
+
+    /// Start copying an area for offline use; returns its id.
+    pub fn add_map_area(&self, name: &str, bbox: [f64; 4]) -> anyhow::Result<String> {
+        anyhow::ensure!(self.settings().network.downloads, "Downloads are off. Turn them on in Settings › Network.");
+        anyhow::ensure!(bbox[0] < bbox[2] && bbox[1] < bbox[3], "Choose an area on the map first");
+        let est = crate::offline::estimate(bbox);
+        anyhow::ensure!(!est.too_big, "This area is too large to keep offline. Zoom in to a country or smaller.");
+        let slug: String = name.chars().filter(|c| c.is_alphanumeric()).take(24).collect::<String>().to_lowercase();
+        let id = format!("{}-{}", if slug.is_empty() { "area".into() } else { slug }, crate::db::now_ms());
+        let dir = self.maps_dir();
+        std::fs::create_dir_all(&dir)?;
+        let req = crate::offline::Request { name: name.trim().to_string(), bbox };
+        std::fs::write(dir.join(format!("{id}.json")), serde_json::to_vec(&req)?)?;
+        self.jobs.enqueue(JobSpec::MapArea { id: id.clone() })?;
+        self.emit(LibEvent::Changed("maps"));
+        Ok(id)
+    }
+
+    pub fn remove_map_area(&self, id: &str) -> anyhow::Result<()> {
+        anyhow::ensure!(id.chars().all(|c| c.is_alphanumeric() || c == '-'), "Unknown map area");
+        *self.map_tiles.lock() = None;
+        let dir = self.maps_dir();
+        for ext in ["db", "db.part", "json"] {
+            let _ = std::fs::remove_file(dir.join(format!("{id}.{ext}")));
+        }
+        self.map_errors.lock().remove(id);
+        self.emit(LibEvent::Changed("maps"));
+        Ok(())
+    }
+
+    fn run_map_area(&self, ctx: &crate::jobs::JobCtx, id: &str) -> anyhow::Result<()> {
+        let dir = self.maps_dir();
+        let Some(req) =
+            std::fs::read(dir.join(format!("{id}.json"))).ok().and_then(|b| serde_json::from_slice::<crate::offline::Request>(&b).ok())
+        else {
+            return Ok(());
+        };
+        anyhow::ensure!(self.settings().network.downloads, "Downloads are off. Turn them on in Settings › Network.");
+        self.map_errors.lock().remove(id);
+        let result = crate::offline::ensure_fonts(&dir).and_then(|_| {
+            crate::offline::download(&dir, id, &req, &|done, total| {
+                ctx.progress(done, total);
+                ctx.checkpoint()
+            })
+        });
+        match result {
+            Ok(_) => {
+                let _ = std::fs::remove_file(dir.join(format!("{id}.json")));
+                *self.map_tiles.lock() = None;
+            }
+            Err(e) if e.to_string() == "stopped" => {}
+            Err(e) => {
+                self.map_errors.lock().insert(id.to_string(), format!("{e:#}"));
+            }
+        }
+        self.emit(LibEvent::Changed("maps"));
+        Ok(())
+    }
+
+    /// A tile of the offline areas (uncompressed vector tile).
+    pub fn map_tile(&self, z: u8, x: u32, y: u32) -> Option<Vec<u8>> {
+        let mut g = self.map_tiles.lock();
+        let tiles = g.get_or_insert_with(|| crate::offline::Tiles::load(&self.maps_dir()));
+        tiles.get(z, x, y)
+    }
+
+    pub fn map_glyphs(&self, fontstack: &str, range: &str) -> Option<Vec<u8>> {
+        crate::offline::glyphs(&self.maps_dir(), fontstack, range)
     }
 
     /// Start Roll's local AI server unless it runs (waits for the model).

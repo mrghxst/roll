@@ -127,6 +127,17 @@ Settings › Models and data), paste coordinates or a maps link.
 
 After setting places Roll offers to set the time zone of items without one.
 
+
+### Offline map areas
+
+The map draws countries offline. For streets, water and place names
+without the online tiles, open **Offline map areas** (the download icon
+on the map), and keep the area on screen: Roll copies it from Protomaps'
+OpenStreetMap build (zoom levels 0 to 13, about 50 KB a tile; a lake
+region is around 20 MB, Switzerland about 500 MB). The download runs in
+Activity; the area shows while Settings › Network › Online map tiles is
+off. Remove areas in the same sheet.
+
 ## Events
 
 **Events** proposes trips (more than 50 km from home) and busy days at home.

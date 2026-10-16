@@ -48,6 +48,10 @@ pub enum JobSpec {
     Ocr,
     /// Find faces in photos and group them into people.
     Faces,
+    /// Copy a map area for offline use (`<data>/maps/<id>.json`).
+    MapArea {
+        id: String,
+    },
 }
 
 impl JobSpec {
@@ -66,6 +70,7 @@ impl JobSpec {
             JobSpec::Embed => "embed",
             JobSpec::Ocr => "ocr",
             JobSpec::Faces => "faces",
+            JobSpec::MapArea { .. } => "map_area",
         }
     }
     pub fn priority(&self) -> i64 {
@@ -82,6 +87,7 @@ impl JobSpec {
             JobSpec::Embed => 35,
             JobSpec::Ocr => 36,
             JobSpec::Faces => 37,
+            JobSpec::MapArea { .. } => 42,
         }
     }
     pub fn label(&self) -> String {
@@ -99,6 +105,7 @@ impl JobSpec {
             JobSpec::Embed => "Looking at photos for search and sorting".into(),
             JobSpec::Ocr => "Reading text in screenshots and documents".into(),
             JobSpec::Faces => "Finding faces".into(),
+            JobSpec::MapArea { .. } => "Downloading a map area".into(),
         }
     }
 }

@@ -4030,6 +4030,7 @@ dependencies = [
  "chrono",
  "chrono-tz",
  "deunicode",
+ "flate2",
  "quick-xml",
  "regex",
  "serde",

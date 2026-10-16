@@ -1,9 +1,10 @@
 <script lang="ts">
-  import { Flame, ListOrdered, Maximize, X } from '@lucide/svelte';
+  import { Flame, HardDriveDownload, ListOrdered, Maximize, X } from '@lucide/svelte';
   import Grid from '../grid/Grid.svelte';
   import { api } from '../ipc/api';
   import { emptyMapPoints, type MapPoints } from '../ipc/mappoints';
   import MapView from '../map/MapView.svelte';
+  import OfflineSheet from '../map/OfflineSheet.svelte';
   import TimeSlider, { ymdOf } from '../map/TimeSlider.svelte';
   import Tray from '../map/Tray.svelte';
   import { app, mergeQuery } from '../state/app.svelte';
@@ -23,6 +24,8 @@
   let tray = $state<{ ids: number[]; total: number }>({ ids: [], total: 0 });
   let fitKey = $state('');
   let mapView: ReturnType<typeof MapView> | undefined = $state();
+  /** The offline areas sheet, with the area on screen when it opened. */
+  let offline = $state<{ view: { bbox: [number, number, number, number]; lat: number; lon: number } | null } | null>(null);
 
   $effect(() => {
     void app.revision;
@@ -100,6 +103,7 @@
         <span class="count mono">{n(visible?.length ?? points.count)} on the map</span>
         <IconButton label="Show everything in the time range" onclick={() => mapView?.fitAll()} disabled={!points.count}><Maximize size={16} strokeWidth={1.5} /></IconButton>
         <IconButton label={heatmap ? 'Show clusters' : 'Show a heatmap'} active={heatmap} onclick={() => (heatmap = !heatmap)}><Flame size={16} strokeWidth={1.5} /></IconButton>
+        <IconButton label="Offline map areas" onclick={() => (offline = { view: mapView?.view() ?? null })} data-testid="offline-areas"><HardDriveDownload size={16} strokeWidth={1.5} /></IconButton>
       </div>
       <p class="hint">Shift+drag selects a rectangle, Alt+drag draws a lasso.</p>
       {#if range}
@@ -108,6 +112,7 @@
     </div>
     <Tray ids={tray.ids} total={tray.total} />
   </div>
+  <OfflineSheet open={offline != null} view={offline?.view ?? null} onclose={() => (offline = null)} />
   {#if side && sideQuery}
     <aside class="side" aria-label="Items on the map">
       <header>

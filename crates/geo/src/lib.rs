@@ -5,6 +5,7 @@
 pub mod coords;
 pub mod gazetteer;
 pub mod interp;
+pub mod pmtiles;
 pub mod tracks;
 pub mod tz;
 

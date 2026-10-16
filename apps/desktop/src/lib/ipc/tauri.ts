@@ -87,6 +87,13 @@ export const tauriApi: Api = {
   discover: (split) => invoke('discover', { split }),
   nameCluster: (ids) => invoke('name_cluster', { ids }),
   setupLocalAi: () => invoke('setup_local_ai'),
+  mapAreas: () => invoke('map_areas'),
+  mapEstimate: (bbox) => invoke('map_estimate', { bbox }),
+  addMapArea: (name, bbox) => invoke('add_map_area', { name, bbox }),
+  removeMapArea: (id) => invoke('remove_map_area', { id }),
+  // convertFileSrc would escape the braces of the template.
+  mapTileUrl: () => `${url('maptile')}/{z}/{x}/{y}`,
+  mapFontUrl: () => `${url('mapfont')}/{fontstack}/{range}.pbf`,
   people: () => invoke('people'),
   personFaces: (person) => invoke('person_faces', { person }),
   facesIn: (asset) => invoke('faces_in', { asset }),

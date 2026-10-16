@@ -134,10 +134,15 @@ export function applyPalette(map: MlMap, p: Palette) {
   map.setPaintProperty('land', 'fill-color', p.land);
   map.setPaintProperty('borders', 'line-color', p.border);
   map.setSky(sky(p));
-  if (!map.getSource(DETAIL)) return;
-  for (const l of detailLayers(p)) {
-    for (const [k, v] of Object.entries(l.paint ?? {})) {
-      if (k.endsWith('color')) map.setPaintProperty(l.id, k as 'fill-color', v);
+  for (const [source, layers] of [
+    [DETAIL, detailLayers],
+    [OFFLINE, offlineLayers],
+  ] as const) {
+    if (!map.getSource(source)) continue;
+    for (const l of layers(p)) {
+      for (const [k, v] of Object.entries(l.paint ?? {})) {
+        if (k.endsWith('color')) map.setPaintProperty(l.id, k as 'fill-color', v);
+      }
     }
   }
 }
@@ -225,6 +230,101 @@ export function setDetail(map: MlMap, on: boolean, p: Palette, below?: string) {
   map.addSource(DETAIL, { type: 'vector', url: `${OFM}/planet`, attribution: 'OpenFreeMap © OpenMapTiles © OpenStreetMap contributors' });
   const before = below && map.getLayer(below) ? below : undefined;
   for (const l of layers) map.addLayer(l, before);
+}
+
+// Offline areas (Map › Keep this area offline): Protomaps tiles that Roll
+// serves itself, in the Protomaps schema, drawn like the online tiles. Only
+// while the online tiles are off; zoom 13 is enlarged past that.
+
+const OFFLINE = 'offline';
+const GREEN = ['park', 'forest', 'wood', 'nature_reserve', 'national_park', 'grass', 'grassland', 'meadow', 'garden'];
+
+function offlineLayers(p: Palette): LayerSpecification[] {
+  const s = { source: OFFLINE };
+  const width = (a: number, b: number): unknown => ['interpolate', ['exponential', 1.6], ['zoom'], 6, a, 16, b];
+  return [
+    { id: 'o-green', type: 'fill', ...s, 'source-layer': 'landuse', filter: ['in', ['get', 'kind'], ['literal', GREEN]], paint: { 'fill-color': p.green } },
+    { id: 'o-water', type: 'fill', ...s, 'source-layer': 'water', filter: ['==', ['geometry-type'], 'Polygon'], paint: { 'fill-color': p.water } },
+    {
+      id: 'o-river',
+      type: 'line',
+      ...s,
+      'source-layer': 'water',
+      minzoom: 8,
+      filter: ['==', ['geometry-type'], 'LineString'],
+      paint: { 'line-color': p.water, 'line-width': width(0.5, 3) as number },
+    },
+    { id: 'o-building', type: 'fill', ...s, 'source-layer': 'buildings', minzoom: 14, paint: { 'fill-color': p.building } },
+    {
+      id: 'o-minor',
+      type: 'line',
+      ...s,
+      'source-layer': 'roads',
+      minzoom: 12,
+      filter: ['in', ['get', 'kind'], ['literal', ['minor_road', 'path', 'other']]],
+      paint: { 'line-color': p.minor, 'line-width': width(0.3, 4) as number },
+    },
+    {
+      id: 'o-road',
+      type: 'line',
+      ...s,
+      'source-layer': 'roads',
+      minzoom: 5,
+      filter: ['in', ['get', 'kind'], ['literal', ['highway', 'major_road', 'medium_road']]],
+      paint: { 'line-color': p.road, 'line-width': width(0.4, 8) as number },
+    },
+    {
+      id: 'o-rail',
+      type: 'line',
+      ...s,
+      'source-layer': 'roads',
+      minzoom: 10,
+      filter: ['==', ['get', 'kind'], 'rail'],
+      paint: { 'line-color': p.road, 'line-width': 1, 'line-dasharray': [3, 3] },
+    },
+    {
+      id: 'o-boundary',
+      type: 'line',
+      ...s,
+      'source-layer': 'boundaries',
+      filter: ['==', ['get', 'kind'], 'region'],
+      paint: { 'line-color': p.border, 'line-width': 1, 'line-dasharray': [4, 2] },
+    },
+    {
+      id: 'o-place',
+      type: 'symbol',
+      ...s,
+      'source-layer': 'places',
+      filter: ['all', ['==', ['get', 'kind'], 'locality'], ['>=', ['zoom'], ['coalesce', ['get', 'min_zoom'], 0]]],
+      layout: {
+        'text-field': ['get', 'name'],
+        'text-font': FONT,
+        'text-size': ['match', ['get', 'kind_detail'], 'city', 14, 'town', 12, 11],
+      },
+      paint: { 'text-color': p.label, 'text-halo-color': p.land, 'text-halo-width': 1.2 },
+    },
+  ];
+}
+
+/** Show the offline areas (`bounds`: west, south, east, north of them all),
+ * or take them away with `tiles` null. */
+export function setOffline(map: MlMap, tiles: string | null, fonts: string | null, bounds: number[] | null, p: Palette, below?: string) {
+  if (map.getSource(OFFLINE)) {
+    for (const l of offlineLayers(p)) if (map.getLayer(l.id)) map.removeLayer(l.id);
+    map.removeSource(OFFLINE);
+  }
+  if (!tiles || !bounds) return;
+  if (fonts) map.setGlyphs(fonts);
+  map.addSource(OFFLINE, {
+    type: 'vector',
+    tiles: [tiles],
+    minzoom: 0,
+    maxzoom: 13,
+    bounds: bounds as [number, number, number, number],
+    attribution: '© OpenStreetMap contributors, Protomaps',
+  });
+  const before = below && map.getLayer(below) ? below : undefined;
+  for (const l of offlineLayers(p)) map.addLayer(l, before);
 }
 
 /** A circle around a point as a polygon ring, for approximate locations. */
