@@ -294,5 +294,7 @@ Owner requests (2026-10-13), to build after M4–M6:
 ## Next
 
 M4 to M6 and M7 are in, except signed builds with updates (needs
-certificates and keys from the owner) and open or closed eyes. Left by
-hand: the checks in docs/checks.md.
+certificates and keys from the owner) and open or closed eyes. 0.2.0 is
+published as a pre-release (2026-10-16) for Windows, Linux and Apple
+silicon Macs. Left by hand: the checks in docs/checks.md (the macOS dmg
+has not been started on a Mac yet).
