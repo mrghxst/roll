@@ -111,3 +111,21 @@ and the four-step camera fix. Map speed: docs/benchmarks.md.
 
 By hand, pending: the installer's pages (the directory page should show
 `...\Programs\Roll`), and starting Roll from the Start menu.
+
+## 0.2 packages for every system
+
+Release workflow run on 2026-10-16 (manual run, all three jobs passed):
+
+- Windows: `Roll_0.2.0_x64-setup.exe`, 84 MB. 7-Zip's listing shows
+  `roll-desktop.exe`, `DirectML.dll` (18.5 MB, staged by
+  `scripts/fetch-tools.ps1`), ExifTool and FFmpeg. The same build made
+  locally gives an 80 MB installer.
+- Linux: `Roll_0.2.0_amd64.deb` (91 MB) and `Roll_0.2.0_amd64.AppImage`
+  (160 MB), checked in a throwaway Ubuntu 24.04 WSL distro (removed
+  afterwards). The deb installs with apt (depends on perl, WebKitGTK 4.1,
+  GTK 3), `ldd` finds every library, the bundled ExifTool 13.59 and FFmpeg
+  8.1.3 run from `/usr/lib/Roll`, and Roll started under `xvfb-run` with
+  an empty data folder created its library and logged "Roll started";
+  the AppImage did the same.
+- macOS: `Roll_0.2.0_aarch64.dmg`, 25 MB, built for Apple silicon. Not
+  started here (no Mac); still to check by hand.
