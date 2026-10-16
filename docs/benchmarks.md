@@ -252,3 +252,8 @@ Roll on the first request, RTX 2080 Ti, the 157-item CC0 set:
 
 Finding the tiles in the archive's directories took 3.8 s for Lake Garda
 (6 leaf directories).
+
+Down to zoom 15 (2026-10-16, build 20261016): central Lisbon, 310 tiles,
+18.0 MB, 12 s. Bytes a tile: zoom 12 123 KB, 13 77 KB, 14 54 KB, 15 49 KB.
+A zoom 15 tile in the Baixa has 850 buildings; the zoom 13 tile above it,
+enlarged to the same spot, has 12.

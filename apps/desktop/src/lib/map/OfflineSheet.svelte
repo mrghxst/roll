@@ -8,7 +8,7 @@
   import Button from '../ui/Button.svelte';
   import Input from '../ui/Input.svelte';
   import Sheet from '../ui/Sheet.svelte';
-  import { bytes, n } from '../util/format';
+  import { bytes } from '../util/format';
 
   type View = { bbox: [number, number, number, number]; lat: number; lon: number };
   let { open, view, onclose }: { open: boolean; view: View | null; onclose: () => void } = $props();
@@ -64,8 +64,8 @@
 
 <Sheet {open} title="Offline map areas" width={520} {onclose}>
   <p class="lead">
-    Streets, water and place names for an area, kept on this computer (zoom levels 0 to 13, OpenStreetMap data via Protomaps). The map shows them while
-    Settings › Network › Online map tiles is off.
+    Streets, buildings, water and place names for an area, kept on this computer (OpenStreetMap data via Protomaps). The map shows them while Settings ›
+    Network › Online map tiles is off.
   </p>
   {#if areas.length}
     <ul class="areas" data-testid="map-areas">
@@ -73,7 +73,9 @@
         <li>
           <span class="name">{a.name}</span>
           <span class="muted">
-            {#if a.state === 'ready'}{bytes(a.bytes)} · {n(a.tiles)} tiles{:else if a.state === 'downloading'}Downloading, about {bytes(a.bytes)}{:else}{a.error ?? 'Stopped'}{/if}
+            {#if a.state === 'ready'}{bytes(a.bytes)} · {a.max_zoom >= 15 ? 'every building' : 'streets'}{:else if a.state === 'downloading'}Downloading, about {bytes(
+                a.bytes,
+              )}{:else}{a.error ?? 'Stopped'}{/if}
           </span>
           <button class="icon" aria-label="Remove {a.name}" title="Remove from this computer" onclick={() => void remove(a)}><Trash2 size={14} strokeWidth={1.5} /></button>
         </li>
@@ -82,13 +84,20 @@
   {/if}
   <h3>The area on screen</h3>
   {#if estimate?.too_big}
-    <p class="warn" data-testid="area-too-big">This area needs {n(estimate.tiles)} tiles; up to 20,000 fit (about twice Switzerland). Zoom in and try again.</p>
+    <p class="warn" data-testid="area-too-big">This area is too big to keep: up to about twice Switzerland fits. Zoom in and try again.</p>
   {:else if estimate}
     <label class="field">
       <span>Name</span>
       <Input bind:value={name} aria-label="Area name" data-testid="area-name" />
     </label>
-    <p class="muted">{n(estimate.tiles)} tiles, about {bytes(estimate.bytes)}. From build.protomaps.com, which sees which area you download.</p>
+    <p class="muted" data-testid="area-detail">
+      {#if estimate.max_zoom >= 15}
+        Every building and footpath, about {bytes(estimate.bytes)}.
+      {:else}
+        Streets and larger buildings, about {bytes(estimate.bytes)}. For every building, zoom in to a city or smaller.
+      {/if}
+      From build.protomaps.com, which sees which area you download.
+    </p>
   {/if}
   {#snippet footer()}
     <Button variant="ghost" onclick={onclose}>Done</Button>

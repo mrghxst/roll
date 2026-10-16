@@ -286,6 +286,11 @@ Owner requests (2026-10-13), to build after M4–M6:
       with Noto Sans glyphs (pinned checksums); Roll serves them at
       `roll://maptile` and the map draws them in its own style while the
       online tiles are off. Lake Garda: 326 tiles, 17 MB, 14 s
+- [x] Building-level map (owner request, 2026-10-16): offline areas go
+      down to zoom 15 (every building and footpath) when they fit, Roll
+      enlarges zoom 13 areas for 14 and 15, the map zooms to 19, and
+      zoomed in without streets it offers to keep the area offline.
+      Central Lisbon at zoom 15: 18 MB, 12 s
 - [ ] Signed builds with automatic updates (needs certificates and an
       update key from the owner)
 - [ ] Open or closed eyes from a landmark model (the image model's guess

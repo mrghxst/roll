@@ -298,11 +298,10 @@ interface MockFace {
   person: number | null;
   rejected: number[];
 }
-// `?maps=1`: the Lake Garda area from fixtures-out/maps, served by the dev server.
-let mapAreaList: MapArea[] =
-  params.get('maps') === '1'
-    ? [{ id: 'garda', name: 'Lake Garda', bbox: [10.5, 45.5, 11.0, 46.0], max_zoom: 13, tiles: 326, bytes: 17_178_624, state: 'ready', build: '20261015', error: null }]
-    : [];
+// `?maps=1`: the areas in fixtures-out/maps, listed and served by the dev
+// server (fetched on the first call).
+let mapAreaList: MapArea[] = [];
+let mapAreasLoaded = params.get('maps') !== '1';
 let people: MockPerson[] = [];
 let faces: MockFace[] = [];
 let peopleReady = false;
@@ -2048,27 +2047,41 @@ export const mockApi: Api = {
       }));
   },
   discoverIgnore: async (key) => void dismissed.add(key),
-  mapAreas: async () => mapAreaList,
-  mapEstimate: async (bbox) => {
-    // Web Mercator tile count from zoom 0 to 13, as the library counts it.
-    let tiles = 0;
-    for (let z = 0; z <= 13; z++) {
-      const n = 2 ** z;
-      const x = (lon: number) => Math.min(n - 1, Math.max(0, Math.floor(((lon + 180) / 360) * n)));
-      const y = (lat: number) => {
-        const r = (Math.max(-85.05, Math.min(85.05, lat)) * Math.PI) / 180;
-        return Math.min(n - 1, Math.max(0, Math.floor(((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2) * n)));
-      };
-      tiles += (x(bbox[2]) - x(bbox[0]) + 1) * (y(bbox[1]) - y(bbox[3]) + 1);
+  mapAreas: async () => {
+    if (!mapAreasLoaded) {
+      mapAreasLoaded = true;
+      mapAreaList = await fetch('/__maps/areas')
+        .then((r) => r.json() as Promise<MapArea[]>)
+        .catch(() => []);
     }
-    return { tiles, bytes: tiles * 50_000, too_big: tiles > 20_000 };
+    return mapAreaList;
+  },
+  mapEstimate: async (bbox) => {
+    // Web Mercator tile count from zoom 0 to `max`, as the library counts it;
+    // the deepest zoom from 15 down to 13 that fits in 20,000 tiles.
+    const count = (max: number) => {
+      let tiles = 0;
+      for (let z = 0; z <= max; z++) {
+        const n = 2 ** z;
+        const x = (lon: number) => Math.min(n - 1, Math.max(0, Math.floor(((lon + 180) / 360) * n)));
+        const y = (lat: number) => {
+          const r = (Math.max(-85.05, Math.min(85.05, lat)) * Math.PI) / 180;
+          return Math.min(n - 1, Math.max(0, Math.floor(((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2) * n)));
+        };
+        tiles += (x(bbox[2]) - x(bbox[0]) + 1) * (y(bbox[1]) - y(bbox[3]) + 1);
+      }
+      return tiles;
+    };
+    const max_zoom = [15, 14, 13].find((z) => count(z) <= 20_000) ?? 13;
+    const tiles = count(max_zoom);
+    return { tiles, bytes: tiles * 50_000, too_big: tiles > 20_000, max_zoom };
   },
   addMapArea: async (name, bbox) => {
     if (!settings.network.downloads) throw new Error('Downloads are off. Turn them on in Settings › Network.');
     const est = await mockApi.mapEstimate(bbox);
     if (est.too_big) throw new Error('This area is too large to keep offline. Zoom in to a country or smaller.');
     const id = `area-${Date.now()}`;
-    mapAreaList = [...mapAreaList, { id, name, bbox, max_zoom: 13, tiles: est.tiles, bytes: est.bytes, state: 'downloading', build: '', error: null }];
+    mapAreaList = [...mapAreaList, { id, name, bbox, max_zoom: est.max_zoom, tiles: est.tiles, bytes: est.bytes, state: 'downloading', build: '', error: null }];
     emit('changed', 'maps');
     setTimeout(() => {
       mapAreaList = mapAreaList.map((a) => (a.id === id ? { ...a, state: 'ready', build: '20261015' } : a));

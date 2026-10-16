@@ -1,5 +1,5 @@
 //! Offline map areas against the real Protomaps build (needs the internet;
-//! downloads a few MB): central Lisbon from zoom 0 to 13, then served.
+//! downloads about 10 MB): central Lisbon from zoom 0 to 15, then served.
 //!
 //! ```text
 //! ROLL_REAL_MAPS=1 cargo test --release -p roll-core --test offline_real -- --ignored --nocapture
@@ -48,6 +48,20 @@ fn copies_an_area_and_serves_it() {
     let ((x, _), (y, _)) = roll_geo::pmtiles::tile_range([centre[0], centre[1], centre[0], centre[1]], 13);
     let city = tiles.get(13, x, y).expect("a tile in the middle of the area");
     assert!(city.len() > 1000, "{} bytes", city.len());
+    // Every building is at zoom 15: much more than its zoom 13 parent has.
+    let ((x15, _), (y15, _)) = roll_geo::pmtiles::tile_range([centre[0], centre[1], centre[0], centre[1]], 15);
+    let street = tiles.get(15, x15, y15).expect("a zoom 15 tile");
+    let enlarged = roll_geo::mvt::overzoom(&city, 2, x15 & 3, y15 & 3).unwrap();
+    let buildings = |t: &[u8]| roll_geo::mvt::layers(t).unwrap().into_iter().find(|(n, _)| n == "buildings").map_or(0, |(_, n)| n);
+    let (real, coarse) = (buildings(&street), buildings(&enlarged));
+    println!("zoom 15 tile: {real} buildings, {} bytes; zoom 13 enlarged: {coarse} buildings, {} bytes", street.len(), enlarged.len());
+    assert!(real > 10 * coarse.max(1), "{real} against {coarse}");
+    let c = rusqlite::Connection::open(dir.join("lisbon.db")).unwrap();
+    let mut q = c.prepare("SELECT z, count(*), sum(length(data)) FROM tiles GROUP BY z HAVING z >= 12").unwrap();
+    for row in q.query_map([], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)?, r.get::<_, i64>(2)?))).unwrap() {
+        let (z, n, b) = row.unwrap();
+        println!("  zoom {z}: {n} tiles, {:.0} KB a tile", b as f64 / n as f64 / 1e3);
+    }
     assert!(offline::glyphs(dir, "Noto Sans Regular", "0-255").is_some_and(|g| g.len() > 10_000));
     assert!(offline::glyphs(dir, "Noto Sans Regular", "../x").is_none());
 }

@@ -48,6 +48,25 @@ function offlineMaps(): Plugin {
         .map((f) => new DatabaseSync(join(dir, f), { readOnly: true }));
       server.middlewares.use('/__maps/', (req, res, next) => {
         const path = decodeURIComponent((req.url ?? '').split('?')[0] ?? '');
+        if (path.replace(/^\//, '') === 'areas') {
+          const areas = dbs.map((db, i) => {
+            const meta = Object.fromEntries(db.prepare('SELECT key, value FROM meta').all().map((r: { key: string; value: string }) => [r.key, r.value]));
+            return {
+              id: `area${i}`,
+              name: meta.name,
+              bbox: JSON.parse(meta.bbox),
+              max_zoom: Number(meta.max_zoom),
+              tiles: Number(meta.tiles),
+              bytes: Number(meta.bytes),
+              state: 'ready',
+              build: meta.build,
+              error: null,
+            };
+          });
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify(areas));
+          return;
+        }
         const tile = /^\/?tile\/(\d+)\/(\d+)\/(\d+)$/.exec(path);
         if (tile) {
           const [z, x, y] = tile.slice(1).map(Number);

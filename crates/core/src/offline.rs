@@ -1,7 +1,10 @@
-//! Offline map areas (PROMPT M7): the tiles of an area, zoom 0 to 13,
-//! copied out of the newest Protomaps build (OpenStreetMap data, ODbL) with
-//! range requests and kept in `<data>/maps/<id>.db`. Roll serves them to
-//! the map itself, which draws them past zoom 13 by enlarging. Nothing is
+//! Offline map areas (PROMPT M7): the tiles of an area copied out of the
+//! newest Protomaps build (OpenStreetMap data, ODbL) with range requests
+//! and kept in `<data>/maps/<id>.db`. An area goes down to zoom 15, every
+//! building and footpath, when that fits in [`MAX_TILES`], else as deep as
+//! fits but at least to 13 (streets and larger buildings). Roll serves the
+//! tiles to the map itself and enlarges an area's deepest tiles for the
+//! zooms it lacks, up to 15; the map enlarges past that. Nothing is
 //! fetched while the owner looks at the map.
 
 use std::collections::HashMap;
@@ -15,11 +18,15 @@ use ts_rs::TS;
 
 pub const BUILDS: &str = "https://build-metadata.protomaps.dev/builds.json";
 pub const BUILD_BASE: &str = "https://build.protomaps.com/";
-pub const MAX_ZOOM: u8 = 13;
-/// About Switzerland twice over (about 1 GB); more would take hours.
+/// The deepest zoom of the Protomaps builds.
+pub const MAX_ZOOM: u8 = 15;
+/// Areas too big for zoom 15 still go this deep.
+pub const MIN_ZOOM: u8 = 13;
+/// About Switzerland twice over at zoom 13 (about 1 GB); more would take
+/// hours.
 pub const MAX_TILES: u64 = 20_000;
 /// Average stored bytes per tile, for estimates: 52 KB around Lake Garda,
-/// 95 KB in central Lisbon (docs/benchmarks.md).
+/// 58 KB in central Lisbon down to zoom 15 (docs/benchmarks.md).
 pub const BYTES_PER_TILE: u64 = 50_000;
 pub const ATTRIBUTION: &str = "© OpenStreetMap contributors, Protomaps";
 
@@ -53,11 +60,24 @@ pub struct MapEstimate {
     pub tiles: i32,
     pub bytes: f64,
     pub too_big: bool,
+    /// How deep the area goes: 15 has every building.
+    pub max_zoom: u8,
+}
+
+/// The deepest zoom an area fits in at, from [`MIN_ZOOM`] to [`MAX_ZOOM`].
+pub fn zoom_for(bbox: [f64; 4]) -> u8 {
+    (MIN_ZOOM..=MAX_ZOOM).rev().find(|&z| pmtiles::tile_count(bbox, z) <= MAX_TILES).unwrap_or(MIN_ZOOM)
 }
 
 pub fn estimate(bbox: [f64; 4]) -> MapEstimate {
-    let tiles = pmtiles::tile_count(bbox, MAX_ZOOM);
-    MapEstimate { tiles: tiles.min(i32::MAX as u64) as i32, bytes: (tiles * BYTES_PER_TILE) as f64, too_big: tiles > MAX_TILES }
+    let z = zoom_for(bbox);
+    let tiles = pmtiles::tile_count(bbox, z);
+    MapEstimate {
+        tiles: tiles.min(i32::MAX as u64) as i32,
+        bytes: (tiles * BYTES_PER_TILE) as f64,
+        too_big: tiles > MAX_TILES,
+        max_zoom: z,
+    }
 }
 
 fn agent() -> ureq::Agent {
@@ -169,7 +189,7 @@ pub fn download(dir: &Path, id: &str, req: &Request, progress: &dyn Fn(usize, us
     std::fs::create_dir_all(dir)?;
     let build = latest_build()?;
     let mut remote = Remote::open(&format!("{BUILD_BASE}{build}"))?;
-    let max_zoom = MAX_ZOOM.min(remote.header.max_zoom);
+    let max_zoom = zoom_for(req.bbox).min(remote.header.max_zoom);
     // Where every tile of the area is in the archive.
     let mut wanted: Vec<(u8, u32, u32, u64, u32)> = Vec::new();
     for z in 0..=max_zoom {
@@ -318,7 +338,7 @@ pub fn list(dir: &Path, running: &[String], failed: &HashMap<String, String>) ->
                 id: id.into(),
                 name: req.name,
                 bbox: req.bbox.to_vec(),
-                max_zoom: MAX_ZOOM,
+                max_zoom: est.max_zoom,
                 tiles: est.tiles,
                 bytes: est.bytes,
                 state: state.into(),
@@ -419,14 +439,35 @@ impl Tiles {
         self.open.is_empty()
     }
 
-    /// A tile (uncompressed MVT) from the first area that has it.
+    /// A tile (uncompressed MVT) from the first area that has it, else
+    /// enlarged from the deepest tile above it that an area has.
     pub fn get(&self, z: u8, x: u32, y: u32) -> Option<Vec<u8>> {
-        self.open.iter().find_map(|(_, _, _, c)| {
+        let read = |c: &Connection, z: u8, x: u32, y: u32| -> Option<Vec<u8>> {
             c.query_row("SELECT data FROM tiles WHERE z = ?1 AND x = ?2 AND y = ?3", params![z, x, y], |r| r.get(0))
                 .optional()
                 .ok()
                 .flatten()
-        })
+        };
+        if let Some(t) = self.open.iter().find_map(|(_, _, _, c)| read(c, z, x, y)) {
+            return Some(t);
+        }
+        if z > MAX_ZOOM {
+            return None;
+        }
+        let mut best: Option<(u8, Vec<u8>)> = None;
+        for (_, _, max, c) in &self.open {
+            if *max >= z || best.as_ref().is_some_and(|(b, _)| b >= max) {
+                continue;
+            }
+            let dz = z - max;
+            if let Some(t) = read(c, *max, x >> dz, y >> dz) {
+                best = Some((*max, t));
+            }
+        }
+        let (max, parent) = best?;
+        let dz = z - max;
+        let mask = (1u32 << dz) - 1;
+        roll_geo::mvt::overzoom(&parent, dz, x & mask, y & mask).map_err(|e| tracing::warn!("map tile {z}/{x}/{y}: {e}")).ok()
     }
 }
 
@@ -437,8 +478,14 @@ mod tests {
     #[test]
     fn estimates_and_lists() {
         let ch = estimate([5.9, 45.8, 10.5, 47.8]);
-        assert!(!ch.too_big && ch.tiles > 5_000);
+        assert!(!ch.too_big && ch.tiles > 5_000 && ch.max_zoom == 13);
         assert!(estimate([-125.0, 24.0, -66.0, 49.0]).too_big, "the whole United States is too much");
+        // A city has every building; a region in between stops at 14.
+        let zurich = estimate([8.45, 47.32, 8.62, 47.43]);
+        assert_eq!((zurich.max_zoom, zurich.too_big), (15, false));
+        assert!(zurich.bytes < 100e6, "{}", zurich.bytes);
+        assert_eq!(estimate([10.5, 45.5, 11.0, 46.0]).max_zoom, 15);
+        assert_eq!(estimate([8.0, 46.5, 9.5, 47.6]).max_zoom, 14);
 
         let tmp = tempfile::tempdir().unwrap();
         let dir = tmp.path();
@@ -449,6 +496,7 @@ mod tests {
             c.execute("INSERT INTO meta (key, value) VALUES (?1, ?2)", params![k, v]).unwrap();
         }
         c.execute("INSERT INTO tiles (z, x, y, data) VALUES (0, 0, 0, x'1a00')", []).unwrap();
+        c.execute("INSERT INTO tiles (z, x, y, data) VALUES (13, 4264, 2881, x'1a00')", []).unwrap();
         drop(c);
         std::fs::write(
             dir.join("lis.json"),
@@ -463,5 +511,10 @@ mod tests {
         let tiles = Tiles::load(dir);
         assert_eq!(tiles.get(0, 0, 0), Some(vec![0x1a, 0x00]));
         assert_eq!(tiles.get(1, 0, 0), None);
+        // Zoom 14 and 15 come from the area's zoom 13 tile above them.
+        assert_eq!(tiles.get(14, 8529, 5763), Some(vec![]));
+        assert_eq!(tiles.get(15, 17059, 11527), Some(vec![]));
+        assert_eq!(tiles.get(14, 8531, 5763), None);
+        assert_eq!(tiles.get(16, 34118, 23054), None);
     }
 }

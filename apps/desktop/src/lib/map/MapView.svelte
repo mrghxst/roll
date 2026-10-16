@@ -23,9 +23,12 @@
     /** Shift-drag rectangle or Alt-drag lasso. */
     onselect?: (ids: number[]) => void;
     fitKey?: string;
+    /** True while the map is zoomed in where it has no streets or buildings
+     * (online tiles off, no offline area here). */
+    onbare?: (bare: boolean) => void;
   };
 
-  let { points, visible = null, heatmap = false, onopen, ondropids, onselect, fitKey = '' }: Props = $props();
+  let { points, visible = null, heatmap = false, onopen, ondropids, onselect, fitKey = '', onbare }: Props = $props();
 
   let el: HTMLDivElement | undefined = $state();
   let map: MlMap | null = $state(null);
@@ -105,7 +108,7 @@
         center: [10, 30],
         zoom: 1.6,
         minZoom: 0,
-        maxZoom: 18,
+        maxZoom: 19,
         boxZoom: false,
         dragRotate: false,
         pitchWithRotate: false,
@@ -182,6 +185,10 @@
         // Pins are DOM nodes: rebuild them only once the map rests.
         m.on('movestart', () => clearTimeout(pinTimer));
         m.on('moveend', schedulePins);
+        m.on('moveend', () => {
+          const c = m.getCenter();
+          camera = { zoom: m.getZoom(), lon: c.lng, lat: c.lat };
+        });
         m.on('sourcedata', (e) => {
           if (e.sourceId === 'items' && e.isSourceLoaded) schedulePins();
         });
@@ -230,6 +237,13 @@
 
   // Offline areas, while the online tiles are off.
   let areas = $state<MapArea[]>([]);
+  let camera = $state({ zoom: 1.6, lon: 10, lat: 30 });
+  const bare = $derived(
+    !app.settings?.network.online_tiles &&
+      camera.zoom >= 11 &&
+      !areas.some((a) => a.state === 'ready' && camera.lon >= a.bbox[0]! && camera.lon <= a.bbox[2]! && camera.lat >= a.bbox[1]! && camera.lat <= a.bbox[3]!),
+  );
+  $effect(() => onbare?.(bare));
   /** What the offline layers show now (not state: the effect sets it). */
   let offlineKey: string | undefined;
   $effect(() => {

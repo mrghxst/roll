@@ -161,6 +161,9 @@ function detailLayers(p: Palette): LayerSpecification[] {
   const s = { source: DETAIL };
   const width = (a: number, b: number): unknown => ['interpolate', ['exponential', 1.6], ['zoom'], 6, a, 16, b];
   return [
+    // The world outlines are coarse at a coast: from zoom 8 the tiles' own
+    // water (every sea and lake) is drawn on land instead.
+    { id: 'd-land', type: 'background', minzoom: 8, paint: { 'background-color': p.land } },
     { id: 'd-green', type: 'fill', ...s, 'source-layer': 'park', paint: { 'fill-color': p.green } },
     { id: 'd-water', type: 'fill', ...s, 'source-layer': 'water', paint: { 'fill-color': p.water } },
     { id: 'd-river', type: 'line', ...s, 'source-layer': 'waterway', minzoom: 8, paint: { 'line-color': p.water, 'line-width': width(0.5, 3) as number } },
@@ -232,9 +235,10 @@ export function setDetail(map: MlMap, on: boolean, p: Palette, below?: string) {
   for (const l of layers) map.addLayer(l, before);
 }
 
-// Offline areas (Map › Keep this area offline): Protomaps tiles that Roll
-// serves itself, in the Protomaps schema, drawn like the online tiles. Only
-// while the online tiles are off; zoom 13 is enlarged past that.
+// Offline areas (Map › Offline map areas): Protomaps tiles that Roll serves
+// itself, in the Protomaps schema, drawn like the online tiles. Only while
+// the online tiles are off. Roll answers up to zoom 15 (areas that stop at
+// 13 are enlarged by Roll); the map enlarges past that.
 
 const OFFLINE = 'offline';
 const GREEN = ['park', 'forest', 'wood', 'nature_reserve', 'national_park', 'grass', 'grassland', 'meadow', 'garden'];
@@ -243,6 +247,8 @@ function offlineLayers(p: Palette): LayerSpecification[] {
   const s = { source: OFFLINE };
   const width = (a: number, b: number): unknown => ['interpolate', ['exponential', 1.6], ['zoom'], 6, a, 16, b];
   return [
+    // The area's own land, finer than the world outlines at a coast.
+    { id: 'o-earth', type: 'fill', ...s, 'source-layer': 'earth', paint: { 'fill-color': p.land } },
     { id: 'o-green', type: 'fill', ...s, 'source-layer': 'landuse', filter: ['in', ['get', 'kind'], ['literal', GREEN]], paint: { 'fill-color': p.green } },
     { id: 'o-water', type: 'fill', ...s, 'source-layer': 'water', filter: ['==', ['geometry-type'], 'Polygon'], paint: { 'fill-color': p.water } },
     {
@@ -319,7 +325,7 @@ export function setOffline(map: MlMap, tiles: string | null, fonts: string | nul
     type: 'vector',
     tiles: [tiles],
     minzoom: 0,
-    maxzoom: 13,
+    maxzoom: 15,
     bounds: bounds as [number, number, number, number],
     attribution: '© OpenStreetMap contributors, Protomaps',
   });

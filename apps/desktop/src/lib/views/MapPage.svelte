@@ -24,6 +24,8 @@
   let tray = $state<{ ids: number[]; total: number }>({ ids: [], total: 0 });
   let fitKey = $state('');
   let mapView: ReturnType<typeof MapView> | undefined = $state();
+  /** Zoomed in where the map has only country outlines. */
+  let bare = $state(false);
   /** The offline areas sheet, with the area on screen when it opened. */
   let offline = $state<{ view: { bbox: [number, number, number, number]; lat: number; lon: number } | null } | null>(null);
 
@@ -98,6 +100,7 @@
           side = ids.length ? { title: `${n(ids.length)} selected`, ids } : null;
         }}
         ondropids={(ids, lat, lon, accuracy_m) => void setPlace(ids, { lat, lon, accuracy_m, name: null })}
+        onbare={(b) => (bare = b)}
       />
       <div class="tools">
         <span class="count mono">{n(visible?.length ?? points.count)} on the map</span>
@@ -105,7 +108,14 @@
         <IconButton label={heatmap ? 'Show clusters' : 'Show a heatmap'} active={heatmap} onclick={() => (heatmap = !heatmap)}><Flame size={16} strokeWidth={1.5} /></IconButton>
         <IconButton label="Offline map areas" onclick={() => (offline = { view: mapView?.view() ?? null })} data-testid="offline-areas"><HardDriveDownload size={16} strokeWidth={1.5} /></IconButton>
       </div>
-      <p class="hint">Shift+drag selects a rectangle, Alt+drag draws a lasso.</p>
+      {#if bare}
+        <p class="bare" data-testid="map-bare">
+          No streets or buildings here yet.
+          <button onclick={() => (offline = { view: mapView?.view() ?? null })}>Keep this area offline</button>
+        </p>
+      {:else}
+        <p class="hint">Shift+drag selects a rectangle, Alt+drag draws a lasso.</p>
+      {/if}
       {#if range}
         <TimeSlider {days} from={range.from} to={range.to} onchange={(from, to) => (range = { from, to })} />
       {/if}
@@ -158,6 +168,34 @@
     backdrop-filter: blur(12px);
     box-shadow: 0 4px 18px rgba(0, 0, 0, 0.08);
     font-size: var(--t12);
+  }
+  .bare {
+    position: absolute;
+    top: 12px;
+    left: 50%;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0;
+    padding: 3px 3px 3px 12px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--bg) 88%, transparent);
+    backdrop-filter: blur(12px);
+    color: var(--muted);
+    font-size: var(--t12);
+    transform: translateX(-50%);
+    white-space: nowrap;
+  }
+  .bare button {
+    padding: 3px 10px;
+    border: 0;
+    border-radius: 999px;
+    background: var(--fg);
+    color: var(--bg);
+    font: inherit;
+    cursor: pointer;
   }
   .hint {
     position: absolute;

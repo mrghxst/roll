@@ -433,9 +433,18 @@ questions. One line of reason each. Newest at the bottom of each section.
 - **Offline map areas come from the Protomaps builds**, read with range
   requests (their documented use, like `pmtiles extract`), not from
   OpenFreeMap, whose free server should not be crawled tile by tile.
-  Zoom 13 is the deepest level kept (the map enlarges it), and an area
-  is capped at 20,000 tiles (about 1 GB), since a tile is 50–95 KB. Each
-  area is its own SQLite file, so removing one never touches another.
+  An area is capped at 20,000 tiles (about 1 GB), since a tile is about
+  50 KB, and goes down to zoom 15 (every building and footpath, the
+  builds' deepest level) when that fits, else to 14 or 13 (streets and
+  larger buildings: a zoom 13 tile in Lisbon has 12 of the 850 buildings
+  zoom 15 has). One map source serves all areas up to zoom 15: Roll
+  enlarges an area's deepest tile for the zooms it lacks
+  (`roll_geo::mvt::overzoom`: the child's quarter, coordinates scaled,
+  features outside it dropped, the map clips the rest). Each area is its
+  own SQLite file, so removing one never touches another. The tiles' own
+  land (and, online, their seas from zoom 8) is drawn over the Natural
+  Earth outlines, which put coastal city centres like Lisbon's in the
+  water.
   Labels need glyphs: Noto Sans for Latin, Greek and Cyrillic (OFL,
   560 KB, pinned checksums) comes with the first area; other scripts stay
   unlabelled offline.
