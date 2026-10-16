@@ -12,11 +12,12 @@ only, to `%LOCALAPPDATA%\Programs\Roll`, no administrator rights needed, and
 brings ExifTool (metadata) and FFmpeg (HEIC, videos) with it. Windows may
 warn that the installer is from an unknown publisher: it is not signed yet.
 
-On macOS, open the `.dmg` and drag Roll to Applications; ExifTool comes
-with it, FFmpeg from Homebrew (`brew install ffmpeg`) adds HEIC photos and
+On a Mac with Apple silicon (M1 or later; Intel Macs are not supported),
+open the `.dmg` and drag Roll to Applications; ExifTool comes with it, FFmpeg from Homebrew (`brew install ffmpeg`) adds HEIC photos and
 videos. The first start needs right-click › Open, since the app is not
-notarized yet. On Linux, the `.deb` and the AppImage bring ExifTool and
-FFmpeg; the AppImage needs Perl, which nearly every distribution has.
+notarized yet. On Linux (glibc 2.38 or later: Ubuntu 24.04, Debian 13,
+Fedora 39), the `.deb` and the AppImage bring ExifTool and FFmpeg; the
+AppImage needs Perl, which nearly every distribution has.
 
 Roll keeps its database, thumbnails and logs in `%LOCALAPPDATA%\Roll`. Your
 photos stay where they are. Uninstalling keeps that folder; delete it by hand

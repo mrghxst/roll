@@ -381,6 +381,14 @@ questions. One line of reason each. Newest at the bottom of each section.
   The image model uses the graphics card.
 - **DirectML.dll ships next to Roll.exe**; ONNX Runtime itself is linked
   in (`ort` download-binaries), so there is no separate runtime install.
+  `scripts/fetch-tools.ps1` copies it into `bundle-tools`: as a resource
+  in `target/release` it was copied onto itself (os error 32 in CI).
+- **macOS builds are Apple silicon only, Linux builds need glibc 2.38**
+  (Ubuntu 24.04, Debian 13, Fedora 39): `ort`'s prebuilt ONNX Runtime has
+  no Intel Mac library, and its Linux library uses glibc 2.38 symbols
+  (`__isoc23_strtol`), so the Linux packages are built on Ubuntu 24.04.
+  Building ONNX Runtime from source for both would take about an hour a
+  release; Intel Macs are no longer sold.
 - **Best matches are a separate list.** The timeline keeps date order
   (above); the list icon next to the search opens the 50 best matches
   (`embeddings::hybrid`, RRF of the text index and picture similarity,

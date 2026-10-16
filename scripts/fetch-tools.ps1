@@ -1,7 +1,10 @@
 # Fetches the tools the Windows installer ships: ExifTool (metadata) and an
 # LGPL build of FFmpeg (HEIC decoding, video frames and playback proxies).
 # Versions and SHA-256 checksums are pinned; a mismatch stops the script.
-# Output: apps/desktop/src-tauri/bundle-tools/{exiftool,ffmpeg}/ (not in git).
+# Also builds roll-ai once for ONNX Runtime's DirectML.dll, which ort puts
+# in target/release (as a link into its download cache, so it is copied).
+# Output: apps/desktop/src-tauri/bundle-tools/{exiftool,ffmpeg,DirectML.dll}
+# (not in git).
 #
 #   pwsh scripts/fetch-tools.ps1
 #   cd apps/desktop; pnpm tauri build --config src-tauri/tauri.bundle.json
@@ -62,3 +65,12 @@ foreach ($t in $tools) {
 
 & (Join-Path $root 'exiftool\exiftool.exe') -ver
 & (Join-Path $root 'ffmpeg\ffmpeg.exe') -hide_banner -version | Select-Object -First 1
+
+# tauri-build copies resources into target/release; a resource that already
+# lives there is copied onto itself, which Windows refuses (os error 32).
+cargo build --release -p roll-ai
+if ($LASTEXITCODE -ne 0) { throw 'cargo build failed' }
+$dll = Get-Item (Join-Path $PSScriptRoot '..\target\release\DirectML.dll')
+if ($dll.LinkTarget) { $dll = $dll.ResolveLinkTarget($true) }
+Copy-Item $dll.FullName (Join-Path $root 'DirectML.dll') -Force
+Write-Host "DirectML.dll: $(Join-Path $root 'DirectML.dll')"

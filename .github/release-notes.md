@@ -34,11 +34,13 @@ in Settings › Models and data.
 | System | File | Notes |
 |---|---|---|
 | Windows 10 and 11 | `Roll_*_x64-setup.exe` | Installs for your user only, no administrator needed. ExifTool and FFmpeg are included. |
-| macOS 11 or later (Apple silicon and Intel) | `Roll_*_universal.dmg` | ExifTool is included. For HEIC photos and videos, add FFmpeg: `brew install ffmpeg`. |
-| Debian, Ubuntu and derivatives | `Roll_*_amd64.deb` | ExifTool and FFmpeg are included. |
-| Other Linux | `Roll_*_amd64.AppImage` | ExifTool and FFmpeg are included; needs Perl, which nearly every distribution has. |
+| macOS 11 or later on Apple silicon (M1 and later) | `Roll_*_aarch64.dmg` | ExifTool is included. For HEIC photos and videos, add FFmpeg: `brew install ffmpeg`. |
+| Debian 13, Ubuntu 24.04 or later | `Roll_*_amd64.deb` | ExifTool and FFmpeg are included. |
+| Other Linux with glibc 2.38 or later (Fedora 39, Arch) | `Roll_*_amd64.AppImage` | ExifTool and FFmpeg are included; needs Perl, which nearly every distribution has. |
 
-`SHA256SUMS` lists the checksum of every file.
+`SHA256SUMS` lists the checksum of every file. Intel Macs and older Linux
+distributions are not supported: ONNX Runtime, which runs the image,
+text and face models, has no build for them.
 
 ## Not signed yet
 

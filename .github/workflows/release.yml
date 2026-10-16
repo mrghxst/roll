@@ -25,17 +25,19 @@ jobs:
             os: windows-2025
             args: --config src-tauri/tauri.bundle.json
             files: target/release/bundle/nsis/*.exe
-          # 22.04 so the AppImage and deb run on older distributions too.
+          # ONNX Runtime's prebuilt library needs glibc 2.38 (Ubuntu 24.04,
+          # Debian 13, Fedora 39), so older distributions cannot run Roll.
           - name: linux
-            os: ubuntu-22.04
+            os: ubuntu-24.04
             args: --bundles appimage,deb --config src-tauri/tauri.bundle.linux.json
             files: |
               target/release/bundle/appimage/*.AppImage
               target/release/bundle/deb/*.deb
+          # Apple silicon only: ONNX Runtime has no prebuilt Intel Mac library.
           - name: macos
             os: macos-15
-            args: --target universal-apple-darwin --bundles dmg --config src-tauri/tauri.bundle.macos.json
-            files: target/universal-apple-darwin/release/bundle/dmg/*.dmg
+            args: --target aarch64-apple-darwin --bundles dmg --config src-tauri/tauri.bundle.macos.json
+            files: target/aarch64-apple-darwin/release/bundle/dmg/*.dmg
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -46,6 +48,11 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev libayatana-appindicator3-dev patchelf libfuse2 xdg-utils
 
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ runner.os == 'macOS' && 'aarch64-apple-darwin' || '' }}
+      - uses: Swatinem/rust-cache@v2
+
       - name: Windows tools to bundle
         if: runner.os == 'Windows'
         shell: pwsh
@@ -54,11 +61,6 @@ jobs:
       - name: macOS and Linux tools to bundle
         if: runner.os != 'Windows'
         run: bash scripts/fetch-tools.sh
-
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ runner.os == 'macOS' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
-      - uses: Swatinem/rust-cache@v2
 
       - uses: pnpm/action-setup@v4
         with:
