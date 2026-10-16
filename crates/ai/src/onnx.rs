@@ -39,6 +39,12 @@ impl Model {
         Ok(Model { session: Mutex::new(session), gpu: on_gpu })
     }
 
+    /// The name of the model's first input.
+    pub fn input_name(&self) -> anyhow::Result<String> {
+        let s = self.session.lock().map_err(err)?;
+        Ok(s.inputs().first().map(|o| o.name().to_string()).unwrap_or_default())
+    }
+
     /// Runs the model on one input tensor and returns the first output as
     /// a flat vector with its shape.
     pub fn run_f32(&self, input: &str, shape: Vec<i64>, data: Vec<f32>) -> anyhow::Result<(Vec<i64>, Vec<f32>)> {

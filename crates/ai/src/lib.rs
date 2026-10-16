@@ -6,6 +6,7 @@ pub mod chat;
 pub mod classifier;
 pub mod cost;
 pub mod decide;
+pub mod eyes;
 pub mod faces;
 pub mod name;
 pub mod ocr;

@@ -206,6 +206,31 @@ birthday party, handwritten letter, mountains):
   the RTX 2080 Ti, so 50 pictures take about 75 s; the first request after
   loading the model takes longer.
 
+## Open or closed eyes, 2026-10-16
+
+`crates/core/tests/eyes_real.rs`: 177 CC0 and public domain portraits from
+Openverse (`tools/cc0/eyes.mjs`, the default queries and "sleeping
+woman", "sleeping child", "meditation face", "eyes shut", "napping",
+"praying eyes closed", "sleeping face", "eyes closed smile"), every face
+YuNet finds at 24 px or more labelled by eye in `tools/cc0/eyes.json`;
+profiles, sunglasses, statues and faces too blurry to tell are left out.
+On the 1024 px previews, RTX 2080 Ti machine:
+
+| Rule (blink scores of both eyes) | Closed found | Open called closed |
+|---|---|---|
+| Mean 0.5 or more (used) | 40 of 49 | 1 of 50 |
+| Mean 0.45 or more | 43 of 49 | 2 of 50 |
+| Smaller of the two 0.5 or more | 33 of 49 | 1 of 50 |
+| Lid opening 0.15 or less (from the mesh) | 36 of 49 | 1 of 50 |
+
+- 99 faces in 8.8 s, faces found, cropped, meshed and scored.
+- Missed: heads tilted far back or down (meditating, sleeping on a side),
+  where the mesh is less sure; the one open face called closed is a
+  broad smile behind glasses.
+- A blink pair (the same child, eyes open and then closed while
+  smiling): the closed frame is sharper and has the sharper face, and
+  still ranks second with "Eyes closed".
+
 ## Faces, 2026-10-15
 
 YuNet 2023mar and SFace 2021dec (`crates/ai/examples/faces.rs`) on CC0

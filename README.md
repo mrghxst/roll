@@ -135,8 +135,7 @@ In active development. Working today:
 | Sync | Immich sync with albums and shared albums, checked against a real Immich 3.3.1 |
 | Install | Windows installer (per user, ExifTool and FFmpeg bundled), dmg, AppImage and deb: [releases](https://github.com/mrghxst/roll/releases) |
 
-Next: cluster names from a model, faces for picking best shots, and
-signed builds with updates.
+Next: signed builds with updates.
 [docs/plan.md](docs/plan.md) tracks every milestone; [PROMPT.md](PROMPT.md)
 is the full spec.
 

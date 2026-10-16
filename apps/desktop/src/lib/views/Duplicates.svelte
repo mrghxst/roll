@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Merge, X } from '@lucide/svelte';
+  import { Eye, Merge, X } from '@lucide/svelte';
   import { api } from '../ipc/api';
   import type { DupeGroup } from '../ipc/bindings/DupeGroup';
   import type { ExactPlan } from '../ipc/bindings/ExactPlan';
@@ -22,11 +22,18 @@
   let ranks = $state<Record<string, ShotScore[]>>({});
   let busy = $state(false);
 
+  /** What the ranks were made with; new packs rank again. */
+  let rankedFor = '';
   $effect(() => {
     void app.revision;
+    const by = rankedBy;
     void api.dupeGroups().then(async (g) => {
       groups = g;
       loaded = true;
+      if (by !== rankedFor) {
+        rankedFor = by;
+        ranks = {};
+      }
       // Rank the series, a few at a time, so the first ones show quickly.
       for (const s of g.filter((x) => x.kind === 'burst' || x.kind === 'similar').slice(0, 40)) {
         // A group's key names its members: ranked once.
@@ -41,10 +48,29 @@
   const rankedBy = $derived.by(() => {
     const parts = ['sharpness', 'exposure'];
     if (app.pack('faces')?.state === 'installed') parts.push('faces');
+    if (app.pack('faces')?.state === 'installed' && app.pack('eyes')?.state === 'installed') parts.push('closed eyes');
     if (app.pack('image-model')?.state === 'installed') parts.push('look');
     return `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`;
   });
   const series = (g: DupeGroup) => g.kind === 'burst' || g.kind === 'similar';
+
+  // Closed eyes need the eye models and the face models they work on.
+  const eyesPack = $derived(app.pack('eyes'));
+  const facesPack = $derived(app.pack('faces'));
+  const eyeDownloads = $derived([facesPack, eyesPack].filter((p) => p && p.state !== 'installed'));
+  const eyeBytes = $derived(eyeDownloads.reduce((s, p) => s + (p!.size - p!.done), 0));
+  const eyesBusy = $derived(eyeDownloads.some((p) => p!.state === 'downloading' || p!.state === 'installing'));
+  const downloadsOn = $derived(!!app.settings?.network.downloads);
+  async function getEyes() {
+    try {
+      // The button said so: downloads go on with this click.
+      if (!downloadsOn && app.settings) await app.saveSettings({ network: { ...app.settings.network, downloads: true } });
+      for (const p of eyeDownloads) await api.downloadPack(p!.id);
+      await app.loadPacks();
+    } catch (e) {
+      toast.error(e);
+    }
+  }
   /** Display order: best first once ranked. */
   const order = (g: DupeGroup) => ranks[g.key]?.map((r) => r.id).filter((id) => g.ids.includes(id)) ?? g.ids;
   const scoreOf = (g: DupeGroup, id: number) => ranks[g.key]?.find((r) => r.id === id);
@@ -143,6 +169,19 @@
     {/if}
   </header>
 
+  {#if eyesPack && eyeDownloads.length && groups.some(series)}
+    <div class="eyes" data-testid="eyes-setup">
+      <Eye size={18} strokeWidth={1.5} />
+      <p>
+        <strong>Skip blinks.</strong> With the eye models, Roll checks every face in a burst or series and ranks frames with closed eyes last. MediaPipe's face
+        mesh, about {bytes(eyeBytes)}{facesPack?.state !== 'installed' ? ' with the face models' : ''}; it runs on this computer.
+      </p>
+      <Button variant="primary" disabled={eyesBusy} onclick={() => void getEyes()} data-testid="download-eyes">
+        {eyesBusy ? 'Downloading…' : downloadsOn ? `Download (${bytes(eyeBytes)})` : `Turn on downloads and download (${bytes(eyeBytes)})`}
+      </Button>
+    </div>
+  {/if}
+
   {#if loaded && !groups.length}
     <EmptyState text="No duplicates found. Exact copies are checked in the background after each scan." />
   {:else}
@@ -223,6 +262,7 @@
     padding: 24px 32px 48px;
   }
   header,
+  .eyes,
   .groups {
     max-width: 960px;
   }
@@ -324,6 +364,26 @@
     display: grid;
     gap: 2px;
     align-content: start;
+  }
+  .eyes {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    box-sizing: border-box;
+    margin: 20px 0 0;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--r-btn);
+    font-size: var(--t13);
+  }
+  .eyes p {
+    flex: 1;
+    margin: 0;
+    color: var(--muted);
+  }
+  .eyes strong {
+    color: var(--fg);
+    font-weight: 600;
   }
   .notes {
     color: var(--muted);

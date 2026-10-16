@@ -448,3 +448,20 @@ questions. One line of reason each. Newest at the bottom of each section.
   Labels need glyphs: Noto Sans for Latin, Greek and Cyrillic (OFL,
   560 KB, pinned checksums) comes with the first area; other scripts stay
   unlabelled offline.
+- **Closed eyes come from MediaPipe's blendshapes**, run as ONNX
+  (Google's Face Mesh V2 and face blendshape models, Apache-2.0, converted
+  with a parity check by the QtMeshEditor project and pinned by commit and
+  checksum), on the faces YuNet already finds. A face counts as closed
+  when its two `eyeBlink` scores average 0.5 or more: on 99 labelled
+  faces that beat the eye aspect ratio from the same mesh (36 of 49) and
+  either eye alone (33 of 49) at one false alarm in 50. Other options
+  were weaker: no eye-state model in the OpenCV Zoo, InsightFace's
+  landmarks are for non-commercial use, and the image model's whole-frame
+  guess cannot say whose eyes are closed. It stays as the fallback
+  without the pack.
+- **Jev (TypeSafe) is not used yet** (2026-10-16). It answers typed
+  questions with calibrated probabilities, which would suit sorting, but
+  images are an experimental "danger zone" feature, it needs its own
+  TypeSafe account and key (OpenRouter lists only a router on top of it),
+  and zero data retention is for enterprise customers only.
+

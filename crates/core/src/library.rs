@@ -72,6 +72,7 @@ pub struct Library {
     /// The text reader, once its pack is installed and first needed.
     reader: Mutex<Option<Arc<roll_ai::ocr::Reader>>>,
     faces: Mutex<Option<Arc<roll_ai::faces::Faces>>>,
+    eyes: Mutex<Option<Arc<roll_ai::eyes::Eyes>>>,
     local_ai: crate::localai::Server,
     map_tiles: Mutex<Option<crate::offline::Tiles>>,
     map_errors: Mutex<std::collections::HashMap<String, String>>,
@@ -126,6 +127,7 @@ impl Library {
             similar_cache: Mutex::new(None),
             reader: Mutex::new(None),
             faces: Mutex::new(None),
+            eyes: Mutex::new(None),
             local_ai: Default::default(),
             map_tiles: Mutex::new(None),
             map_errors: Default::default(),
@@ -704,6 +706,18 @@ impl Library {
         let f = Arc::new(roll_ai::faces::Faces::load(&dir, true)?);
         *g = Some(f.clone());
         Ok(Some(f))
+    }
+
+    /// The open or closed eyes model, with the faces pack it needs.
+    fn eyes_model(&self) -> anyhow::Result<Option<Arc<roll_ai::eyes::Eyes>>> {
+        let (Some(dir), Some(_)) = (self.packs.installed("eyes"), self.packs.installed("faces")) else { return Ok(None) };
+        let mut g = self.eyes.lock();
+        if let Some(e) = g.as_ref() {
+            return Ok(Some(e.clone()));
+        }
+        let e = Arc::new(roll_ai::eyes::Eyes::load(&dir, true)?);
+        *g = Some(e.clone());
+        Ok(Some(e))
     }
 
     /// Faces in photos (their 1024 px previews), then people from them.
@@ -1495,6 +1509,9 @@ impl Library {
         }
         if id == "faces" {
             *self.faces.lock() = None;
+        }
+        if id == "eyes" {
+            *self.eyes.lock() = None;
         }
         if id == crate::localai::PACK {
             self.local_ai.stop();
@@ -2348,6 +2365,7 @@ impl Library {
             None => None,
         };
         let faces = self.face_model().ok().flatten();
+        let eyes = self.eyes_model().ok().flatten();
         let mut series = Vec::new();
         for &id in ids {
             let Some(img) = self.preview(id)?.and_then(|b| image::load_from_memory(&b).ok()) else { continue };
@@ -2355,15 +2373,32 @@ impl Library {
             let stats = roll_media::stats::compute(&rgb);
             let (brightness, clipped) = crate::bestshot::exposure_of(&rgb);
             // Faces big enough to judge, on their aligned crops.
-            let face_sharpness = faces.as_ref().and_then(|f| f.detect(&rgb).ok()).and_then(|found| {
-                let s: Vec<f32> = found.iter().filter(|f| f.rect[2] >= 24.0).map(|f| roll_ai::faces::sharpness(&rgb, f)).collect();
-                (!s.is_empty()).then(|| s.iter().sum::<f32>() / s.len() as f32)
+            let found: Vec<_> =
+                faces.as_ref().and_then(|f| f.detect(&rgb).ok()).unwrap_or_default().into_iter().filter(|f| f.rect[2] >= 24.0).collect();
+            let face_sharpness =
+                (!found.is_empty()).then(|| found.iter().map(|f| roll_ai::faces::sharpness(&rgb, f)).sum::<f32>() / found.len() as f32);
+            // Whose eyes are closed, with the eyes pack.
+            let closed_eyes = eyes.as_ref().map(|model| {
+                let states: Vec<_> = found.iter().filter_map(|f| model.state(&rgb, f).ok()).filter(|s| s.presence >= 0.5).collect();
+                (states.iter().filter(|s| s.closed()).count() as u32, states.len() as u32)
             });
-            let mut m = Measured { id, sharpness: stats.sharpness, brightness, clipped, look: None, eyes: None, faces: face_sharpness };
-            if let (Some((good, bad, eyes)), Some(e)) = (&prompts, index.as_ref().and_then(|ix| ix.get(id))) {
+            let mut m = Measured {
+                id,
+                sharpness: stats.sharpness,
+                brightness,
+                clipped,
+                look: None,
+                eyes: None,
+                faces: face_sharpness,
+                closed_eyes,
+            };
+            if let (Some((good, bad, eye_texts)), Some(e)) = (&prompts, index.as_ref().and_then(|ix| ix.get(id))) {
                 let best = |vs: &[Vec<f32>]| vs.iter().map(|v| roll_ai::vectors::dot(e, v)).fold(f32::MIN, f32::max);
                 m.look = Some(best(good) - best(bad));
-                m.eyes = Some(roll_ai::vectors::dot(e, &eyes[0]) - roll_ai::vectors::dot(e, &eyes[1]));
+                // The image model's guess, unless the eyes pack looked.
+                if closed_eyes.is_none() {
+                    m.eyes = Some(roll_ai::vectors::dot(e, &eye_texts[0]) - roll_ai::vectors::dot(e, &eye_texts[1]));
+                }
             }
             series.push(m);
         }

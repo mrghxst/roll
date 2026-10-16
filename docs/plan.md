@@ -293,13 +293,20 @@ Owner requests (2026-10-13), to build after M4–M6:
       Central Lisbon at zoom 15: 18 MB, 12 s
 - [ ] Signed builds with automatic updates (needs certificates and an
       update key from the owner)
-- [ ] Open or closed eyes from a landmark model (the image model's guess
-      stays), and duplicates across imports before they are added
+- [x] **Open or closed eyes** (owner request, 2026-10-16): the `eyes`
+      pack (MediaPipe Face Mesh V2 and face blendshapes as ONNX, 6 MB,
+      Apache-2.0) gives each face YuNet found a blink score; best shots
+      rank a frame with closed eyes below the others ("Eyes closed") and
+      the Duplicates page offers the download. On 99 hand-labelled CC0
+      faces: 40 of 49 closed found, 1 of 50 open called closed
+      (`crates/core/tests/eyes_real.rs`)
+- [ ] Duplicates across two imports that are both still being checked
 
 ## Next
 
 M4 to M6 and M7 are in, except signed builds with updates (needs
-certificates and keys from the owner) and open or closed eyes. 0.2.0 is
+certificates and keys from the owner; the owner chose to go without for
+now). 0.2.0 is
 published as a pre-release (2026-10-16) for Windows, Linux and Apple
 silicon Macs. Left by hand: the checks in docs/checks.md (the macOS dmg
 has not been started on a Mac yet).

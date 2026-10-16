@@ -271,6 +271,14 @@ numbers stay on this computer.
   backups or with names like "(1)" or "copy"). One undo brings everything
   back; files are only deleted when you empty the trash.
 - **Bursts and look-alike series** are ranked best first: the sharpest,
-  best exposed frame (and, with the image model, the one that looks best,
-  without closed eyes) is suggested. Click frames to choose which to keep,
-  even several; the rest go to Roll's trash in one step.
+  best exposed frame (and, with the image model, the one that looks best)
+  is suggested. Click frames to choose which to keep, even several; the
+  rest go to Roll's trash in one step.
+- **Skip blinks:** with the eye models (about 6 MB, and the face models if
+  they are not there yet; **Download** on the Duplicates page or in
+  Settings › Models and data), Roll checks every face in a series and
+  ranks a frame where someone's eyes are closed below the others, with
+  the note "Eyes closed". On portraits labelled by hand it found 4 of 5
+  closed eyes and almost never mistook open eyes for closed; a broad
+  smile that squeezes the eyes shut can count as closed. Without the eye
+  models the image model only guesses ("Eyes may be closed").

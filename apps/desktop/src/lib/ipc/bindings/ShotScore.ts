@@ -10,6 +10,7 @@ score: number,
  */
 keep: boolean, 
 /**
- * "Sharpest", "Best exposed", "Looks best", "Eyes may be closed".
+ * "Sharpest", "Best exposed", "Looks best", "Eyes closed", "Eyes may
+ * be closed".
  */
 notes: Array<string>, };

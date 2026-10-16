@@ -184,7 +184,7 @@ pub fn align(img: &RgbImage, landmarks: &[[f32; 2]; 5]) -> RgbImage {
     })
 }
 
-fn bilinear(img: &RgbImage, x: f32, y: f32, w: u32, h: u32) -> image::Rgb<u8> {
+pub(crate) fn bilinear(img: &RgbImage, x: f32, y: f32, w: u32, h: u32) -> image::Rgb<u8> {
     if x < 0.0 || y < 0.0 || x > (w - 1) as f32 || y > (h - 1) as f32 {
         return image::Rgb([0, 0, 0]);
     }

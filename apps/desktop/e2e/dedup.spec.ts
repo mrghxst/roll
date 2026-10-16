@@ -30,3 +30,17 @@ test('picks the best shots of a burst', async ({ page }) => {
   await burst.getByTestId('keep-best').click();
   await expect(page.getByTestId('toast')).toContainText('Moved 2 duplicates to the trash');
 });
+
+// Closed eyes: the eye models are offered next to the series, downloaded
+// in one click, and the series are ranked again with them.
+test('downloads the eye models and ranks blinks last', async ({ page }) => {
+  await page.goto('/?setup=1&mock=800&models=1');
+  await page.getByTestId('nav-duplicates').click();
+  const setup = page.getByTestId('eyes-setup');
+  await expect(setup).toContainText('about 5.7 MB');
+  await expect(page.getByTestId('download-eyes')).toHaveText('Turn on downloads and download (5.7 MB)');
+  await page.getByTestId('download-eyes').click();
+  await expect(setup).toHaveCount(0, { timeout: 10_000 });
+  const burst = page.locator('li').filter({ has: page.getByTestId('ranked') }).first();
+  await expect(burst.getByTestId('ranked')).toContainText('by sharpness, exposure, faces, closed eyes and look');
+});

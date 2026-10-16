@@ -7,9 +7,13 @@
 //! - Faces, with the faces pack: how sharp the faces are (on their aligned
 //!   crops), which counts as much as the whole picture's sharpness when
 //!   two or more frames have faces.
+//! - Closed eyes, with the eyes pack: a frame where someone's eyes are
+//!   closed loses about as much as a clearly softer frame, more the more
+//!   faces blink.
 //! - Look, with the image model: how much more the picture resembles "a
 //!   sharp, well exposed photo" than "a blurry, badly exposed photo", and
-//!   open rather than closed eyes. A rough judge, so it weighs least.
+//!   (without the eyes pack) open rather than closed eyes. A rough judge,
+//!   so it weighs least.
 //!
 //! Nothing is re-encoded; the ranking only suggests which to keep.
 
@@ -24,7 +28,8 @@ pub struct ShotScore {
     pub score: f32,
     /// Suggested to keep (the best one, and a second that is nearly as good).
     pub keep: bool,
-    /// "Sharpest", "Best exposed", "Looks best", "Eyes may be closed".
+    /// "Sharpest", "Best exposed", "Looks best", "Eyes closed", "Eyes may
+    /// be closed".
     pub notes: Vec<String>,
 }
 
@@ -42,6 +47,8 @@ pub struct Measured {
     pub eyes: Option<f32>,
     /// Mean sharpness of the faces in it, with the faces pack.
     pub faces: Option<f32>,
+    /// Faces with closed eyes and faces checked, with the eyes pack.
+    pub closed_eyes: Option<(u32, u32)>,
 }
 
 pub const GOOD: &[&str] = &["a sharp, well exposed photo", "a beautiful photo", "a photo where everyone looks at the camera"];
@@ -94,7 +101,13 @@ pub fn rank(series: &[Measured]) -> Vec<ShotScore> {
             let look = m.look.map_or(0.5, |l| (0.5 + (l - mean_look) * 20.0).clamp(0.0, 1.0));
             // Only a clear "closed eyes" counts: without people the two
             // descriptions differ by noise.
-            let eyes = m.eyes.filter(|e| *e < -0.01).map_or(0.0, |e| (e * 10.0).max(-0.15));
+            // The eyes pack, when it looked, replaces that guess: one
+            // blink costs 0.15, everyone 0.3.
+            let eyes = match m.closed_eyes {
+                Some((0, _)) => 0.0,
+                Some((closed, seen)) => -0.15 - 0.15 * closed as f32 / seen.max(1) as f32,
+                None => m.eyes.filter(|e| *e < -0.01).map_or(0.0, |e| (e * 10.0).max(-0.15)),
+            };
             ((0.5 * sharp + 0.2 * exposure(m) + 0.3 * look + eyes).clamp(0.0, 1.0), m)
         })
         .collect();
@@ -118,7 +131,9 @@ pub fn rank(series: &[Measured]) -> Vec<ShotScore> {
             if spread > 0.004 && m.look == Some(hi) {
                 notes.push("Looks best".to_string());
             }
-            if m.eyes.is_some_and(|e| e < -0.01) {
+            if m.closed_eyes.is_some_and(|c| c.0 > 0) {
+                notes.push("Eyes closed".to_string());
+            } else if m.closed_eyes.is_none() && m.eyes.is_some_and(|e| e < -0.01) {
                 notes.push("Eyes may be closed".to_string());
             }
             ShotScore { id: m.id as i32, score: *s, keep: i == 0 || (i == 1 && *s >= best - 0.05 && series.len() > 3), notes }
@@ -131,7 +146,24 @@ mod tests {
     use super::*;
 
     fn m(id: i64, sharpness: f32, brightness: f32, look: f32) -> Measured {
-        Measured { id, sharpness, brightness, clipped: 0.0, look: Some(look), eyes: None, faces: None }
+        Measured { id, sharpness, brightness, clipped: 0.0, look: Some(look), eyes: None, faces: None, closed_eyes: None }
+    }
+
+    #[test]
+    fn a_blink_loses_to_a_softer_frame() {
+        // Frame 1 is the sharpest, but one of two people blinked in it.
+        let mut a = m(1, 400.0, 0.5, 0.02);
+        let mut b = m(2, 300.0, 0.5, 0.02);
+        let mut c = m(3, 200.0, 0.5, 0.02);
+        a.closed_eyes = Some((1, 2));
+        b.closed_eyes = Some((0, 2));
+        c.closed_eyes = Some((0, 2));
+        // A guess from the image model does not count when the eyes pack looked.
+        b.eyes = Some(-0.05);
+        let r = rank(&[a, b, c]);
+        assert_eq!(r.iter().map(|s| s.id).collect::<Vec<_>>(), vec![2, 3, 1]);
+        assert_eq!(r[2].notes, vec!["Sharpest", "Best exposed", "Eyes closed"]);
+        assert!(!r[0].notes.iter().any(|n| n.starts_with("Eyes")));
     }
 
     #[test]

@@ -405,11 +405,12 @@ const packs: PackStatus[] = [
   pack('image-model', 'Image understanding', 1_535_520_638, 'huggingface.co', 'Apache-2.0'),
   pack('text-reader', 'Text in photos', 31_114_837, 'github.com', 'Apache-2.0'),
   pack('faces', 'Faces', 38_941_385, 'huggingface.co', 'MIT (YuNet), Apache-2.0 (SFace)'),
+  pack('eyes', 'Open or closed eyes', 6_018_765, 'huggingface.co', 'Apache-2.0'),
   pack('local-ai', 'Local AI', 2_984_528_827, 'github.com', 'MIT (llama.cpp), Apache-2.0 (Qwen3-VL)'),
 ];
 // `?models=1`: the image model, text reader and faces are installed (Teach, Find similar, People).
 if (params.get('models') === '1') {
-  for (const p of packs) if (p.id !== 'places' && p.id !== 'local-ai') Object.assign(p, { state: 'installed', done: p.size });
+  for (const p of packs) if (p.id !== 'places' && p.id !== 'local-ai' && p.id !== 'eyes') Object.assign(p, { state: 'installed', done: p.size });
 }
 const packTimers = new Map<string, ReturnType<typeof setInterval>>();
 
@@ -2233,7 +2234,12 @@ export const mockApi: Api = {
       id,
       score: lum(id) / max,
       keep: i === 0,
-      notes: i === 0 ? ['Sharpest', 'Best exposed'] : lum(id) < max * 0.5 ? ['Eyes may be closed'] : [],
+      notes:
+        i === 0
+          ? ['Sharpest', 'Best exposed']
+          : lum(id) < max * 0.5
+            ? [packs.find((p) => p.id === 'eyes')?.state === 'installed' ? 'Eyes closed' : 'Eyes may be closed']
+            : [],
     }));
   },
   exactPlan: async () => {

@@ -152,6 +152,42 @@
       ]
     },
     {
+      "id": "eyes",
+      "title": "Open or closed eyes",
+      "purpose": "Tells open from closed eyes on the faces in a burst or series, so the best shots skip blinks. Uses the face models too. MediaPipe Face Mesh and face blendshapes; runs on this computer.",
+      "license": "Apache-2.0",
+      "source": "Hugging Face (fernandotonon/QtMeshEditor-facemesh-onnx, fernandotonon/QtMeshEditor-faceblendshapes-onnx)",
+      "attribution": "MediaPipe Face Mesh V2 and face blendshapes by Google, Apache-2.0; ONNX conversions by the QtMeshEditor project",
+      "dir": "models/eyes",
+      "after": null,
+      "files": [
+        {
+          "path": "face_landmarks.onnx",
+          "url": "https://huggingface.co/fernandotonon/QtMeshEditor-facemesh-onnx/resolve/32714088ed9830a98df6ee653ad406a3b83ef014/face_landmarks.onnx",
+          "size": 4920979,
+          "sha256": "d16e5a55e6a480284d468ee32469692464049518c311662ab3956681de31e3e9"
+        },
+        {
+          "path": "face_blendshapes.onnx",
+          "url": "https://huggingface.co/fernandotonon/QtMeshEditor-faceblendshapes-onnx/resolve/495864b0bae88b0b926b8da8cb85f9022ceaa402/face_blendshapes.onnx",
+          "size": 1094706,
+          "sha256": "37cf54d3ccf671f8936427437a1a0b627799e16f20439de3cc35aa189ad40c66"
+        },
+        {
+          "path": "README-facemesh.md",
+          "url": "https://huggingface.co/fernandotonon/QtMeshEditor-facemesh-onnx/resolve/32714088ed9830a98df6ee653ad406a3b83ef014/README.md",
+          "size": 1450,
+          "sha256": "9774a34d4ed1f34c1b50ab95ba9c1737890123694c8181701542fed593b9080b"
+        },
+        {
+          "path": "README-blendshapes.md",
+          "url": "https://huggingface.co/fernandotonon/QtMeshEditor-faceblendshapes-onnx/resolve/495864b0bae88b0b926b8da8cb85f9022ceaa402/README.md",
+          "size": 1630,
+          "sha256": "3d6d7e9e5c986a973cf5253e59a61eff2349ed3b931aeaa4a8f8d1793f07306d"
+        }
+      ]
+    },
+    {
       "id": "local-ai",
       "title": "Local AI",
       "purpose": "A decision model that runs on this computer, with no other program to install: Qwen3-VL 4B on llama.cpp's server. Sorts what the rules and the image model are unsure about, names groups and ranks search results, for free and without sending anything away. Works best with 6 GB of graphics memory.",
