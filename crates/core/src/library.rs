@@ -607,8 +607,20 @@ impl Library {
         let id = format!("{}-{}", if slug.is_empty() { "area".into() } else { slug }, crate::db::now_ms());
         let dir = self.maps_dir();
         std::fs::create_dir_all(&dir)?;
-        let req = crate::offline::Request { name: name.trim().to_string(), bbox };
+        let req = crate::offline::Request { name: name.trim().to_string(), bbox, max_zoom: None };
         std::fs::write(dir.join(format!("{id}.json")), serde_json::to_vec(&req)?)?;
+        self.jobs.enqueue(JobSpec::MapArea { id: id.clone() })?;
+        self.emit(LibEvent::Changed("maps"));
+        Ok(id)
+    }
+
+    /// Start copying the world map (zoom 0–6) for offline use.
+    pub fn add_world_map(&self) -> anyhow::Result<String> {
+        anyhow::ensure!(self.settings().network.downloads, "Downloads are off. Turn them on in Settings › Network.");
+        let dir = self.maps_dir();
+        std::fs::create_dir_all(&dir)?;
+        let id = crate::offline::WORLD.to_string();
+        std::fs::write(dir.join(format!("{id}.json")), serde_json::to_vec(&crate::offline::world())?)?;
         self.jobs.enqueue(JobSpec::MapArea { id: id.clone() })?;
         self.emit(LibEvent::Changed("maps"));
         Ok(id)

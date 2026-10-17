@@ -34,6 +34,7 @@ test('says when the map has no streets', async ({ page }) => {
   await page.getByTestId('nav-map').click();
   await page.waitForFunction(() => (window as unknown as W).__rollMap?.loaded());
   await expect(page.getByTestId('map-bare')).toHaveCount(0);
+  await expect(page.getByTestId('map-outlines')).toBeVisible();
   await page.evaluate(() => (window as unknown as W).__rollMap.jumpTo({ center: [8.55, 47.37], zoom: 15 }));
   await expect(page.getByTestId('map-bare')).toBeVisible();
   await page.getByRole('button', { name: 'Keep this area offline' }).click();
@@ -43,4 +44,31 @@ test('says when the map has no streets', async ({ page }) => {
   await page.evaluate(() => (window as unknown as W).__rollMap.jumpTo({ center: [8.2, 46.8], zoom: 8 }));
   await page.getByTestId('offline-areas').click();
   await expect(page.getByTestId('area-detail')).toContainText('Streets and larger buildings');
+});
+
+// The world map: offered while the map has only country outlines,
+// downloaded in one click, then the offer goes. The online map is a switch
+// in the same sheet and stops the offers.
+test('downloads the world map and switches to the online map', async ({ page }) => {
+  await page.goto('/?setup=1&mock=300&geo=1');
+  await page.getByTestId('nav-map').click();
+  await page.waitForFunction(() => (window as unknown as W).__rollMap?.loaded());
+  await page.getByRole('button', { name: 'More map detail' }).click();
+  await expect(page.getByTestId('world-detail')).toContainText('Lakes, large rivers, motorways');
+  await expect(page.getByTestId('get-world')).toHaveText('Turn on downloads and download (63 MB)');
+  await page.getByTestId('get-world').click();
+  await expect(page.getByRole('button', { name: 'Remove the world map' })).toBeVisible({ timeout: 5000 });
+  await page.getByRole('button', { name: 'Done' }).click();
+  await expect(page.getByTestId('map-outlines')).toHaveCount(0);
+  // Zoomed in, the world map has no streets: that offer still comes.
+  await page.evaluate(() => (window as unknown as W).__rollMap.jumpTo({ center: [8.55, 47.37], zoom: 15 }));
+  await expect(page.getByTestId('map-bare')).toBeVisible();
+
+  await page.getByTestId('offline-areas').click();
+  await page.getByRole('switch', { name: 'Use the online map' }).click();
+  await page.getByRole('button', { name: 'Done' }).click();
+  await expect(page.getByTestId('map-bare')).toHaveCount(0);
+  await page.getByTestId('nav-settings').click();
+  await page.getByRole('button', { name: 'Network' }).click();
+  await expect(page.getByRole('switch', { name: 'Online map tiles' })).toHaveAttribute('aria-checked', 'true');
 });

@@ -558,6 +558,12 @@ pub async fn add_map_area(state: State<'_, AppState>, name: String, bbox: [f64; 
 }
 
 #[tauri::command]
+pub async fn add_world_map(state: State<'_, AppState>) -> Res<String> {
+    let lib = state.lib.clone();
+    blocking(move || lib.add_world_map()).await
+}
+
+#[tauri::command]
 pub async fn remove_map_area(state: State<'_, AppState>, id: String) -> Res<()> {
     let lib = state.lib.clone();
     blocking(move || lib.remove_map_area(&id)).await

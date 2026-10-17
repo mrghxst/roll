@@ -23,9 +23,10 @@
     /** Shift-drag rectangle or Alt-drag lasso. */
     onselect?: (ids: number[]) => void;
     fitKey?: string;
-    /** True while the map is zoomed in where it has no streets or buildings
-     * (online tiles off, no offline area here). */
-    onbare?: (bare: boolean) => void;
+    /** What the map lacks with the online map off: 'world' while it has
+     * only country outlines (no world map), 'streets' zoomed in where no
+     * offline area has streets, else null. */
+    onbare?: (bare: 'world' | 'streets' | null) => void;
   };
 
   let { points, visible = null, heatmap = false, onopen, ondropids, onselect, fitKey = '', onbare }: Props = $props();
@@ -238,11 +239,22 @@
   // Offline areas, while the online tiles are off.
   let areas = $state<MapArea[]>([]);
   let camera = $state({ zoom: 1.6, lon: 10, lat: 30 });
-  const bare = $derived(
-    !app.settings?.network.online_tiles &&
-      camera.zoom >= 11 &&
-      !areas.some((a) => a.state === 'ready' && camera.lon >= a.bbox[0]! && camera.lon <= a.bbox[2]! && camera.lat >= a.bbox[1]! && camera.lat <= a.bbox[3]!),
-  );
+  const bare = $derived.by(() => {
+    if (app.settings?.network.online_tiles) return null;
+    if (camera.zoom >= 11) {
+      const streets = areas.some(
+        (a) =>
+          a.state === 'ready' &&
+          a.max_zoom >= 13 &&
+          camera.lon >= a.bbox[0]! &&
+          camera.lon <= a.bbox[2]! &&
+          camera.lat >= a.bbox[1]! &&
+          camera.lat <= a.bbox[3]!,
+      );
+      return streets ? null : 'streets';
+    }
+    return areas.some((a) => a.id === 'world' && a.state !== 'failed') ? null : 'world';
+  });
   $effect(() => onbare?.(bare));
   /** What the offline layers show now (not state: the effect sets it). */
   let offlineKey: string | undefined;

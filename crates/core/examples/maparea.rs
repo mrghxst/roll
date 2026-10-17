@@ -2,16 +2,23 @@
 //! mock backend's `?maps=1` (it reads `fixtures-out/maps`).
 //!
 //!   cargo run --release -p roll-core --example maparea -- fixtures-out/maps garda "Lake Garda" 10.5 45.5 11.0 46.0
+//!   cargo run --release -p roll-core --example maparea -- fixtures-out/maps world World -180 -85.05 180 85.05 --zoom 6
 
 fn main() -> anyhow::Result<()> {
     let args: Vec<String> = std::env::args().skip(1).collect();
+    let (args, max_zoom) = match args.iter().position(|a| a == "--zoom") {
+        Some(i) => {
+            ([&args[..i], &args[i + 2..]].concat(), Some(args.get(i + 1).ok_or_else(|| anyhow::anyhow!("--zoom needs a number"))?.parse()?))
+        }
+        None => (args, None),
+    };
     let [dir, id, name, w, s, e, n] = args.as_slice() else {
-        anyhow::bail!("usage: maparea <dir> <id> <name> <west> <south> <east> <north>");
+        anyhow::bail!("usage: maparea <dir> <id> <name> <west> <south> <east> <north> [--zoom z]");
     };
     let bbox = [w.parse()?, s.parse()?, e.parse()?, n.parse()?];
     let dir = std::path::Path::new(dir);
     roll_core::offline::ensure_fonts(dir)?;
-    let req = roll_core::offline::Request { name: name.clone(), bbox };
+    let req = roll_core::offline::Request { name: name.clone(), bbox, max_zoom };
     let bytes = roll_core::offline::download(dir, id, &req, &|done, total| {
         if done == total || done % 50 == 0 {
             println!("{done} of {total}");

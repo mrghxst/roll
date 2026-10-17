@@ -1,14 +1,14 @@
 //! Enlarging a vector tile (Mapbox Vector Tile 2.1) to a deeper zoom: the
 //! part of the tile a child covers, with its coordinates scaled to fill
 //! the child. Offline map areas that stop at zoom 13 answer zoom 14 and
-//! 15 this way, next to areas that have those zooms, so one map source
-//! serves both. Features outside the child are left out; the rest keep
+//! 15 this way, and the world map (zoom 6) every zoom past 6 outside the
+//! areas, so one map source serves them all. Features outside the child are left out; the rest keep
 //! their coordinates past the child's edges, which the map clips.
 
 /// A tile `dz` levels deeper than `tile`, at `(dx, dy)` among the
 /// `2^dz × 2^dz` children (0-based, y down). `tile` is uncompressed.
 pub fn overzoom(tile: &[u8], dz: u8, dx: u32, dy: u32) -> anyhow::Result<Vec<u8>> {
-    anyhow::ensure!(dz <= 8 && dx < 1 << dz && dy < 1 << dz, "Not a child of this tile");
+    anyhow::ensure!(dz <= 12 && dx < 1 << dz && dy < 1 << dz, "Not a child of this tile");
     let mut out = Vec::with_capacity(tile.len() / 2);
     for f in fields(tile) {
         let f = f?;

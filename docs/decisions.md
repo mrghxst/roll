@@ -88,6 +88,14 @@ questions. One line of reason each. Newest at the bottom of each section.
   for `connect-src` at all times; the map only asks it while Settings ›
   Network › Online map tiles is on. Offline regions remain a later
   milestone.
+- **The world map is a download, not part of the installer** (PROMPT
+  §4.7 asks for a Protomaps world file, zoom 0–6, shipped with the app).
+  Map › Map detail fetches it from the Protomaps build with the owner's
+  click (63 MB, zoom 0–6: lakes, large rivers, motorways and trunk roads,
+  cities), so the installer stays at its size and nothing is fetched
+  unasked. Zoom 7 would add main roads but is 285 MB. The map offers it
+  while it has only the outlines. Parks and woods are drawn from zoom 10
+  only: further out they blot the land like lakes.
 - **Place names install from GeoNames files the owner picks** (Settings
   has no download yet): `cities500.txt`, `admin1CodesASCII.txt` and
   `countryInfo.txt`. A download with consent comes with the pack manager

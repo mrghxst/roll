@@ -291,6 +291,12 @@ Owner requests (2026-10-13), to build after M4–M6:
       enlarges zoom 13 areas for 14 and 15, the map zooms to 19, and
       zoomed in without streets it offers to keep the area offline.
       Central Lisbon at zoom 15: 18 MB, 12 s
+- [x] World map (owner request, 2026-10-17): Map › Map detail downloads
+      the whole world to zoom 6 from the Protomaps build (lakes, large
+      rivers, motorways and trunk roads, cities; 5,461 tiles, 63 MB, 7 s)
+      as an offline area that Roll enlarges wherever no deeper area is;
+      the same sheet switches the online map on, and the map offers the
+      sheet while it has only country outlines
 - [ ] Signed builds with automatic updates (needs certificates and an
       update key from the owner)
 - [x] **Open or closed eyes** (owner request, 2026-10-16): the `eyes`
@@ -308,5 +314,6 @@ M4 to M6 and M7 are in, except signed builds with updates (needs
 certificates and keys from the owner; the owner chose to go without for
 now). 0.3.0 is
 published as a pre-release (2026-10-17) for Windows, Linux and Apple
-silicon Macs, with the building-level map and closed eyes. Left by hand: the checks in docs/checks.md (the macOS dmg
+silicon Macs, with the building-level map and closed eyes. The world map
+and the Map detail sheet are on main for the next release. Left by hand: the checks in docs/checks.md (the macOS dmg
 has not been started on a Mac yet).

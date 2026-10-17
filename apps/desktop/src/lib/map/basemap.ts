@@ -147,7 +147,8 @@ export function applyPalette(map: MlMap, p: Palette) {
   }
 }
 
-// Opt-in detail tiles (Settings › Network › Online map tiles): OpenFreeMap's
+// Opt-in detail tiles (Settings › Network › Online map tiles, or Map ›
+// Map detail › Online map): OpenFreeMap's
 // planet tiles in the OpenMapTiles schema, drawn in the same monochrome
 // style over the offline outlines. Nothing is fetched while it is off.
 
@@ -160,11 +161,14 @@ const MINOR = ['minor', 'service', 'track', 'path'];
 function detailLayers(p: Palette): LayerSpecification[] {
   const s = { source: DETAIL };
   const width = (a: number, b: number): unknown => ['interpolate', ['exponential', 1.6], ['zoom'], 6, a, 16, b];
+  // Main roads stay a full pixel wide when zoomed out, so they read on the world map.
+  const main: unknown = ['interpolate', ['exponential', 1.6], ['zoom'], 4, 0.6, 8, 1.1, 16, 8];
   return [
     // The world outlines are coarse at a coast: from zoom 8 the tiles' own
     // water (every sea and lake) is drawn on land instead.
     { id: 'd-land', type: 'background', minzoom: 8, paint: { 'background-color': p.land } },
-    { id: 'd-green', type: 'fill', ...s, 'source-layer': 'park', paint: { 'fill-color': p.green } },
+    // Parks and woods only close up: zoomed out they blot the land like lakes.
+    { id: 'd-green', type: 'fill', ...s, 'source-layer': 'park', minzoom: 10, paint: { 'fill-color': p.green } },
     { id: 'd-water', type: 'fill', ...s, 'source-layer': 'water', paint: { 'fill-color': p.water } },
     { id: 'd-river', type: 'line', ...s, 'source-layer': 'waterway', minzoom: 8, paint: { 'line-color': p.water, 'line-width': width(0.5, 3) as number } },
     { id: 'd-building', type: 'fill', ...s, 'source-layer': 'building', minzoom: 14, paint: { 'fill-color': p.building } },
@@ -184,7 +188,7 @@ function detailLayers(p: Palette): LayerSpecification[] {
       'source-layer': 'transportation',
       minzoom: 5,
       filter: ['in', ['get', 'class'], ['literal', ROADS]],
-      paint: { 'line-color': p.road, 'line-width': width(0.4, 8) as number },
+      paint: { 'line-color': p.road, 'line-width': main as number },
     },
     {
       id: 'd-rail',
@@ -201,7 +205,7 @@ function detailLayers(p: Palette): LayerSpecification[] {
       ...s,
       'source-layer': 'boundary',
       filter: ['all', ['<=', ['get', 'admin_level'], 4], ['!=', ['get', 'maritime'], 1]],
-      paint: { 'line-color': p.border, 'line-width': 1, 'line-dasharray': [4, 2] },
+      paint: { 'line-color': p.minor, 'line-width': 1, 'line-dasharray': [4, 2] },
     },
     {
       id: 'd-place',
@@ -235,10 +239,11 @@ export function setDetail(map: MlMap, on: boolean, p: Palette, below?: string) {
   for (const l of layers) map.addLayer(l, before);
 }
 
-// Offline areas (Map › Offline map areas): Protomaps tiles that Roll serves
-// itself, in the Protomaps schema, drawn like the online tiles. Only while
-// the online tiles are off. Roll answers up to zoom 15 (areas that stop at
-// 13 are enlarged by Roll); the map enlarges past that.
+// Offline areas and the world map (Map › Map detail): Protomaps tiles that
+// Roll serves itself, in the Protomaps schema, drawn like the online tiles.
+// Only while the online tiles are off. Roll answers up to zoom 15 (areas
+// that stop at 13, and the world map at 6, are enlarged by Roll); the map
+// enlarges past that.
 
 const OFFLINE = 'offline';
 const GREEN = ['park', 'forest', 'wood', 'nature_reserve', 'national_park', 'grass', 'grassland', 'meadow', 'garden'];
@@ -246,10 +251,20 @@ const GREEN = ['park', 'forest', 'wood', 'nature_reserve', 'national_park', 'gra
 function offlineLayers(p: Palette): LayerSpecification[] {
   const s = { source: OFFLINE };
   const width = (a: number, b: number): unknown => ['interpolate', ['exponential', 1.6], ['zoom'], 6, a, 16, b];
+  // Main roads stay a full pixel wide when zoomed out, so they read on the world map.
+  const main: unknown = ['interpolate', ['exponential', 1.6], ['zoom'], 4, 0.6, 8, 1.1, 16, 8];
   return [
     // The area's own land, finer than the world outlines at a coast.
     { id: 'o-earth', type: 'fill', ...s, 'source-layer': 'earth', paint: { 'fill-color': p.land } },
-    { id: 'o-green', type: 'fill', ...s, 'source-layer': 'landuse', filter: ['in', ['get', 'kind'], ['literal', GREEN]], paint: { 'fill-color': p.green } },
+    {
+      id: 'o-green',
+      type: 'fill',
+      ...s,
+      'source-layer': 'landuse',
+      minzoom: 10,
+      filter: ['in', ['get', 'kind'], ['literal', GREEN]],
+      paint: { 'fill-color': p.green },
+    },
     { id: 'o-water', type: 'fill', ...s, 'source-layer': 'water', filter: ['==', ['geometry-type'], 'Polygon'], paint: { 'fill-color': p.water } },
     {
       id: 'o-river',
@@ -277,7 +292,7 @@ function offlineLayers(p: Palette): LayerSpecification[] {
       'source-layer': 'roads',
       minzoom: 5,
       filter: ['in', ['get', 'kind'], ['literal', ['highway', 'major_road', 'medium_road']]],
-      paint: { 'line-color': p.road, 'line-width': width(0.4, 8) as number },
+      paint: { 'line-color': p.road, 'line-width': main as number },
     },
     {
       id: 'o-rail',
@@ -288,13 +303,23 @@ function offlineLayers(p: Palette): LayerSpecification[] {
       filter: ['==', ['get', 'kind'], 'rail'],
       paint: { 'line-color': p.road, 'line-width': 1, 'line-dasharray': [3, 3] },
     },
+    // The world map's land covers the outlines' borders: its own instead.
+    {
+      id: 'o-border',
+      type: 'line',
+      ...s,
+      'source-layer': 'boundaries',
+      filter: ['==', ['get', 'kind'], 'country'],
+      paint: { 'line-color': p.border, 'line-width': ['interpolate', ['linear'], ['zoom'], 0, 0.3, 6, 0.9] },
+    },
     {
       id: 'o-boundary',
       type: 'line',
       ...s,
       'source-layer': 'boundaries',
+      minzoom: 5,
       filter: ['==', ['get', 'kind'], 'region'],
-      paint: { 'line-color': p.border, 'line-width': 1, 'line-dasharray': [4, 2] },
+      paint: { 'line-color': p.minor, 'line-width': 1, 'line-dasharray': [4, 2] },
     },
     {
       id: 'o-place',

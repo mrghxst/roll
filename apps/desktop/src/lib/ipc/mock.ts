@@ -2090,6 +2090,17 @@ export const mockApi: Api = {
     }, 1500);
     return id;
   },
+  addWorldMap: async () => {
+    if (!settings.network.downloads) throw new Error('Downloads are off. Turn them on in Settings › Network.');
+    const world: MapArea = { id: 'world', name: 'World', bbox: [-180, -85.05, 180, 85.05], max_zoom: 6, tiles: 5461, bytes: 66_000_000, state: 'downloading', build: '', error: null };
+    mapAreaList = [...mapAreaList.filter((a) => a.id !== 'world'), world];
+    emit('changed', 'maps');
+    setTimeout(() => {
+      mapAreaList = mapAreaList.map((a) => (a.id === 'world' ? { ...a, state: 'ready', build: '20261016' } : a));
+      emit('changed', 'maps');
+    }, 1500);
+    return 'world';
+  },
   removeMapArea: async (id) => {
     mapAreaList = mapAreaList.filter((a) => a.id !== id);
     emit('changed', 'maps');

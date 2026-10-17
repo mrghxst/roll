@@ -6,6 +6,10 @@
 //! tiles to the map itself and enlarges an area's deepest tiles for the
 //! zooms it lacks, up to 15; the map enlarges past that. Nothing is
 //! fetched while the owner looks at the map.
+//!
+//! The world map is an area like the others, the whole world to zoom 6
+//! (lakes, large rivers, motorways and trunk roads, cities; about 66 MB),
+//! enlarged by Roll wherever no deeper area is.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -28,6 +32,12 @@ pub const MAX_TILES: u64 = 20_000;
 /// Average stored bytes per tile, for estimates: 52 KB around Lake Garda,
 /// 58 KB in central Lisbon down to zoom 15 (docs/benchmarks.md).
 pub const BYTES_PER_TILE: u64 = 50_000;
+/// The world map's id, extent and depth.
+pub const WORLD: &str = "world";
+pub const WORLD_BBOX: [f64; 4] = [-180.0, -85.05, 180.0, 85.05];
+pub const WORLD_ZOOM: u8 = 6;
+/// Its file from the 2026-10-16 build (zoom 7 would be 285 MB).
+pub const WORLD_BYTES: u64 = 66_000_000;
 pub const ATTRIBUTION: &str = "© OpenStreetMap contributors, Protomaps";
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
@@ -52,6 +62,9 @@ pub struct MapArea {
 pub struct Request {
     pub name: String,
     pub bbox: [f64; 4],
+    /// How deep to go; by default as deep as [`zoom_for`] allows.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_zoom: Option<u8>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, TS)]
@@ -67,6 +80,23 @@ pub struct MapEstimate {
 /// The deepest zoom an area fits in at, from [`MIN_ZOOM`] to [`MAX_ZOOM`].
 pub fn zoom_for(bbox: [f64; 4]) -> u8 {
     (MIN_ZOOM..=MAX_ZOOM).rev().find(|&z| pmtiles::tile_count(bbox, z) <= MAX_TILES).unwrap_or(MIN_ZOOM)
+}
+
+/// The world map's request.
+pub fn world() -> Request {
+    Request { name: "World".into(), bbox: WORLD_BBOX, max_zoom: Some(WORLD_ZOOM) }
+}
+
+/// What a request will hold.
+fn estimate_request(req: &Request) -> MapEstimate {
+    match req.max_zoom {
+        Some(z) => {
+            let tiles = pmtiles::tile_count(req.bbox, z);
+            let bytes = if z == WORLD_ZOOM && req.bbox == WORLD_BBOX { WORLD_BYTES } else { tiles * BYTES_PER_TILE };
+            MapEstimate { tiles: tiles.min(i32::MAX as u64) as i32, bytes: bytes as f64, too_big: false, max_zoom: z }
+        }
+        None => estimate(req.bbox),
+    }
 }
 
 pub fn estimate(bbox: [f64; 4]) -> MapEstimate {
@@ -189,7 +219,7 @@ pub fn download(dir: &Path, id: &str, req: &Request, progress: &dyn Fn(usize, us
     std::fs::create_dir_all(dir)?;
     let build = latest_build()?;
     let mut remote = Remote::open(&format!("{BUILD_BASE}{build}"))?;
-    let max_zoom = zoom_for(req.bbox).min(remote.header.max_zoom);
+    let max_zoom = req.max_zoom.unwrap_or_else(|| zoom_for(req.bbox)).min(remote.header.max_zoom);
     // Where every tile of the area is in the archive.
     let mut wanted: Vec<(u8, u32, u32, u64, u32)> = Vec::new();
     for z in 0..=max_zoom {
@@ -332,7 +362,7 @@ pub fn list(dir: &Path, running: &[String], failed: &HashMap<String, String>) ->
             && !dir.join(format!("{id}.db")).exists()
             && let Some(req) = std::fs::read(&p).ok().and_then(|b| serde_json::from_slice::<Request>(&b).ok())
         {
-            let est = estimate(req.bbox);
+            let est = estimate_request(&req);
             let state = if running.iter().any(|r| r == id) { "downloading" } else { "failed" };
             out.push(MapArea {
                 id: id.into(),
@@ -500,7 +530,7 @@ mod tests {
         drop(c);
         std::fs::write(
             dir.join("lis.json"),
-            serde_json::to_vec(&Request { name: "Lisbon".into(), bbox: [-9.3, 38.6, -9.0, 38.8] }).unwrap(),
+            serde_json::to_vec(&Request { name: "Lisbon".into(), bbox: [-9.3, 38.6, -9.0, 38.8], max_zoom: None }).unwrap(),
         )
         .unwrap();
         let areas = list(dir, &["lis".to_string()], &HashMap::new());
@@ -516,5 +546,36 @@ mod tests {
         assert_eq!(tiles.get(15, 17059, 11527), Some(vec![]));
         assert_eq!(tiles.get(14, 8531, 5763), None);
         assert_eq!(tiles.get(16, 34118, 23054), None);
+    }
+
+    #[test]
+    fn the_world_map_fills_in_everywhere_else() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path();
+        // Pending, it lists at its measured size.
+        std::fs::write(dir.join(format!("{WORLD}.json")), serde_json::to_vec(&world()).unwrap()).unwrap();
+        let pending = list(dir, &[WORLD.to_string()], &HashMap::new());
+        assert_eq!((pending[0].max_zoom, pending[0].tiles, pending[0].bytes), (6, 5461, WORLD_BYTES as f64));
+        assert_eq!(pending[0].state, "downloading");
+        std::fs::remove_file(dir.join(format!("{WORLD}.json"))).unwrap();
+
+        // Ready, with one zoom 6 tile (Zurich's) and a city area at 15.
+        for (id, name, bbox, z, tile) in [
+            (WORLD, "World", "[-180,-85.05,180,85.05]", "6", (6, 33, 22)),
+            ("zh", "Zurich", "[8.45,47.32,8.62,47.43]", "15", (15, 17157, 11475)),
+        ] {
+            let c = open_db(&dir.join(format!("{id}.db"))).unwrap();
+            for (k, v) in [("name", name), ("bbox", bbox), ("max_zoom", z), ("tiles", "1")] {
+                c.execute("INSERT INTO meta (key, value) VALUES (?1, ?2)", params![k, v]).unwrap();
+            }
+            c.execute("INSERT INTO tiles (z, x, y, data) VALUES (?1, ?2, ?3, x'1a00')", params![tile.0, tile.1, tile.2]).unwrap();
+        }
+        let tiles = Tiles::load(dir);
+        // The city's own tile, and zoom 15 next to it enlarged from zoom 6.
+        assert_eq!(tiles.get(15, 17157, 11475), Some(vec![0x1a, 0x00]));
+        assert_eq!(tiles.get(15, 17158, 11475), Some(vec![]));
+        assert_eq!(tiles.get(10, 536, 358), Some(vec![]));
+        // Outside the one zoom 6 tile there is nothing.
+        assert_eq!(tiles.get(10, 600, 358), None);
     }
 }

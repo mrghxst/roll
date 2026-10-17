@@ -239,6 +239,8 @@ export interface Api {
   mapEstimate(bbox: [number, number, number, number]): Promise<MapEstimate>;
   /** Start copying an area for offline use; returns its id. */
   addMapArea(name: string, bbox: [number, number, number, number]): Promise<string>;
+  /** Start copying the world map (zoom 0–6, about 66 MB); its area id is "world". */
+  addWorldMap(): Promise<string>;
   removeMapArea(id: string): Promise<void>;
   /** URL templates for offline tiles and fonts; null without a backend for them. */
   mapTileUrl(): string | null;

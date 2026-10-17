@@ -179,6 +179,7 @@ pub fn run() {
             commands::map_areas,
             commands::map_estimate,
             commands::add_map_area,
+            commands::add_world_map,
             commands::remove_map_area,
             commands::people,
             commands::person_faces,

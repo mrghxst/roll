@@ -90,6 +90,7 @@ export const tauriApi: Api = {
   mapAreas: () => invoke('map_areas'),
   mapEstimate: (bbox) => invoke('map_estimate', { bbox }),
   addMapArea: (name, bbox) => invoke('add_map_area', { name, bbox }),
+  addWorldMap: () => invoke('add_world_map'),
   removeMapArea: (id) => invoke('remove_map_area', { id }),
   // convertFileSrc would escape the braces of the template.
   mapTileUrl: () => `${url('maptile')}/{z}/{x}/{y}`,

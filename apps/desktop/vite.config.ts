@@ -43,16 +43,15 @@ function offlineMaps(): Plugin {
       if (!existsSync(dir)) return;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { DatabaseSync } = (await import('node:sqlite' as string)) as any;
-      const dbs = readdirSync(dir)
-        .filter((f) => f.endsWith('.db'))
-        .map((f) => new DatabaseSync(join(dir, f), { readOnly: true }));
+      const files = readdirSync(dir).filter((f) => f.endsWith('.db'));
+      const dbs = files.map((f) => new DatabaseSync(join(dir, f), { readOnly: true }));
       server.middlewares.use('/__maps/', (req, res, next) => {
         const path = decodeURIComponent((req.url ?? '').split('?')[0] ?? '');
         if (path.replace(/^\//, '') === 'areas') {
           const areas = dbs.map((db, i) => {
             const meta = Object.fromEntries(db.prepare('SELECT key, value FROM meta').all().map((r: { key: string; value: string }) => [r.key, r.value]));
             return {
-              id: `area${i}`,
+              id: files[i]!.replace(/\.db$/, ''),
               name: meta.name,
               bbox: JSON.parse(meta.bbox),
               max_zoom: Number(meta.max_zoom),

@@ -265,6 +265,19 @@ Roll on the first request, RTX 2080 Ti, the 157-item CC0 set:
 - Its mistakes: wallpapers taken for photos (6) or junk (3), junk taken
   for photos (3). Documents, memes, screenshots and posts were all right.
 
+## World map, 2026-10-17
+
+The whole world from Protomaps build 20261016, six range requests at a
+time, uncompressed in SQLite:
+
+| Zooms | Tiles | Stored | Fetched | Time |
+|---|---|---|---|---|
+| 0–6 | 5,461 | 66 MB file (61 MB of tiles) | 45 MB | 7 s (in the app) |
+| 0–7 | 21,845 | 285 MB file (270 MB of tiles) | not noted | not timed |
+
+Zoom 6 tiles hold lakes, river areas, motorways and trunk roads; zoom 7
+adds primary roads and canals. Zoom 7 alone is 209 MB of the 270.
+
 ## Offline map areas, 2026-10-15
 
 `crates/core/tests/offline_real.rs`, Protomaps build 20261015, zoom 0 to

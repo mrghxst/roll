@@ -129,19 +129,34 @@ Settings › Models and data), paste coordinates or a maps link.
 After setting places Roll offers to set the time zone of items without one.
 
 
+### Map detail
+
+Out of the box the map draws only country outlines, so nothing is fetched
+without your say. **Map detail** (the layers icon on the map, or the
+button when the map says it has only outlines or no streets) has three
+ways to more:
+
+- **Online map**: streets and every building everywhere, loaded from
+  OpenFreeMap as you look; OpenFreeMap sees which areas you look at. The
+  same switch is Settings › Network › Online map tiles.
+- **World map**: lakes, large rivers, motorways, main roads and cities for
+  the whole world, kept on this computer (about 63 MB, a few seconds to a
+  minute to download). Zoomed in past a region, it gets coarse; that is
+  where offline areas come in.
+- **Offline map areas**, below.
+
 ### Offline map areas
 
-The map draws countries offline. For streets, buildings, water and place
-names without the online tiles, open **Offline map areas** (the download
-icon on the map, or **Keep this area offline** when the map says it has
-no streets where you zoomed in), and keep the area on screen: Roll copies
-it from Protomaps' OpenStreetMap build. A city or a region up to about
+For streets, buildings, water and place names without the online map,
+keep the area on screen in **Map detail** (or press **Keep this area
+offline** when the map says it has no streets where you zoomed in): Roll
+copies it from Protomaps' OpenStreetMap build. A city or a region up to about
 the size of a large lake has every building and footpath, so you can
 tell one building of a campus from the next (central Lisbon is 18 MB);
 a bigger area has streets and larger buildings (Switzerland is about
 500 MB). The download runs in Activity; the area shows while Settings ›
 Network › Online map tiles is off. Remove areas in the same sheet. With
-the online tiles on, the map shows every building everywhere.
+the online map on, the map shows every building everywhere.
 
 ## Events
 

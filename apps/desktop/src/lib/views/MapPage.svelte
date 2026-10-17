@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Flame, HardDriveDownload, ListOrdered, Maximize, X } from '@lucide/svelte';
+  import { Flame, Layers, ListOrdered, Maximize, X } from '@lucide/svelte';
   import Grid from '../grid/Grid.svelte';
   import { api } from '../ipc/api';
   import { emptyMapPoints, type MapPoints } from '../ipc/mappoints';
@@ -24,8 +24,8 @@
   let tray = $state<{ ids: number[]; total: number }>({ ids: [], total: 0 });
   let fitKey = $state('');
   let mapView: ReturnType<typeof MapView> | undefined = $state();
-  /** Zoomed in where the map has only country outlines. */
-  let bare = $state(false);
+  /** What the map lacks here (MapView's `onbare`). */
+  let bare = $state<'world' | 'streets' | null>(null);
   /** The offline areas sheet, with the area on screen when it opened. */
   let offline = $state<{ view: { bbox: [number, number, number, number]; lat: number; lon: number } | null } | null>(null);
 
@@ -106,12 +106,17 @@
         <span class="count mono">{n(visible?.length ?? points.count)} on the map</span>
         <IconButton label="Show everything in the time range" onclick={() => mapView?.fitAll()} disabled={!points.count}><Maximize size={16} strokeWidth={1.5} /></IconButton>
         <IconButton label={heatmap ? 'Show clusters' : 'Show a heatmap'} active={heatmap} onclick={() => (heatmap = !heatmap)}><Flame size={16} strokeWidth={1.5} /></IconButton>
-        <IconButton label="Offline map areas" onclick={() => (offline = { view: mapView?.view() ?? null })} data-testid="offline-areas"><HardDriveDownload size={16} strokeWidth={1.5} /></IconButton>
+        <IconButton label="Map detail" onclick={() => (offline = { view: mapView?.view() ?? null })} data-testid="offline-areas"><Layers size={16} strokeWidth={1.5} /></IconButton>
       </div>
-      {#if bare}
+      {#if bare === 'streets'}
         <p class="bare" data-testid="map-bare">
           No streets or buildings here yet.
           <button onclick={() => (offline = { view: mapView?.view() ?? null })}>Keep this area offline</button>
+        </p>
+      {:else if bare === 'world'}
+        <p class="bare" data-testid="map-outlines">
+          Only country outlines so far.
+          <button onclick={() => (offline = { view: mapView?.view() ?? null })}>More map detail</button>
         </p>
       {:else}
         <p class="hint">Shift+drag selects a rectangle, Alt+drag draws a lasso.</p>

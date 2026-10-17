@@ -21,7 +21,7 @@ fn copies_an_area_and_serves_it() {
         .ok()
         .and_then(|s| serde_json::from_str::<[f64; 4]>(&s).ok())
         .unwrap_or([-9.25, 38.68, -9.08, 38.78]);
-    let req = Request { name: "Lisbon".into(), bbox };
+    let req = Request { name: "Lisbon".into(), bbox, max_zoom: None };
     let est = offline::estimate(bbox);
     let t = Instant::now();
     offline::ensure_fonts(dir).unwrap();
