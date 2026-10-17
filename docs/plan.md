@@ -314,6 +314,6 @@ M4 to M6 and M7 are in, except signed builds with updates (needs
 certificates and keys from the owner; the owner chose to go without for
 now). 0.3.0 is
 published as a pre-release (2026-10-17) for Windows, Linux and Apple
-silicon Macs, with the building-level map and closed eyes. The world map
-and the Map detail sheet are on main for the next release. Left by hand: the checks in docs/checks.md (the macOS dmg
+silicon Macs, with the building-level map and closed eyes; 0.3.1
+(2026-10-17) adds the world map and the Map detail sheet. Left by hand: the checks in docs/checks.md (the macOS dmg
 has not been started on a Mac yet).

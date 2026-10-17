@@ -3,6 +3,15 @@ It is in active development; see the README for what works today and
 docs/plan.md for what is next. Roll never deletes anything permanently and
 every change can be undone, but please try it on a copy of your photos first.
 
+## New in 0.3.1
+
+- **More map at a click:** the layers icon on the map opens Map detail,
+  with three ways to more than country outlines: the online map (streets
+  and every building everywhere, from OpenFreeMap), a world map to keep
+  on your computer (about 63 MB: lakes, large rivers, motorways, main
+  roads and cities for the whole world) and offline map areas. While the
+  map shows only outlines, it points you there.
+
 ## New in 0.3
 
 - **The map down to single buildings:** offline map areas now keep every
