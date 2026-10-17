@@ -88,6 +88,15 @@ questions. One line of reason each. Newest at the bottom of each section.
   for `connect-src` at all times; the map only asks it while Settings ›
   Network › Online map tiles is on. Offline regions remain a later
   milestone.
+- **The website is plain HTML built by a small script** (`apps/site`,
+  marked for the guide) rather than a site framework: one page, two docs
+  pages, no client framework. The guide is rendered from
+  `docs/user-guide.md`, so the docs have one source. Fonts are served
+  with the site (no Google Fonts), and the only request to another host
+  is GitHub's API for the newest release's download links. Screenshots
+  come from the mock backend with the CC0 set; People and Duplicates are
+  left out because the mock's faces and copies are stand-ins that would
+  misrepresent the features.
 - **The world map is a download, not part of the installer** (PROMPT
   §4.7 asks for a Protomaps world file, zoom 0–6, shipped with the app).
   Map › Map detail fetches it from the Protomaps build with the owner's

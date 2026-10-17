@@ -297,6 +297,11 @@ Owner requests (2026-10-13), to build after M4–M6:
       as an offline area that Roll enlarges wherever no deeper area is;
       the same sheet switches the online map on, and the map offers the
       sheet while it has only country outlines
+- [x] Website (owner request, 2026-10-17): a landing page and the guide
+      on GitHub Pages (https://mrghxst.github.io/roll/), built from
+      `apps/site` and `docs/user-guide.md`/`docs/immich.md` by the
+      Website workflow; download buttons pick the newest release's files
+      for the visitor's system
 - [ ] Signed builds with automatic updates (needs certificates and an
       update key from the owner)
 - [x] **Open or closed eyes** (owner request, 2026-10-16): the `eyes`

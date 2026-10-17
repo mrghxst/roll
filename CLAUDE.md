@@ -27,6 +27,8 @@ cargo test -p roll-core export_bindings    # regenerate TS bindings in src/lib/i
 cd apps/desktop && pnpm check && pnpm test # svelte-check, vitest
 cd apps/desktop && pnpm tauri dev          # the app; set ROLL_DATA_DIR to keep dev data apart
 cargo run -p roll-core --example secret -- openrouter < key.txt   # store an API key in the OS keychain (never in files or chat)
+node apps/site/build.mjs --serve           # the website (GitHub Pages) on :4321; guide from docs/user-guide.md
+node apps/site/screenshots.mjs             # its screenshots (UI dev server on :1420, CC0 set, maps)
 powershell -File e2e/immich/server.ps1 setup|start|stop|remove   # throwaway Immich in its own WSL distro
 # then ROLL_IMMICH_URL/ROLL_IMMICH_KEY (from %LOCALAPPDATA%\RollImmichTest\credentials.json):
 cargo test -p roll-core --test immich_real -- --ignored

@@ -49,8 +49,9 @@ palette brings it back.
   event. The map is a globe that flattens as you zoom in. The time slider
   on its right picks the period: drag the handles or the range, click a
   year, scroll to zoom the time axis, or press play. It works offline
-  with country outlines; Settings › Network › Online map tiles adds
-  streets and place names from OpenFreeMap.
+  with country outlines; **Map detail** (the layers icon) adds a world
+  map, offline areas down to every building, or the online map (see
+  [Map detail](#map-detail)).
 - **Search** (top bar, or press /): words like `videos summer 2019 italy`, file names or
   tags. Roll turns what it understands into filter chips. The filter panel
   adds categories, cameras, places, ratings and more. When AI is on,

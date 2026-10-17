@@ -4,8 +4,20 @@
     {
       "name": "ui-mock",
       "runtimeExecutable": "node",
-      "runtimeArgs": ["apps/desktop/node_modules/vite/bin/vite.js", "apps/desktop"],
+      "runtimeArgs": [
+        "apps/desktop/node_modules/vite/bin/vite.js",
+        "apps/desktop"
+      ],
       "port": 1420
+    },
+    {
+      "name": "site",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "apps/site/build.mjs",
+        "--serve"
+      ],
+      "port": 4321
     }
   ]
 }

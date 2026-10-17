@@ -14,8 +14,10 @@ into a clean archive: photos and events by year, screenshots, memes and
 documents out of the way, dates and places fixed in bulk, and only the good
 stuff synced to Immich.
 
+**[Website](https://mrghxst.github.io/roll/) · [Download](https://github.com/mrghxst/roll/releases) · [User guide](https://mrghxst.github.io/roll/guide/)**
+
 [![CI](https://github.com/mrghxst/roll/actions/workflows/ci.yml/badge.svg)](https://github.com/mrghxst/roll/actions/workflows/ci.yml)
-![Windows first](https://img.shields.io/badge/platform-Windows%20·%20Linux%20·%20macOS%20later-111)
+![Windows · macOS · Linux](https://img.shields.io/badge/platform-Windows%20·%20macOS%20·%20Linux-111)
 ![Tauri 2 · Rust · Svelte 5](https://img.shields.io/badge/Tauri%202-Rust%20·%20Svelte%205-111)
 [![MIT](https://img.shields.io/badge/license-MIT-111)](LICENSE)
 
@@ -164,6 +166,8 @@ items.
 
 ## Documentation
 
+- [Website](https://mrghxst.github.io/roll/): what Roll does, downloads and the guide
+  (built from `apps/site` and the docs below)
 - [User guide](docs/user-guide.md): how to use the app
 - [Immich](docs/immich.md): what Roll writes and how it syncs
 - [Decisions](docs/decisions.md): where and why the build differs from the spec
